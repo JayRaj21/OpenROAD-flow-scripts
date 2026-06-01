@@ -107,3 +107,15 @@ MODULE.bazel.lock
 # python venv
 venv/
 tmp/
+
+# ML extensions — generated data and model weights
+flow/ml/data/
+flow/ml/congestion/model/checkpoints/
+flow/ml/floorplan/model/checkpoints/
+
+# Converted DEF files cached by the layout viewer
+flow/results/**/*.def
+
+# Web UI cache
+flow/ui/__pycache__/
+flow/ui/templates/__pycache__/

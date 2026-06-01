@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenROAD Flow UI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: #1a1d2e;
+    border-bottom: 1px solid #2d3150;
+    padding: 14px 24px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; color: #a5b4fc; }
+
+  .workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: #13151f;
+    border-right: 1px solid #1e2035;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .section {
+    padding: 14px 16px;
+    border-bottom: 1px solid #1e2035;
+  }
+  .section-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  select {
+    width: 100%;
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    color: #e2e8f0;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 0.83rem;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  select:focus { outline: none; border-color: #6366f1; }
+
+  .field-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+  .field-row label { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; }
+  .field-row input {
+    flex: 1;
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    color: #e2e8f0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+  .field-row input:focus { outline: none; border-color: #6366f1; }
+
+  .btn {
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 6px;
+    transition: opacity 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn:last-child { margin-bottom: 0; }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-run    { background: #4f46e5; color: #fff; }
+  .btn-drc    { background: #0369a1; color: #fff; }
+  .btn-cong   { background: #7c3aed; color: #fff; }
+  .btn-fp     { background: #0f766e; color: #fff; }
+  .btn-layout { background: #b45309; color: #fff; }
+  .btn-clear  { background: #1e2035; color: #94a3b8; }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #374151; margin-left: auto; flex-shrink: 0;
+  }
+  .status-dot.running { background: #f59e0b; animation: pulse 1s infinite; }
+  .status-dot.ok  { background: #22c55e; }
+  .status-dot.err { background: #ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Layer toggle list */
+  .layer-list { margin-top: 8px; }
+  .layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 0.78rem;
+    color: #94a3b8;
+  }
+  .layer-swatch {
+    width: 14px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .layer-row input[type=checkbox] { cursor: pointer; }
+  .layer-row label { cursor: pointer; flex: 1; }
+
+  .btn-tiny {
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    border: 1px solid #2d3150;
+    background: #1a1d2e;
+    color: #94a3b8;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .layer-toggle-row { display: flex; gap: 6px; margin-bottom: 6px; }
+
+  /* ── Main area ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid #1e2035;
+    background: #13151f;
+    padding: 0 16px;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 10px 18px;
+    font-size: 0.82rem;
+    color: #64748b;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+    user-select: none;
+  }
+  .tab:hover { color: #a5b4fc; }
+  .tab.active { color: #a5b4fc; border-bottom-color: #6366f1; }
+
+  /* Log panel */
+  .log-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    overflow: hidden;
+  }
+  .log-panel.hidden { display: none; }
+
+  .log-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .log-label { font-size: 0.72rem; color: #64748b; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .log-scroll {
+    flex: 1;
+    overflow-y: auto;
+    background: #0a0c14;
+    border: 1px solid #1e2035;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'Cascadia Code', 'Fira Mono', monospace;
+    font-size: 0.73rem;
+    line-height: 1.6;
+    color: #94a3b8;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .exit-ok  { color: #22c55e; font-weight: 700; }
+  .exit-err { color: #ef4444; font-weight: 700; }
+
+  /* Canvas panel */
+  .canvas-panel {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .canvas-panel.active { display: flex; }
+
+  #layout-canvas {
+    flex: 1;
+    display: block;
+    cursor: grab;
+    background: #06080f;
+  }
+  #layout-canvas.dragging { cursor: grabbing; }
+
+  .canvas-overlay {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    background: rgba(10,12,20,0.85);
+    border: 1px solid #1e2035;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    color: #64748b;
+    font-family: monospace;
+    pointer-events: none;
+  }
+
+  .canvas-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6,8,15,0.85);
+    font-size: 0.9rem;
+    color: #a5b4fc;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #1e2035;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results panel */
+  .results-panel {
+    border-top: 1px solid #1e2035;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 14px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .results-panel.visible { display: flex; }
+  .result-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; color: #64748b; text-transform: uppercase; margin-bottom: 8px; }
+
+  #congestion-img { max-width: 100%; max-height: 240px; border-radius: 8px; border: 1px solid #1e2035; }
+  #tcl-output {
+    background: #0a0c14; border: 1px solid #1e2035; border-radius: 8px;
+    padding: 10px 12px; font-family: monospace; font-size: 0.73rem;
+    color: #86efac; white-space: pre; overflow: auto; max-height: 180px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OpenROAD Flow UI</h1>
+</header>
+
+<div class="workspace">
+
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+
+    <div class="section">
+      <div class="section-title">Design</div>
+      <select id="sel-platform" onchange="onPlatformChange()">
+        <option value="">Loading…</option>
+      </select>
+      <select id="sel-design" onchange="onDesignChange()">
+        <option value="">— select platform —</option>
+      </select>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Flow</div>
+      <button class="btn btn-run" onclick="runAction('run')">
+        <span>▶</span> Run Full Flow
+        <span class="status-dot" id="dot-run"></span>
+      </button>
+      <button class="btn btn-drc" onclick="runAction('drc')">
+        <span>🔍</span> Run DRC
+        <span class="status-dot" id="dot-drc"></span>
+      </button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">ML — Congestion</div>
+      <button class="btn btn-cong" onclick="runAction('congestion')">
+        Predict Congestion
+        <span class="status-dot" id="dot-congestion"></span>
+      </button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">ML — Floorplan</div>
+      <div class="field-row">
+        <label>Die W (µm)</label>
+        <input type="number" id="die-w" value="2000">
+      </div>
+      <div class="field-row">
+        <label>Die H (µm)</label>
+        <input type="number" id="die-h" value="2000">
+      </div>
+      <button class="btn btn-fp" onclick="runAction('floorplan')">
+        Suggest Floorplan
+        <span class="status-dot" id="dot-floorplan"></span>
+      </button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Layout Viewer</div>
+      <select id="sel-stage">
+        <option value="">— run a design first —</option>
+      </select>
+      <button class="btn btn-layout" onclick="loadLayout()">
+        View Layout
+        <span class="status-dot" id="dot-layout"></span>
+      </button>
+      <div id="layer-controls" class="layer-list"></div>
+    </div>
+
+    <div class="section">
+      <button class="btn btn-clear" onclick="clearLog()">Clear Log</button>
+    </div>
+
+  </div>
+
+  <!-- ── Main ── -->
+  <div class="main">
+
+    <div class="tabs">
+      <div class="tab active" id="tab-log" onclick="switchTab('log')">Log</div>
+      <div class="tab" id="tab-layout" onclick="switchTab('layout')">Layout</div>
+    </div>
+
+    <!-- Log tab -->
+    <div class="log-panel" id="log-panel">
+      <div class="log-header">
+        <span class="log-label">Output</span>
+        <span id="log-action" style="font-size:0.73rem;color:#6366f1;"></span>
+      </div>
+      <div class="log-scroll" id="log"></div>
+    </div>
+
+    <!-- Layout tab -->
+    <div class="canvas-panel" id="canvas-panel">
+      <canvas id="layout-canvas"></canvas>
+      <div class="canvas-overlay" id="coord-display">x: — y: — | zoom: —</div>
+      <div class="canvas-loading" id="canvas-loading" style="display:none">
+        <div class="spinner"></div>
+        <span id="loading-msg">Parsing DEF file…</span>
+      </div>
+    </div>
+
+    <!-- Results (below whichever tab is active) -->
+    <div class="results-panel" id="results-panel">
+      <div id="congestion-result" style="display:none">
+        <div class="result-title">Predicted Congestion Heatmap</div>
+        <img id="congestion-img" src="" alt="Congestion heatmap">
+      </div>
+      <div id="floorplan-result" style="display:none">
+        <div class="result-title">Suggested Macro Placement (Tcl)</div>
+        <div id="tcl-output"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════
+let allDesigns = [];
+let activeStream = null;
+let layoutData = null;
+let currentPlatform = '', currentDesign = '';
+
+// Canvas / viewport
+let zoom = 1;         // pixels per DBU
+let panX = 0, panY = 0;  // view origin in DBU space (bottom-left of visible area)
+let isDragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+
+// Layer visibility  {layerName: true/false}
+let layerVis = {};
+
+// ═══════════════════════════════════════════════════════
+//  Boot
+// ═══════════════════════════════════════════════════════
+fetch('/api/designs')
+  .then(r => r.json())
+  .then(data => {
+    allDesigns = data;
+    const platforms = [...new Set(data.map(d => d.platform))].sort();
+    const pSel = document.getElementById('sel-platform');
+    pSel.innerHTML = platforms.map(p => `<option value="${p}">${p}</option>`).join('');
+    onPlatformChange();
+  });
+
+function onPlatformChange() {
+  const platform = document.getElementById('sel-platform').value;
+  const designs = allDesigns.filter(d => d.platform === platform).map(d => d.design).sort();
+  const dSel = document.getElementById('sel-design');
+  dSel.innerHTML = designs.map(d => `<option value="${d}">${d}</option>`).join('');
+  onDesignChange();
+}
+
+function onDesignChange() {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  if (!platform || !design) return;
+  currentPlatform = platform;
+  currentDesign   = design;
+  // Populate stage selector
+  fetch(`/api/layout/stages/${platform}/${design}`)
+    .then(r => r.json())
+    .then(stages => {
+      const sSel = document.getElementById('sel-stage');
+      if (!stages.length) {
+        sSel.innerHTML = '<option value="">— no DEF files found —</option>';
+        return;
+      }
+      sSel.innerHTML = stages.map(s =>
+        `<option value="${s.id}">${s.label}</option>`
+      ).join('');
+      // Default to the latest stage
+      sSel.selectedIndex = stages.length - 1;
+    });
+}
+
+// ═══════════════════════════════════════════════════════
+//  Tab switching
+// ═══════════════════════════════════════════════════════
+function switchTab(name) {
+  document.getElementById('tab-log').classList.toggle('active', name === 'log');
+  document.getElementById('tab-layout').classList.toggle('active', name === 'layout');
+  document.getElementById('log-panel').classList.toggle('hidden', name !== 'log');
+  document.getElementById('canvas-panel').classList.toggle('active', name === 'layout');
+  if (name === 'layout') {
+    resizeCanvas();
+    if (layoutData) render();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  Log helpers
+// ═══════════════════════════════════════════════════════
+const logEl = document.getElementById('log');
+
+function appendLog(text, cls) {
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.textContent = text + '\n';
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog() {
+  logEl.innerHTML = '';
+  document.getElementById('log-action').textContent = '';
+  document.getElementById('results-panel').classList.remove('visible');
+  document.getElementById('congestion-result').style.display = 'none';
+  document.getElementById('floorplan-result').style.display = 'none';
+}
+
+function setDot(id, state) {
+  const dot = document.getElementById('dot-' + id);
+  dot.className = 'status-dot' + (state ? ' ' + state : '');
+}
+
+// ═══════════════════════════════════════════════════════
+//  Flow actions (SSE streaming)
+// ═══════════════════════════════════════════════════════
+function runAction(action) {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  if (!platform || !design) { appendLog('Select a platform and design first.'); return; }
+  if (activeStream) { activeStream.close(); activeStream = null; }
+
+  let url;
+  if      (action === 'run')        url = `/api/run/${platform}/${design}`;
+  else if (action === 'drc')        url = `/api/drc/${platform}/${design}`;
+  else if (action === 'congestion') url = `/api/congestion/predict/${platform}/${design}`;
+  else if (action === 'floorplan') {
+    const dw = document.getElementById('die-w').value || 2000;
+    const dh = document.getElementById('die-h').value || 2000;
+    url = `/api/floorplan/suggest/${platform}/${design}?die_w=${dw}&die_h=${dh}`;
+  }
+
+  const labels = {
+    run: 'Running flow…', drc: 'Running DRC…',
+    congestion: 'Predicting congestion…', floorplan: 'Suggesting floorplan…'
+  };
+  document.getElementById('log-action').textContent = labels[action];
+  switchTab('log');
+  appendLog(`\n▶ ${labels[action].replace('…', '')} — ${platform}/${design}\n`);
+  setDot(action, 'running');
+
+  const es = new EventSource(url);
+  activeStream = es;
+
+  es.onmessage = e => {
+    const line = e.data;
+    if (line.startsWith('[EXIT')) {
+      const code = parseInt(line.match(/\d+/)[0]);
+      const ok = code === 0;
+      appendLog(ok ? '✓ Done (exit 0)' : `✗ Failed (exit ${code})`, ok ? 'exit-ok' : 'exit-err');
+      setDot(action, ok ? 'ok' : 'err');
+      document.getElementById('log-action').textContent = '';
+      es.close(); activeStream = null;
+      if (ok) onSuccess(action, platform, design);
+    } else {
+      appendLog(line);
+    }
+  };
+  es.onerror = () => {
+    appendLog('Connection lost.', 'exit-err');
+    setDot(action, 'err');
+    es.close(); activeStream = null;
+  };
+}
+
+function onSuccess(action, platform, design) {
+  if (action === 'congestion') {
+    const img = document.getElementById('congestion-img');
+    img.src = `/api/congestion/image/${platform}/${design}?t=${Date.now()}`;
+    document.getElementById('congestion-result').style.display = 'block';
+    document.getElementById('results-panel').classList.add('visible');
+  }
+  if (action === 'floorplan') {
+    fetch(`/api/floorplan/tcl/${platform}/${design}`)
+      .then(r => r.text())
+      .then(tcl => {
+        document.getElementById('tcl-output').textContent = tcl;
+        document.getElementById('floorplan-result').style.display = 'block';
+        document.getElementById('results-panel').classList.add('visible');
+      });
+  }
+  if (action === 'run') {
+    // Refresh stage list after a successful flow run
+    onDesignChange();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  Layout viewer — loading
+// ═══════════════════════════════════════════════════════
+function loadLayout() {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  const stage    = document.getElementById('sel-stage').value;
+  if (!platform || !design || !stage) return;
+
+  setDot('layout', 'running');
+  document.getElementById('canvas-loading').style.display = 'flex';
+  document.getElementById('loading-msg').textContent = 'Parsing DEF file…';
+  switchTab('layout');
+
+  fetch(`/api/layout/${platform}/${design}/${stage}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        document.getElementById('loading-msg').textContent = 'Error: ' + data.error;
+        setDot('layout', 'err');
+        return;
+      }
+      layoutData = data;
+      setDot('layout', 'ok');
+      document.getElementById('canvas-loading').style.display = 'none';
+
+      if (data.routesTruncated) {
+        appendLog(`Note: signal routing display truncated at 60,000 segments.`);
+      }
+
+      buildLayerControls(data);
+      // Defer fit+render by one animation frame so the browser has time to
+      // compute the canvas panel's dimensions after it becomes visible.
+      requestAnimationFrame(() => { fitView(); render(); });
+    })
+    .catch(err => {
+      document.getElementById('canvas-loading').style.display = 'none';
+      document.getElementById('loading-msg').textContent = 'Failed to load layout.';
+      setDot('layout', 'err');
+      appendLog(`Layout load error: ${err}`, 'exit-err');
+    });
+}
+
+function buildLayerControls(data) {
+  layerVis = {};
+  data.layers.forEach(l => { layerVis[l] = true; });
+
+  const container = document.getElementById('layer-controls');
+  if (!data.layers.length) { container.innerHTML = ''; return; }
+
+  let html = '<div class="layer-toggle-row">'
+    + '<button class="btn-tiny" onclick="setAllLayers(true)">All</button>'
+    + '<button class="btn-tiny" onclick="setAllLayers(false)">None</button>'
+    + '</div>';
+
+  data.layers.forEach(layer => {
+    const color = data.layerColors[layer] || '#888';
+    html += `<div class="layer-row">
+      <div class="layer-swatch" style="background:${color}"></div>
+      <input type="checkbox" id="lyr-${layer}" checked onchange="toggleLayer('${layer}', this.checked)">
+      <label for="lyr-${layer}">${layer}</label>
+    </div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function toggleLayer(layer, visible) {
+  layerVis[layer] = visible;
+  render();
+}
+
+function setAllLayers(visible) {
+  Object.keys(layerVis).forEach(l => {
+    layerVis[l] = visible;
+    const cb = document.getElementById('lyr-' + l);
+    if (cb) cb.checked = visible;
+  });
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  Layout viewer — canvas & rendering
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('layout-canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const panel = document.getElementById('canvas-panel');
+  // clientWidth can be 0 if the panel was just made visible and layout hasn't
+  // been computed yet — fall back to offsetWidth, then a reasonable default.
+  canvas.width  = panel.clientWidth  || panel.offsetWidth  || (window.innerWidth  - 260);
+  canvas.height = panel.clientHeight || panel.offsetHeight || (window.innerHeight - 60);
+}
+
+function fitView() {
+  resizeCanvas();
+  if (!layoutData) return;
+  const [x1, y1, x2, y2] = layoutData.dieArea;
+  const dieW = x2 - x1, dieH = y2 - y1;
+  const margin = 0.05;
+  zoom = Math.min(canvas.width / dieW, canvas.height / dieH) * (1 - margin);
+  panX = x1 - (canvas.width  / zoom - dieW) / 2;
+  panY = y1 - (canvas.height / zoom - dieH) / 2;
+}
+
+// DEF space → canvas pixels
+function toScreen(dx, dy) {
+  return [(dx - panX) * zoom, canvas.height - (dy - panY) * zoom];
+}
+
+function isRectVisible(x1, y1, x2, y2) {
+  const [sx1] = toScreen(x1, 0), [sx2] = toScreen(x2, 0);
+  const [, sy1] = toScreen(0, y2), [, sy2] = toScreen(0, y1);
+  return sx2 >= 0 && sx1 <= canvas.width && sy2 >= 0 && sy1 <= canvas.height;
+}
+
+function render() {
+  if (!layoutData) return;
+  resizeCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const [x1, y1, x2, y2] = layoutData.dieArea;
+  const dbu = layoutData.dbUnitsPerMicron;
+  const pixPerMicron = zoom * dbu;
+
+  // Die background
+  const [dsx1, dsy2] = toScreen(x1, y2);
+  const [dsx2, dsy1] = toScreen(x2, y1);
+  ctx.fillStyle = '#0d1020';
+  ctx.fillRect(dsx1, dsy1, dsx2 - dsx1, dsy2 - dsy1);
+  ctx.strokeStyle = '#6366f1';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(dsx1, dsy1, dsx2 - dsx1, dsy2 - dsy1);
+
+  // Special routes (power/ground) — always draw if layer visible
+  drawSegments(layoutData.specialRoutes, layoutData.layerColors, 2);
+
+  // Components — draw when at least 0.02 px/micron
+  if (pixPerMicron > 0.02) {
+    drawComponents(pixPerMicron);
+  }
+
+  // Signal routes — draw at higher zoom
+  if (pixPerMicron > 0.3 && layoutData.routes.length > 0) {
+    drawSegments(layoutData.routes, layoutData.layerColors, 1);
+  }
+
+  // Pins
+  if (pixPerMicron > 0.1) drawPins();
+
+  updateCoordDisplay(null, null);
+}
+
+function drawSegments(segs, colors, minWidth) {
+  // Group by layer for batched draws
+  const byLayer = {};
+  for (const s of segs) {
+    if (!layerVis[s.layer]) continue;
+    if (!byLayer[s.layer]) byLayer[s.layer] = [];
+    byLayer[s.layer].push(s);
+  }
+  for (const [layer, list] of Object.entries(byLayer)) {
+    ctx.strokeStyle = colors[layer] || '#888';
+    ctx.beginPath();
+    for (const s of list) {
+      if (!isRectVisible(
+        Math.min(s.x1, s.x2) - s.w, Math.min(s.y1, s.y2) - s.w,
+        Math.max(s.x1, s.x2) + s.w, Math.max(s.y1, s.y2) + s.w
+      )) continue;
+      ctx.lineWidth = Math.max(minWidth, s.w * zoom);
+      const [sx1, sy1] = toScreen(s.x1, s.y1);
+      const [sx2, sy2] = toScreen(s.x2, s.y2);
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawComponents(pixPerMicron) {
+  const stdColor   = '#1e3a5f';
+  const stdStroke  = '#2d5a8f';
+  const macroColor = '#1f3a1f';
+  const macroStroke= '#3a7a3a';
+
+  ctx.beginPath();
+  let stdCount = 0;
+  for (const c of layoutData.components) {
+    if (c.is_macro) continue;
+    if (!isRectVisible(c.x, c.y, c.x + c.w, c.y + c.h)) continue;
+    const [sx, sy2] = toScreen(c.x, c.y + c.h);
+    const sw = c.w * zoom, sh = c.h * zoom;
+    ctx.rect(sx, sy2, Math.max(sw, 0.5), Math.max(sh, 0.5));
+    stdCount++;
+  }
+  ctx.fillStyle = stdColor;
+  ctx.fill();
+
+  if (pixPerMicron > 0.5) {
+    ctx.strokeStyle = stdStroke;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+
+  // Macros separately (larger, different color)
+  ctx.beginPath();
+  for (const c of layoutData.components) {
+    if (!c.is_macro) continue;
+    if (!isRectVisible(c.x, c.y, c.x + c.w, c.y + c.h)) continue;
+    const [sx, sy2] = toScreen(c.x, c.y + c.h);
+    const sw = c.w * zoom, sh = c.h * zoom;
+    ctx.rect(sx, sy2, sw, sh);
+  }
+  ctx.fillStyle = macroColor;
+  ctx.fill();
+  ctx.strokeStyle = macroStroke;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Cell names at very high zoom
+  if (pixPerMicron > 20) {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `${Math.min(12, pixPerMicron * 0.3)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const c of layoutData.components) {
+      if (!isRectVisible(c.x, c.y, c.x + c.w, c.y + c.h)) continue;
+      const sw = c.w * zoom;
+      if (sw < 20) continue;
+      const [sx, sy2] = toScreen(c.x + c.w / 2, c.y + c.h / 2);
+      ctx.fillText(c.name.length > 12 ? c.name.slice(0, 12) + '…' : c.name, sx, sy2);
+    }
+  }
+}
+
+function drawPins() {
+  ctx.fillStyle = '#fbbf24';
+  for (const p of layoutData.pins) {
+    const [sx, sy] = toScreen(p.x, p.y);
+    ctx.beginPath();
+    ctx.arc(sx, sy, Math.max(3, zoom * 200), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  Mouse: zoom & pan
+// ═══════════════════════════════════════════════════════
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  // Keep the point under the cursor fixed
+  const defX = panX + mx / zoom;
+  const defY = panY + (canvas.height - my) / zoom;
+  zoom *= factor;
+  panX = defX - mx / zoom;
+  panY = defY - (canvas.height - my) / zoom;
+  render();
+}, { passive: false });
+
+canvas.addEventListener('mousedown', e => {
+  isDragging = true;
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  panStartX = panX; panStartY = panY;
+  canvas.classList.add('dragging');
+});
+window.addEventListener('mousemove', e => {
+  if (isDragging) {
+    panX = panStartX - (e.clientX - dragStartX) / zoom;
+    panY = panStartY + (e.clientY - dragStartY) / zoom;
+    render();
+  }
+  // Coordinate display
+  if (layoutData) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const defX = panX + mx / zoom;
+    const defY = panY + (canvas.height - my) / zoom;
+    const dbu = layoutData.dbUnitsPerMicron;
+    updateCoordDisplay(defX / dbu, defY / dbu);
+  }
+});
+window.addEventListener('mouseup', () => {
+  isDragging = false;
+  canvas.classList.remove('dragging');
+});
+
+function updateCoordDisplay(xUm, yUm) {
+  const dbu = layoutData ? layoutData.dbUnitsPerMicron : 1000;
+  const zoomStr = (zoom * dbu).toFixed(3);
+  if (xUm === null) {
+    document.getElementById('coord-display').textContent = `zoom: ${zoomStr} px/µm`;
+  } else {
+    document.getElementById('coord-display').textContent =
+      `x: ${xUm.toFixed(2)} µm   y: ${yUm.toFixed(2)} µm   |   zoom: ${zoomStr} px/µm`;
+  }
+}
+
+// Fit to view on double-click
+canvas.addEventListener('dblclick', () => { fitView(); render(); });
+
+// Resize on window resize
+window.addEventListener('resize', () => {
+  if (layoutData) requestAnimationFrame(() => { resizeCanvas(); render(); });
+});
+</script>
+
+</body>
+</html>
