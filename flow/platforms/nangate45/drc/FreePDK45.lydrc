@@ -41,9 +41,10 @@ ANTENNA = true # Antenna checks
 # KLayout setup
 ####################
 
-# Set tiling options
-tiles(1000.um)
-tile_borders(1.um)
+# Set tiling options — smaller tiles let the 4-thread pool work in parallel
+# on large designs like aes where the 1000um default is a single tile.
+tiles(200.um)
+tile_borders(2.um)
 
 # Hierachical
 deep

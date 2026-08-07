@@ -276,11 +276,131 @@
   .result-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; color: #64748b; text-transform: uppercase; margin-bottom: 8px; }
 
   #congestion-img { max-width: 100%; max-height: 240px; border-radius: 8px; border: 1px solid #1e2035; }
+
+  /* Timing tab */
+  .timing-panel {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    padding: 20px;
+    overflow-y: auto;
+    gap: 20px;
+  }
+  .timing-panel.active { display: flex; }
+  .timing-section-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; color: #64748b; text-transform: uppercase; margin-bottom: 10px; }
+  .timing-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .timing-card {
+    background: #13151f;
+    border: 1px solid #1e2035;
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+  .timing-card-label { font-size: 0.7rem; color: #64748b; margin-bottom: 4px; }
+  .timing-card-value { font-size: 1.3rem; font-weight: 700; font-family: monospace; }
+  .timing-card-value.good  { color: #22c55e; }
+  .timing-card-value.warn  { color: #f59e0b; }
+  .timing-card-value.bad   { color: #ef4444; }
+  .timing-card-value.neutral { color: #a5b4fc; }
+  .timing-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .timing-table th { text-align: left; padding: 6px 12px; color: #64748b; font-weight: 600; border-bottom: 1px solid #1e2035; }
+  .timing-table td { padding: 7px 12px; border-bottom: 1px solid #13151f; font-family: monospace; }
+  .timing-table tr:hover td { background: #13151f; }
+  .timing-none { color: #475569; font-style: italic; font-size: 0.85rem; padding: 20px 0; }
+
+  /* Cell info popup */
+  .cell-info {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: rgba(10,12,20,0.95);
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.75rem;
+    min-width: 180px;
+    pointer-events: none;
+    display: none;
+  }
+  .cell-info.visible { display: block; }
+  .cell-info-title { color: #a5b4fc; font-weight: 600; margin-bottom: 6px; font-size: 0.78rem; }
+  .cell-info-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; color: #94a3b8; }
+  .cell-info-row span:last-child { color: #e2e8f0; font-family: monospace; }
+
+  .btn-overlay { background: #1e2d3d; color: #7dd3fc; border: 1px solid #2d4a6e; }
+  .btn-overlay.active { background: #1e3a5a; border-color: #38bdf8; color: #38bdf8; }
+
   #tcl-output {
     background: #0a0c14; border: 1px solid #1e2035; border-radius: 8px;
     padding: 10px 12px; font-family: monospace; font-size: 0.73rem;
     color: #86efac; white-space: pre; overflow: auto; max-height: 180px;
   }
+
+  /* Compare tab */
+  .compare-panel {
+    flex: 1; display: none; flex-direction: column;
+    padding: 20px; overflow-y: auto; gap: 20px;
+  }
+  .compare-panel.active { display: flex; }
+  .compare-controls {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: end;
+  }
+  .compare-group label { font-size: 0.72rem; color: #64748b; display: block; margin-bottom: 4px; }
+  .compare-group select { margin-bottom: 4px; }
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .compare-table th { text-align: left; padding: 6px 12px; color: #64748b; font-weight: 600; border-bottom: 1px solid #1e2035; }
+  .compare-table td { padding: 7px 12px; border-bottom: 1px solid #13151f; font-family: monospace; }
+  .compare-table tr:hover td { background: #13151f; }
+  .delta-pos { color: #22c55e; } .delta-neg { color: #ef4444; }
+
+  /* Critical path expand */
+  .timing-row-expandable { cursor: pointer; }
+  .timing-row-expandable:hover td { background: #1a1d2e; }
+  .path-detail-row { display: none; }
+  .path-detail-row.open { display: table-row; }
+  .path-detail-inner { padding: 8px 12px 12px 24px; }
+  .path-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+  .path-table th { color: #475569; padding: 3px 8px; text-align: left; }
+  .path-table td { padding: 3px 8px; font-family: monospace; color: #94a3b8; }
+  .path-table tr.path-cell-row { cursor: pointer; }
+  .path-table tr.path-cell-row:hover td { color: #e2e8f0; background: #1e2035; }
+  .path-table tr.path-net-row td { color: #475569; }
+  .cell-highlight-outline { stroke: #fbbf24; stroke-width: 2; fill: none; }
+
+  /* DRC sidebar */
+  .drc-sidebar {
+    width: 220px; min-width: 220px; background: #13151f;
+    border-left: 1px solid #1e2035; overflow-y: auto;
+    display: none; flex-direction: column;
+  }
+  .drc-sidebar.open { display: flex; }
+  .drc-sidebar-title { padding: 10px 14px; font-size: 0.68rem; font-weight: 700;
+    letter-spacing: 0.08em; color: #64748b; text-transform: uppercase;
+    border-bottom: 1px solid #1e2035; }
+  .drc-viol-item { padding: 6px 14px; font-size: 0.75rem; cursor: pointer;
+    border-bottom: 1px solid #0f1117; color: #94a3b8; }
+  .drc-viol-item:hover { background: #1a1d2e; color: #e2e8f0; }
+  .drc-viol-type { color: #ef4444; font-weight: 600; font-size: 0.7rem; }
+  .drc-viol-layer { color: #64748b; font-size: 0.68rem; }
+
+  /* Sparkline canvas */
+  .sparkline-cell { padding: 4px 12px !important; }
+
+  /* Power pill */
+  .power-pill { font-size: 0.7rem; color: #94a3b8; }
+
+  /* Edit mode */
+  .btn-edit { background: #3b1f6b; color: #c4b5fd; border: 1px solid #5b3aae; }
+  .btn-edit.active { background: #5b3aae; border-color: #a78bfa; color: #fff; }
+  #layout-canvas.edit-mode { cursor: crosshair; }
+  #layout-canvas.edit-mode.over-macro { cursor: move; }
+  .edit-badge {
+    font-size: 0.68rem; color: #a78bfa; margin-top: 2px;
+    display: none; text-align: center;
+  }
+  .edit-badge.visible { display: block; }
 </style>
 </head>
 <body>
@@ -306,13 +426,29 @@
 
     <div class="section">
       <div class="section-title">Flow</div>
+      <div class="field-row" style="margin-bottom:6px">
+        <label style="white-space:nowrap">From stage</label>
+        <select id="sel-from-stage" style="margin-bottom:0">
+          <option value="">Beginning</option>
+          <option value="floorplan">Floorplan</option>
+          <option value="place">Placement</option>
+          <option value="cts">CTS</option>
+          <option value="grt">Global Route</option>
+          <option value="route">Route</option>
+          <option value="finish">Finish</option>
+        </select>
+      </div>
       <button class="btn btn-run" onclick="runAction('run')">
-        <span>▶</span> Run Full Flow
+        <span>▶</span> Run Flow
         <span class="status-dot" id="dot-run"></span>
       </button>
       <button class="btn btn-drc" onclick="runAction('drc')">
         <span>🔍</span> Run DRC
         <span class="status-dot" id="dot-drc"></span>
+      </button>
+      <button class="btn btn-layout" style="background:#1e3a2e;color:#86efac;" onclick="loadTiming()">
+        View Timing
+        <span class="status-dot" id="dot-timing"></span>
       </button>
     </div>
 
@@ -349,6 +485,35 @@
         View Layout
         <span class="status-dot" id="dot-layout"></span>
       </button>
+      <button class="btn btn-overlay" id="btn-cong-overlay" onclick="toggleCongestionOverlay()" style="display:none">
+        Congestion Overlay
+      </button>
+      <button class="btn btn-overlay" id="btn-fp-overlay" onclick="toggleFloorplanOverlay()" style="display:none">
+        Floorplan Overlay
+      </button>
+      <button class="btn btn-overlay" id="btn-drc-overlay" onclick="toggleDrcOverlay()" style="display:none">
+        DRC Violations
+      </button>
+      <button class="btn btn-edit" id="btn-edit-mode" onclick="toggleEditMode()" style="display:none">
+        ✏ Edit Macros
+      </button>
+      <div class="edit-badge" id="edit-badge"></div>
+      <button class="btn" id="btn-export-tcl" onclick="exportEditedTcl()"
+        style="display:none;background:#1e3a2e;color:#86efac">
+        Export Tcl
+      </button>
+      <select id="cong-layer-select" onchange="onCongLayerChange()" style="display:none;background:#1e2035;color:#94a3b8;border:1px solid #334155;border-radius:4px;padding:3px 6px;font-size:0.78rem;cursor:pointer">
+        <option value="0">metal1</option>
+        <option value="1">metal2</option>
+        <option value="2">metal3</option>
+        <option value="3">metal4</option>
+        <option value="4">metal5</option>
+        <option value="5">metal6</option>
+        <option value="6">metal7</option>
+        <option value="7">metal8</option>
+        <option value="8">metal9</option>
+        <option value="9">metal10</option>
+      </select>
       <div id="layer-controls" class="layer-list"></div>
     </div>
 
@@ -364,6 +529,8 @@
     <div class="tabs">
       <div class="tab active" id="tab-log" onclick="switchTab('log')">Log</div>
       <div class="tab" id="tab-layout" onclick="switchTab('layout')">Layout</div>
+      <div class="tab" id="tab-timing" onclick="switchTab('timing')">Timing</div>
+      <div class="tab" id="tab-compare" onclick="switchTab('compare')">Compare</div>
     </div>
 
     <!-- Log tab -->
@@ -376,13 +543,76 @@
     </div>
 
     <!-- Layout tab -->
-    <div class="canvas-panel" id="canvas-panel">
+    <div style="flex:1;display:none;overflow:hidden" id="layout-wrapper">
+    <div class="canvas-panel active" id="canvas-panel">
       <canvas id="layout-canvas"></canvas>
       <div class="canvas-overlay" id="coord-display">x: — y: — | zoom: —</div>
+      <div class="cell-info" id="cell-info">
+        <div class="cell-info-title" id="cell-info-name"></div>
+        <div class="cell-info-row"><span>Cursor X</span><span id="cell-info-cur-x"></span></div>
+        <div class="cell-info-row"><span>Cursor Y</span><span id="cell-info-cur-y"></span></div>
+        <div class="cell-info-row" id="cell-info-cell-row"><span>Cell</span><span id="cell-info-cell"></span></div>
+        <div class="cell-info-row" id="cell-info-x-row"><span>X</span><span id="cell-info-x"></span></div>
+        <div class="cell-info-row" id="cell-info-y-row"><span>Y</span><span id="cell-info-y"></span></div>
+        <div class="cell-info-row" id="cell-info-w-row"><span>W</span><span id="cell-info-w"></span></div>
+        <div class="cell-info-row" id="cell-info-h-row"><span>H</span><span id="cell-info-h"></span></div>
+        <div class="cell-info-row" id="cell-info-macro-row"><span>Type</span><span id="cell-info-type"></span></div>
+      </div>
       <div class="canvas-loading" id="canvas-loading" style="display:none">
         <div class="spinner"></div>
         <span id="loading-msg">Parsing DEF file…</span>
       </div>
+    </div>
+    <!-- DRC sidebar (shown alongside canvas when DRC overlay is active) -->
+    <div class="drc-sidebar" id="drc-sidebar">
+      <div class="drc-sidebar-title">DRC Violations</div>
+      <div id="drc-viol-list"></div>
+    </div>
+    </div><!-- end layout-wrapper -->
+
+    <!-- Timing tab -->
+    <div class="timing-panel" id="timing-panel">
+      <div>
+        <div class="timing-section-title">Final Timing Summary</div>
+        <div class="timing-summary" id="timing-summary">
+          <div class="timing-none">No timing data — run the flow first, then click View Timing.</div>
+        </div>
+        <div id="autofix-bar" style="display:none;margin-top:10px">
+          <button class="btn" id="btn-autofix"
+            style="background:#7c2d12;color:#fdba74;border:1px solid #9a3412"
+            onclick="runAutofix()">⚡ Auto-fix Timing</button>
+          <span id="autofix-status" style="margin-left:10px;font-size:0.78rem;color:#94a3b8"></span>
+        </div>
+      </div>
+      <div>
+        <div class="timing-section-title">Stage-by-Stage Metrics <span style="color:#475569;font-size:0.68rem;font-weight:400">(click row to expand critical path)</span></div>
+        <table class="timing-table" id="timing-table">
+          <thead><tr>
+            <th>Stage</th><th>WNS (ns)</th><th>TNS (ns)</th><th>fmax (MHz)</th>
+            <th>Power (mW)</th><th>Wire (µm)</th><th>Util</th><th style="width:80px">WNS trend</th>
+          </tr></thead>
+          <tbody id="timing-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Compare tab -->
+    <div class="compare-panel" id="compare-panel">
+      <div class="timing-section-title">Compare Two Designs</div>
+      <div class="compare-controls">
+        <div class="compare-group">
+          <label>Design A</label>
+          <select id="cmp-platform-a"></select>
+          <select id="cmp-design-a"></select>
+        </div>
+        <div class="compare-group">
+          <label>Design B</label>
+          <select id="cmp-platform-b"></select>
+          <select id="cmp-design-b"></select>
+        </div>
+      </div>
+      <button class="btn btn-run" style="max-width:160px" onclick="runCompare()">Compare</button>
+      <div id="compare-result"></div>
     </div>
 
     <!-- Results (below whichever tab is active) -->
@@ -413,9 +643,23 @@ let currentPlatform = '', currentDesign = '';
 let zoom = 1;         // pixels per DBU
 let panX = 0, panY = 0;  // view origin in DBU space (bottom-left of visible area)
 let isDragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+let didDrag = false;
 
 // Layer visibility  {layerName: true/false}
 let layerVis = {};
+
+// Congestion overlay
+let congestionOverlayEnabled = false;
+let congestionImage = null;
+let floorplanOverlayEnabled = false;
+let floorplanMacros = null; // [{name, x_um, y_um, w_dbu, h_dbu}]
+
+// Edit mode
+let editMode = false;
+let editDragging = false;
+let editDragTarget = null;
+let editDragOffX = 0, editDragOffY = 0;
+let editedMacros = {};  // {name: {x_dbu, y_dbu, orient}}
 
 // ═══════════════════════════════════════════════════════
 //  Boot
@@ -465,14 +709,17 @@ function onDesignChange() {
 //  Tab switching
 // ═══════════════════════════════════════════════════════
 function switchTab(name) {
-  document.getElementById('tab-log').classList.toggle('active', name === 'log');
-  document.getElementById('tab-layout').classList.toggle('active', name === 'layout');
+  ['log','layout','timing','compare'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', name === t);
+  });
   document.getElementById('log-panel').classList.toggle('hidden', name !== 'log');
-  document.getElementById('canvas-panel').classList.toggle('active', name === 'layout');
+  document.getElementById('layout-wrapper').style.display = name === 'layout' ? 'flex' : 'none';
+  document.getElementById('timing-panel').classList.toggle('active', name === 'timing');
+  document.getElementById('compare-panel').classList.toggle('active', name === 'compare');
   if (name === 'layout') {
-    resizeCanvas();
-    if (layoutData) render();
+    requestAnimationFrame(() => { resizeCanvas(); if (layoutData) render(); });
   }
+  if (name === 'compare') populateCompareSelectors();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -511,7 +758,10 @@ function runAction(action) {
   if (activeStream) { activeStream.close(); activeStream = null; }
 
   let url;
-  if      (action === 'run')        url = `/api/run/${platform}/${design}`;
+  if      (action === 'run') {
+    const fromStage = document.getElementById('sel-from-stage').value;
+    url = `/api/run/${platform}/${design}` + (fromStage ? `?from_stage=${fromStage}` : '');
+  }
   else if (action === 'drc')        url = `/api/drc/${platform}/${design}`;
   else if (action === 'congestion') url = `/api/congestion/predict/${platform}/${design}`;
   else if (action === 'floorplan') {
@@ -525,6 +775,7 @@ function runAction(action) {
     congestion: 'Predicting congestion…', floorplan: 'Suggesting floorplan…'
   };
   document.getElementById('log-action').textContent = labels[action];
+  if (action === 'run') document.getElementById('sel-from-stage').disabled = true;
   switchTab('log');
   appendLog(`\n▶ ${labels[action].replace('…', '')} — ${platform}/${design}\n`);
   setDot(action, 'running');
@@ -540,6 +791,7 @@ function runAction(action) {
       appendLog(ok ? '✓ Done (exit 0)' : `✗ Failed (exit ${code})`, ok ? 'exit-ok' : 'exit-err');
       setDot(action, ok ? 'ok' : 'err');
       document.getElementById('log-action').textContent = '';
+      if (action === 'run') document.getElementById('sel-from-stage').disabled = false;
       es.close(); activeStream = null;
       if (ok) onSuccess(action, platform, design);
     } else {
@@ -549,6 +801,7 @@ function runAction(action) {
   es.onerror = () => {
     appendLog('Connection lost.', 'exit-err');
     setDot(action, 'err');
+    if (action === 'run') document.getElementById('sel-from-stage').disabled = false;
     es.close(); activeStream = null;
   };
 }
@@ -568,11 +821,396 @@ function onSuccess(action, platform, design) {
         document.getElementById('floorplan-result').style.display = 'block';
         document.getElementById('results-panel').classList.add('visible');
       });
+    // Show the overlay button and pre-load suggestion data
+    document.getElementById('btn-fp-overlay').style.display = 'block';
+    loadFloorplanOverlayData();
   }
   if (action === 'run') {
-    // Refresh stage list after a successful flow run
     onDesignChange();
   }
+  if (action === 'congestion') {
+    // Show overlay button now that a prediction exists
+    document.getElementById('btn-cong-overlay').style.display = 'block';
+    loadCongestionOverlayImage();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  Timing
+// ═══════════════════════════════════════════════════════
+function loadTiming(fromAutofix = false) {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  if (!platform || !design) { appendLog('Select a platform and design first.'); return; }
+  // A manual "View Timing" click clears the autofix result so the status
+  // label reverts to the normal "timing not closed" indicator.
+  if (!fromAutofix) _autofixDone = false;
+  setDot('timing', 'running');
+  switchTab('timing');
+  fetch(`/api/timing/${platform}/${design}`)
+    .then(r => r.json())
+    .then(data => {
+      setDot('timing', data.summary ? 'ok' : 'err');
+      renderTiming(data);
+    })
+    .catch(() => setDot('timing', 'err'));
+}
+
+let _timingData = null;  // cached for cross-highlight
+
+function renderTiming(data) {
+  _timingData = data;
+  const summaryEl = document.getElementById('timing-summary');
+  const tbodyEl   = document.getElementById('timing-tbody');
+
+  if (!data.summary) {
+    summaryEl.innerHTML = '<div class="timing-none">No timing reports found. Run the flow first.</div>';
+    tbodyEl.innerHTML = '';
+    return;
+  }
+
+  const s = data.summary;
+  function slackClass(v) {
+    if (v === null) return 'neutral';
+    if (v >= 0.1)  return 'good';
+    if (v >= 0)    return 'warn';
+    return 'bad';
+  }
+  function fmtNs(v)  { return v !== null ? v.toFixed(3) + ' ns' : '—'; }
+  function fmtMhz(v) { return v !== null ? v.toFixed(1) + ' MHz' : '—'; }
+  function fmtMw(v)  { return v !== null && v !== undefined ? v.toFixed(2) + ' mW' : '—'; }
+
+  summaryEl.innerHTML = `
+    <div class="timing-card">
+      <div class="timing-card-label">WNS (setup)</div>
+      <div class="timing-card-value ${slackClass(s.wns)}">${fmtNs(s.wns)}</div>
+    </div>
+    <div class="timing-card">
+      <div class="timing-card-label">TNS</div>
+      <div class="timing-card-value ${s.tns !== null && s.tns < 0 ? 'bad' : 'good'}">${fmtNs(s.tns)}</div>
+    </div>
+    <div class="timing-card">
+      <div class="timing-card-label">Worst Slack</div>
+      <div class="timing-card-value ${slackClass(s.worst_slack)}">${fmtNs(s.worst_slack)}</div>
+    </div>
+    <div class="timing-card">
+      <div class="timing-card-label">fmax</div>
+      <div class="timing-card-value neutral">${fmtMhz(s.fmax)}</div>
+    </div>
+    <div class="timing-card">
+      <div class="timing-card-label">Total Power</div>
+      <div class="timing-card-value neutral">${fmtMw(s.power_mw)}</div>
+    </div>
+    <div class="timing-card">
+      <div class="timing-card-label">Utilization</div>
+      <div class="timing-card-value neutral">${s.utilization !== null && s.utilization !== undefined ? (s.utilization * 100).toFixed(1) + ' %' : '—'}</div>
+    </div>
+  `;
+
+  // Collect WNS values for sparkline
+  const entries = Object.entries(data.stages);
+  const wnsVals = entries.map(([,m]) => m.wns);
+
+  let html = '';
+  entries.forEach(([stage, m], idx) => {
+    const wnsCol = m.wns !== null && m.wns < 0 ? '#ef4444' : '#22c55e';
+    const tnsCol = m.tns !== null && m.tns < 0 ? '#ef4444' : '#22c55e';
+    const hasPower = m.power_mw !== null && m.power_mw !== undefined;
+    const powerTip = hasPower && m.power_breakdown
+      ? `Int: ${m.power_breakdown.internal_mw} / Sw: ${m.power_breakdown.switching_mw} / Leak: ${m.power_breakdown.leakage_mw} mW`
+      : '';
+    const rowId = `timing-row-${idx}`;
+    const pathRowId = `path-row-${idx}`;
+    html += `<tr class="timing-row-expandable" onclick="togglePathRow('${pathRowId}','${stage}')">
+      <td>${stage}</td>
+      <td style="color:${wnsCol}">${fmtNs(m.wns)}</td>
+      <td style="color:${tnsCol}">${fmtNs(m.tns)}</td>
+      <td style="color:#a5b4fc">${fmtMhz(m.fmax)}</td>
+      <td title="${powerTip}">${hasPower ? `<span>${fmtMw(m.power_mw)}</span>` : '—'}</td>
+      <td>${m.wirelength_um !== undefined && m.wirelength_um !== null ? Math.round(m.wirelength_um).toLocaleString() : '—'}</td>
+      <td>${m.utilization !== undefined && m.utilization !== null ? (m.utilization * 100).toFixed(1) + ' %' : '—'}</td>
+      <td class="sparkline-cell"><canvas id="spark-${idx}" width="80" height="24"></canvas></td>
+    </tr>
+    <tr class="path-detail-row" id="${pathRowId}">
+      <td colspan="8">
+        <div class="path-detail-inner" id="path-detail-inner-${idx}">
+          <div style="color:#475569;font-size:0.72rem">Loading critical path…</div>
+        </div>
+      </td>
+    </tr>`;
+  });
+  tbodyEl.innerHTML = html;
+
+  // Show / hide the Auto-fix button based on whether WNS is failing.
+  // Don't overwrite the status label while an autofix result is being shown.
+  const autofixBar = document.getElementById('autofix-bar');
+  if (autofixBar) {
+    const wns = s.wns;
+    autofixBar.style.display = (wns !== null && wns < 0) ? 'block' : 'none';
+    const statusEl = document.getElementById('autofix-status');
+    if (statusEl && !_autofixDone) {
+      if (wns !== null && wns < 0) {
+        statusEl.textContent = `WNS ${wns.toFixed(3)} ns — timing not closed`;
+      } else if (wns !== null) {
+        statusEl.textContent = '';
+      }
+    }
+  }
+
+  // Draw sparklines after DOM update
+  requestAnimationFrame(() => {
+    entries.forEach((_, idx) => drawSparkline(`spark-${idx}`, wnsVals, idx));
+  });
+}
+
+let _autofixEs = null;      // single active EventSource for autofix
+let _autofixDone = false;  // true while the autofix result message should persist
+
+function runAutofix() {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  if (!platform || !design) return;
+
+  // Close any previous session
+  if (_autofixEs) { _autofixEs.close(); _autofixEs = null; }
+  _autofixDone = false;
+
+  const btn      = document.getElementById('btn-autofix');
+  const statusEl = document.getElementById('autofix-status');
+  btn.disabled   = true;
+  btn.textContent = '⏳ Running…';
+  statusEl.textContent = 'Starting autonomous timing closure loop…';
+  statusEl.style.color = '#94a3b8';
+
+  switchTab('log');
+  appendLog('=== Auto-fix Timing started ===');
+
+  const es = new EventSource(`/api/autofix/timing/${platform}/${design}`);
+  _autofixEs = es;
+
+  function finish(code) {
+    if (_autofixEs === es) { es.close(); _autofixEs = null; }
+    btn.disabled    = false;
+    btn.textContent = '⚡ Auto-fix Timing';
+    _autofixDone    = true;  // block renderTiming() from overwriting our result
+    if (code === 0) {
+      statusEl.textContent = '✓ Timing closed!';
+      statusEl.style.color = '#4ade80';
+    } else {
+      statusEl.textContent = 'Could not close timing — see log for details.';
+      statusEl.style.color = '#f87171';
+    }
+    // Refresh timing so the table shows the latest GRT-level results
+    // (5_global_route.rpt was updated by the autofix).  Pass fromAutofix=true
+    // so renderTiming() doesn't overwrite our result status message.
+    loadTiming(true);
+    switchTab('timing');
+  }
+
+  es.onmessage = e => {
+    if (_autofixEs !== es) return;  // stale session — ignore
+    if (!e.data) return;
+    appendLog(e.data);
+    if (e.data.startsWith('[EXIT')) {
+      const code = parseInt(e.data.match(/\d+/)?.[0] ?? '1');
+      finish(code);
+    }
+  };
+  es.onerror = () => {
+    if (_autofixEs !== es) return;
+    finish(1);
+    statusEl.textContent = 'Connection error — see log.';
+  };
+}
+
+function drawSparkline(canvasId, values, highlightIdx) {
+  const c = document.getElementById(canvasId);
+  if (!c) return;
+  const ctx2 = c.getContext('2d');
+  const w = c.width, h = c.height;
+  ctx2.clearRect(0, 0, w, h);
+  const valid = values.filter(v => v !== null);
+  if (!valid.length) return;
+  const minV = Math.min(...valid), maxV = Math.max(...valid);
+  const range = maxV - minV || 1;
+  const pts = values.map((v, i) => [
+    (i / (values.length - 1 || 1)) * (w - 4) + 2,
+    h - 2 - ((v !== null ? v - minV : 0) / range) * (h - 4),
+  ]);
+  ctx2.strokeStyle = '#6366f1'; ctx2.lineWidth = 1.5;
+  ctx2.beginPath();
+  pts.forEach(([x, y], i) => i === 0 ? ctx2.moveTo(x, y) : ctx2.lineTo(x, y));
+  ctx2.stroke();
+  // Highlight current
+  if (highlightIdx < pts.length) {
+    const [hx, hy] = pts[highlightIdx];
+    ctx2.fillStyle = values[highlightIdx] !== null && values[highlightIdx] < 0 ? '#ef4444' : '#22c55e';
+    ctx2.beginPath(); ctx2.arc(hx, hy, 3, 0, Math.PI * 2); ctx2.fill();
+  }
+}
+
+function togglePathRow(rowId, stageName) {
+  const row = document.getElementById(rowId);
+  const isOpen = row.classList.toggle('open');
+  if (!isOpen) return;
+  // Find the path data
+  if (!_timingData || !_timingData.stages[stageName]) return;
+  const path = _timingData.stages[stageName].critical_path || [];
+  const innerEl = document.getElementById(rowId.replace('path-row-', 'path-detail-inner-'));
+  if (!path.length) {
+    innerEl.innerHTML = '<div style="color:#475569;font-size:0.72rem">No critical path data in report.</div>';
+    return;
+  }
+  let tbl = '<table class="path-table"><thead><tr><th>Cell</th><th>Type</th><th>Delay (ps)</th><th>Arrival (ps)</th></tr></thead><tbody>';
+  path.forEach(p => {
+    const cls = p.type === 'net' ? 'path-net-row' : 'path-cell-row';
+    const onclick = p.type === 'cell' ? `onclick="highlightCell('${p.name.replace(/'/g, "\\'")}')"` : '';
+    tbl += `<tr class="${cls}" ${onclick}>
+      <td>${p.name}</td><td>${p.type}</td>
+      <td>${p.delay_ps}</td><td>${p.arrival_ps}</td>
+    </tr>`;
+  });
+  tbl += '</tbody></table><div style="color:#475569;font-size:0.7rem;margin-top:4px">Click a cell row to highlight it on the Layout canvas.</div>';
+  innerEl.innerHTML = tbl;
+}
+
+let _highlightedCell = null;
+
+function highlightCell(name) {
+  if (!layoutData) {
+    appendLog('Load a layout stage first to cross-highlight cells.');
+    return;
+  }
+  const comp = layoutData.components.find(c => c.name === name);
+  if (!comp) {
+    appendLog(`Cell "${name}" not found in current layout stage.`);
+    return;
+  }
+  _highlightedCell = comp;
+  // Pan to centre the cell
+  const cx = comp.x + comp.w / 2;
+  const cy = comp.y + comp.h / 2;
+  panX = cx - canvas.width  / (2 * zoom);
+  panY = cy - canvas.height / (2 * zoom);
+  switchTab('layout');
+  requestAnimationFrame(() => { resizeCanvas(); render(); });
+}
+
+function drawHighlightedCell() {
+  if (!_highlightedCell || !layoutData) return;
+  const c = _highlightedCell;
+  const [sx, sy2] = toScreen(c.x, c.y + c.h);
+  const [sx2, sy] = toScreen(c.x + c.w, c.y);
+  ctx.save();
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 3]);
+  ctx.strokeRect(sx, sy2, sx2 - sx, sy - sy2);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════
+//  Congestion overlay
+// ═══════════════════════════════════════════════════════
+function loadCongestionOverlayImage() {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  const layer    = document.getElementById('cong-layer-select').value;
+  const img = new Image();
+  img.onload = () => { congestionImage = img; if (congestionOverlayEnabled) render(); };
+  img.src = `/api/congestion/overlay/${platform}/${design}?layer=${layer}&t=${Date.now()}`;
+}
+
+function onCongLayerChange() {
+  congestionImage = null;
+  if (congestionOverlayEnabled) loadCongestionOverlayImage();
+}
+
+function toggleCongestionOverlay() {
+  congestionOverlayEnabled = !congestionOverlayEnabled;
+  document.getElementById('btn-cong-overlay').classList.toggle('active', congestionOverlayEnabled);
+  document.getElementById('cong-layer-select').style.display =
+    congestionOverlayEnabled ? 'inline-block' : 'none';
+  if (congestionOverlayEnabled && !congestionImage) loadCongestionOverlayImage();
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  Floorplan suggestion overlay
+// ═══════════════════════════════════════════════════════
+function loadFloorplanOverlayData() {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  fetch(`/api/floorplan/overlay/${platform}/${design}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.macros || data.macros.length === 0) return;
+      const dbu = layoutData ? layoutData.dbUnitsPerMicron : 1000;
+      // Build lookup of actual macro sizes from loaded layout (if available)
+      const sizeByName = {};
+      if (layoutData) {
+        for (const c of layoutData.components) {
+          if (c.is_macro) sizeByName[c.name] = {w: c.w, h: c.h};
+        }
+      }
+      floorplanMacros = data.macros.map(m => ({
+        name:  m.name,
+        x_dbu: m.x_um * dbu,
+        y_dbu: m.y_um * dbu,
+        w_dbu: sizeByName[m.name] ? sizeByName[m.name].w : 0,
+        h_dbu: sizeByName[m.name] ? sizeByName[m.name].h : 0,
+      }));
+      if (floorplanOverlayEnabled) render();
+    })
+    .catch(() => {});
+}
+
+function toggleFloorplanOverlay() {
+  floorplanOverlayEnabled = !floorplanOverlayEnabled;
+  document.getElementById('btn-fp-overlay').classList.toggle('active', floorplanOverlayEnabled);
+  if (floorplanOverlayEnabled && !floorplanMacros) loadFloorplanOverlayData();
+  render();
+}
+
+function drawFloorplanSuggestions() {
+  if (!floorplanMacros || !layoutData) return;
+  const dbu = layoutData.dbUnitsPerMicron;
+  ctx.save();
+  ctx.strokeStyle = '#fbbf24';   // amber
+  ctx.fillStyle   = 'rgba(251,191,36,0.08)';
+  ctx.lineWidth   = 2;
+  ctx.setLineDash([6, 3]);
+  ctx.font = `${Math.max(9, Math.min(13, 12 * zoom * dbu / 50))}px monospace`;
+  ctx.textBaseline = 'top';
+
+  for (const m of floorplanMacros) {
+    if (m.w_dbu > 0 && m.h_dbu > 0) {
+      const [sx,  sy2] = toScreen(m.x_dbu,           m.y_dbu + m.h_dbu);
+      const [sx2, sy ] = toScreen(m.x_dbu + m.w_dbu, m.y_dbu);
+      const w = sx2 - sx, h = sy - sy2;
+      ctx.fillRect(sx, sy2, w, h);
+      ctx.strokeRect(sx, sy2, w, h);
+      // Label if box is big enough to fit text
+      if (w > 30 && h > 14) {
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText(m.name, sx + 3, sy2 + 3);
+        ctx.fillStyle = 'rgba(251,191,36,0.08)';
+      }
+    } else {
+      // No size info — draw a cross-hair marker
+      const [sx, sy] = toScreen(m.x_dbu, m.y_dbu);
+      ctx.beginPath();
+      ctx.moveTo(sx - 8, sy); ctx.lineTo(sx + 8, sy);
+      ctx.moveTo(sx, sy - 8); ctx.lineTo(sx, sy + 8);
+      ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(m.name, sx + 10, sy - 6);
+      ctx.fillStyle = 'rgba(251,191,36,0.08)';
+    }
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -600,12 +1238,34 @@ function loadLayout() {
       layoutData = data;
       setDot('layout', 'ok');
       document.getElementById('canvas-loading').style.display = 'none';
+      document.getElementById('cell-info').classList.remove('visible');
+      // Show overlay toggle if a prediction image already exists for this design
+      fetch(`/api/congestion/image/${currentPlatform}/${currentDesign}`, {method:'HEAD'})
+        .then(r => {
+          if (r.ok) {
+            document.getElementById('btn-cong-overlay').style.display = 'block';
+            loadCongestionOverlayImage();
+          }
+        }).catch(() => {});
 
       if (data.routesTruncated) {
         appendLog(`Note: signal routing display truncated at 60,000 segments.`);
       }
 
+      // Reset edit state when loading a new stage
+      editMode = false; editDragging = false; editDragTarget = null;
+      editedMacros = {};
+      document.getElementById('btn-edit-mode').classList.remove('active');
+      document.getElementById('btn-edit-mode').textContent = '✏ Edit Macros';
+      canvas.classList.remove('edit-mode');
+      updateEditBadge();
+      const hasMacros = data.components.some(c => c.is_macro);
+      document.getElementById('btn-edit-mode').style.display = hasMacros ? 'flex' : 'none';
+      document.getElementById('btn-export-tcl').style.display = 'none';
+
       buildLayerControls(data);
+      drcViolations = null;  // invalidate cache when stage changes
+      checkDrcAvailable(stage);
       // Defer fit+render by one animation frame so the browser has time to
       // compute the canvas panel's dimensions after it becomes visible.
       requestAnimationFrame(() => { fitView(); render(); });
@@ -624,8 +1284,11 @@ function buildLayerControls(data) {
 
   const container = document.getElementById('layer-controls');
   if (!data.layers.length) { container.innerHTML = ''; return; }
+  const routeHint = data.routes && data.routes.length === 0
+    ? '<div style="color:#64748b;font-size:0.72rem;margin-bottom:4px">No signal routes — run through global or detailed route first</div>'
+    : '';
 
-  let html = '<div class="layer-toggle-row">'
+  let html = routeHint + '<div class="layer-toggle-row">'
     + '<button class="btn-tiny" onclick="setAllLayers(true)">All</button>'
     + '<button class="btn-tiny" onclick="setAllLayers(false)">None</button>'
     + '</div>';
@@ -719,12 +1382,37 @@ function render() {
   }
 
   // Signal routes — draw at higher zoom
-  if (pixPerMicron > 0.3 && layoutData.routes.length > 0) {
-    drawSegments(layoutData.routes, layoutData.layerColors, 1);
+  if (layoutData.routes.length > 0) {
+    if (pixPerMicron > 0.3) {
+      drawSegments(layoutData.routes, layoutData.layerColors, 1);
+    }
   }
 
   // Pins
   if (pixPerMicron > 0.1) drawPins();
+
+  // Floorplan suggestion overlay
+  if (floorplanOverlayEnabled) drawFloorplanSuggestions();
+
+  // Edit mode indicators
+  if (editMode) drawEditModeOverlay();
+
+  // DRC violation markers
+  if (drcOverlayEnabled) drawDrcViolations();
+
+  // Highlighted cell from timing cross-highlight
+  drawHighlightedCell();
+
+  // Congestion overlay (drawn last, semi-transparent over everything)
+  if (congestionOverlayEnabled && congestionImage) {
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    // The congestion image covers the full die area
+    const [ix, iy2] = toScreen(x1, y2);
+    const [ix2, iy] = toScreen(x2, y1);
+    ctx.drawImage(congestionImage, ix, iy, ix2 - ix, iy2 - iy);
+    ctx.restore();
+  }
 
   updateCoordDisplay(null, null);
 }
@@ -780,12 +1468,13 @@ function drawComponents(pixPerMicron) {
     ctx.stroke();
   }
 
-  // Macros separately (larger, different color)
+  // Macros separately — use edited positions if available
   ctx.beginPath();
   for (const c of layoutData.components) {
     if (!c.is_macro) continue;
-    if (!isRectVisible(c.x, c.y, c.x + c.w, c.y + c.h)) continue;
-    const [sx, sy2] = toScreen(c.x, c.y + c.h);
+    const pos = getEditedPos(c);
+    if (!isRectVisible(pos.x, pos.y, pos.x + c.w, pos.y + c.h)) continue;
+    const [sx, sy2] = toScreen(pos.x, pos.y + c.h);
     const sw = c.w * zoom, sh = c.h * zoom;
     ctx.rect(sx, sy2, sw, sh);
   }
@@ -802,10 +1491,11 @@ function drawComponents(pixPerMicron) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const c of layoutData.components) {
-      if (!isRectVisible(c.x, c.y, c.x + c.w, c.y + c.h)) continue;
+      const pos = getEditedPos(c);
+      if (!isRectVisible(pos.x, pos.y, pos.x + c.w, pos.y + c.h)) continue;
       const sw = c.w * zoom;
       if (sw < 20) continue;
-      const [sx, sy2] = toScreen(c.x + c.w / 2, c.y + c.h / 2);
+      const [sx, sy2] = toScreen(pos.x + c.w / 2, pos.y + c.h / 2);
       ctx.fillText(c.name.length > 12 ? c.name.slice(0, 12) + '…' : c.name, sx, sy2);
     }
   }
@@ -840,18 +1530,58 @@ canvas.addEventListener('wheel', e => {
 }, { passive: false });
 
 canvas.addEventListener('mousedown', e => {
-  isDragging = true;
+  if (editMode && layoutData) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const defX = panX + mx / zoom;
+    const defY = panY + (canvas.height - my) / zoom;
+    // Hit-test macros only in edit mode
+    const macro = [...layoutData.components].reverse().find(c => {
+      if (!c.is_macro) return false;
+      const pos = getEditedPos(c);
+      return defX >= pos.x && defX <= pos.x + c.w && defY >= pos.y && defY <= pos.y + c.h;
+    });
+    if (macro) {
+      editDragging = true; editDragTarget = macro;
+      const pos = getEditedPos(macro);
+      editDragOffX = defX - pos.x;
+      editDragOffY = defY - pos.y;
+      canvas.classList.add('dragging');
+      return;
+    }
+  }
+  isDragging = true; didDrag = false;
   dragStartX = e.clientX; dragStartY = e.clientY;
   panStartX = panX; panStartY = panY;
   canvas.classList.add('dragging');
 });
+
 window.addEventListener('mousemove', e => {
+  if (editDragging && editDragTarget) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const defX = panX + mx / zoom;
+    const defY = panY + (canvas.height - my) / zoom;
+    const existingOrient = editedMacros[editDragTarget.name]
+      ? editedMacros[editDragTarget.name].orient
+      : (editDragTarget.orient || 'R0');
+    editedMacros[editDragTarget.name] = {
+      x_dbu: defX - editDragOffX,
+      y_dbu: defY - editDragOffY,
+      orient: existingOrient,
+    };
+    render();
+    return;
+  }
   if (isDragging) {
-    panX = panStartX - (e.clientX - dragStartX) / zoom;
-    panY = panStartY + (e.clientY - dragStartY) / zoom;
+    const dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+    panX = panStartX - dx / zoom;
+    panY = panStartY + dy / zoom;
     render();
   }
-  // Coordinate display
   if (layoutData) {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -860,12 +1590,72 @@ window.addEventListener('mousemove', e => {
     const defY = panY + (canvas.height - my) / zoom;
     const dbu = layoutData.dbUnitsPerMicron;
     updateCoordDisplay(defX / dbu, defY / dbu);
+    // Cursor hint: show move cursor when hovering over a macro in edit mode
+    if (editMode) {
+      const over = layoutData.components.some(c => {
+        if (!c.is_macro) return false;
+        const pos = getEditedPos(c);
+        return defX >= pos.x && defX <= pos.x + c.w && defY >= pos.y && defY <= pos.y + c.h;
+      });
+      canvas.classList.toggle('over-macro', over);
+    }
   }
 });
-window.addEventListener('mouseup', () => {
+
+window.addEventListener('mouseup', e => {
+  if (editDragging) {
+    editDragging = false;
+    canvas.classList.remove('dragging');
+    updateEditBadge();
+    updateEditedCongestion();
+    return;
+  }
+  if (isDragging && !didDrag) handleCanvasClick(e);
   isDragging = false;
   canvas.classList.remove('dragging');
 });
+
+function handleCanvasClick(e) {
+  if (!layoutData) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const defX = panX + mx / zoom;
+  const defY = panY + (canvas.height - my) / zoom;
+
+  // Hit-test components from back to front (macros first since they're larger)
+  let hit = null;
+  for (const c of layoutData.components) {
+    if (defX >= c.x && defX <= c.x + c.w && defY >= c.y && defY <= c.y + c.h) {
+      if (!hit || c.is_macro) hit = c;
+    }
+  }
+
+  const infoEl = document.getElementById('cell-info');
+  const dbu = layoutData.dbUnitsPerMicron;
+  const curXum = defX / dbu;
+  const curYum = defY / dbu;
+
+  document.getElementById('cell-info-cur-x').textContent = curXum.toFixed(3) + ' µm';
+  document.getElementById('cell-info-cur-y').textContent = curYum.toFixed(3) + ' µm';
+
+  const cellRows = ['cell-info-cell-row','cell-info-x-row','cell-info-y-row',
+                    'cell-info-w-row','cell-info-h-row','cell-info-macro-row'];
+  if (!hit) {
+    document.getElementById('cell-info-name').textContent = 'Cursor';
+    cellRows.forEach(id => document.getElementById(id).style.display = 'none');
+  } else {
+    document.getElementById('cell-info-name').textContent = hit.name;
+    cellRows.forEach(id => document.getElementById(id).style.display = '');
+    document.getElementById('cell-info-cell').textContent = hit.cell;
+    document.getElementById('cell-info-x').textContent    = (hit.x / dbu).toFixed(3) + ' µm';
+    document.getElementById('cell-info-y').textContent    = (hit.y / dbu).toFixed(3) + ' µm';
+    document.getElementById('cell-info-w').textContent    = (hit.w / dbu).toFixed(3) + ' µm';
+    document.getElementById('cell-info-h').textContent    = (hit.h / dbu).toFixed(3) + ' µm';
+    document.getElementById('cell-info-type').textContent = hit.is_macro ? 'Macro' : 'Standard Cell';
+  }
+  infoEl.classList.add('visible');
+}
 
 function updateCoordDisplay(xUm, yUm) {
   const dbu = layoutData ? layoutData.dbUnitsPerMicron : 1000;
@@ -885,6 +1675,323 @@ canvas.addEventListener('dblclick', () => { fitView(); render(); });
 window.addEventListener('resize', () => {
   if (layoutData) requestAnimationFrame(() => { resizeCanvas(); render(); });
 });
+
+// ═══════════════════════════════════════════════════════
+//  Edit mode — interactive macro placement
+// ═══════════════════════════════════════════════════════
+function getEditedPos(c) {
+  const e = editedMacros[c.name];
+  return e ? {x: e.x_dbu, y: e.y_dbu} : {x: c.x, y: c.y};
+}
+
+function toggleEditMode() {
+  editMode = !editMode;
+  const btn = document.getElementById('btn-edit-mode');
+  btn.classList.toggle('active', editMode);
+  btn.textContent = editMode ? '✕ Exit Edit' : '✏ Edit Macros';
+  canvas.classList.toggle('edit-mode', editMode);
+  if (!editMode) { editDragging = false; editDragTarget = null; }
+  render();
+}
+
+function updateEditBadge() {
+  const n = Object.keys(editedMacros).length;
+  const badge = document.getElementById('edit-badge');
+  const exportBtn = document.getElementById('btn-export-tcl');
+  if (n > 0) {
+    badge.textContent = `${n} macro${n > 1 ? 's' : ''} moved`;
+    badge.classList.add('visible');
+    exportBtn.style.display = 'flex';
+  } else {
+    badge.classList.remove('visible');
+    exportBtn.style.display = 'none';
+  }
+}
+
+function drawEditModeOverlay() {
+  if (!layoutData) return;
+  ctx.save();
+  for (const c of layoutData.components) {
+    if (!c.is_macro) continue;
+    const pos = getEditedPos(c);
+    const [sx, sy2] = toScreen(pos.x, pos.y + c.h);
+    const sw = c.w * zoom, sh = c.h * zoom;
+    const moved = !!editedMacros[c.name];
+    const dragging = editDragging && editDragTarget && editDragTarget.name === c.name;
+    ctx.strokeStyle = dragging ? '#a78bfa' : (moved ? '#6366f1' : 'rgba(99,102,241,0.45)');
+    ctx.lineWidth   = dragging ? 2.5 : (moved ? 2 : 1);
+    ctx.setLineDash(moved ? [5, 3] : []);
+    ctx.strokeRect(sx, sy2, sw, sh);
+    if (dragging) {
+      ctx.fillStyle = 'rgba(99,102,241,0.2)';
+      ctx.fillRect(sx, sy2, sw, sh);
+    }
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function updateEditedCongestion() {
+  if (!congestionOverlayEnabled || !layoutData) return;
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  const layer    = parseInt(document.getElementById('cong-layer-select').value || '0');
+  const [x1, y1, x2, y2] = layoutData.dieArea;
+  const dbu = layoutData.dbUnitsPerMicron;
+  const die_w_um = (x2 - x1) / dbu;
+  const die_h_um = (y2 - y1) / dbu;
+
+  // Positions relative to die origin (as extract_placement.py uses)
+  const macrosPayload = Object.entries(editedMacros).map(([name, ed]) => {
+    const orig = layoutData.components.find(c => c.name === name);
+    if (!orig) return null;
+    return {
+      name,
+      old_x_um: (orig.x - x1) / dbu,
+      old_y_um: (orig.y - y1) / dbu,
+      new_x_um: (ed.x_dbu - x1) / dbu,
+      new_y_um: (ed.y_dbu - y1) / dbu,
+      w_um: orig.w / dbu,
+      h_um: orig.h / dbu,
+    };
+  }).filter(Boolean);
+
+  if (!macrosPayload.length) return;
+
+  fetch('/api/congestion/predict_positions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({platform, design, die_w_um, die_h_um, layer, macros: macrosPayload}),
+  })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+  .then(blob => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { congestionImage = img; render(); URL.revokeObjectURL(url); };
+    img.src = url;
+  })
+  .catch(() => {});
+}
+
+function exportEditedTcl() {
+  if (!layoutData) return;
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  const dbu = layoutData.dbUnitsPerMicron;
+  const macros = Object.entries(editedMacros).map(([name, ed]) => ({
+    name,
+    x_um: ed.x_dbu / dbu,
+    y_um: ed.y_dbu / dbu,
+    orient: ed.orient || 'R0',
+  }));
+  fetch('/api/floorplan/export', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({platform, design, macros}),
+  })
+  .then(r => r.text())
+  .then(tcl => {
+    document.getElementById('tcl-output').textContent = tcl;
+    document.getElementById('floorplan-result').style.display = 'block';
+    document.getElementById('results-panel').classList.add('visible');
+    appendLog(`Exported Tcl for ${macros.length} macro${macros.length > 1 ? 's' : ''} to ml/data/${platform}_${design}_suggested.tcl`);
+    switchTab('log');
+  })
+  .catch(() => appendLog('Failed to export Tcl.', 'exit-err'));
+}
+
+// ═══════════════════════════════════════════════════════
+//  DRC Violations overlay
+// ═══════════════════════════════════════════════════════
+let drcOverlayEnabled = false;
+let drcViolations = null;
+
+function toggleDrcOverlay() {
+  drcOverlayEnabled = !drcOverlayEnabled;
+  document.getElementById('btn-drc-overlay').classList.toggle('active', drcOverlayEnabled);
+  document.getElementById('drc-sidebar').classList.toggle('open', drcOverlayEnabled);
+  if (drcOverlayEnabled && !drcViolations) loadDrcViolations();
+  else render();
+}
+
+function loadDrcViolations() {
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  document.getElementById('drc-viol-list').innerHTML = '<div class="drc-viol-item">Loading…</div>';
+  fetch(`/api/drc/violations/${platform}/${design}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        document.getElementById('drc-viol-list').innerHTML =
+          `<div class="drc-viol-item" style="color:#ef4444">${data.error}</div>`;
+        return;
+      }
+      drcViolations = data.violations;
+      buildDrcList(drcViolations);
+      render();
+    })
+    .catch(() => {
+      document.getElementById('drc-viol-list').innerHTML =
+        '<div class="drc-viol-item" style="color:#ef4444">Failed to load DRC data.</div>';
+    });
+}
+
+function buildDrcList(viols) {
+  if (!viols.length) {
+    document.getElementById('drc-viol-list').innerHTML =
+      '<div class="drc-viol-item" style="color:#22c55e">No violations found.</div>';
+    return;
+  }
+  // Group by type
+  const byType = {};
+  viols.forEach(v => { (byType[v.type] = byType[v.type] || []).push(v); });
+  let html = '';
+  Object.entries(byType).forEach(([type, list]) => {
+    list.forEach((v, i) => {
+      html += `<div class="drc-viol-item" onclick="panToViolation(${viols.indexOf(v)})">
+        <div class="drc-viol-type">${type}</div>
+        <div class="drc-viol-layer">${v.layer || ''} · ${v.message ? v.message.slice(0,40) : ''}</div>
+      </div>`;
+    });
+  });
+  document.getElementById('drc-viol-list').innerHTML = html;
+}
+
+function panToViolation(idx) {
+  if (!drcViolations || !layoutData) return;
+  const v = drcViolations[idx];
+  if (v.x1 === undefined) return;
+  const dbu = layoutData.dbUnitsPerMicron;
+  const cx = ((v.x1 + (v.x2 || v.x1)) / 2) * dbu;
+  const cy = ((v.y1 + (v.y2 || v.y1)) / 2) * dbu;
+  panX = cx - canvas.width  / (2 * zoom);
+  panY = cy - canvas.height / (2 * zoom);
+  switchTab('layout');
+  requestAnimationFrame(() => { resizeCanvas(); render(); });
+}
+
+function drawDrcViolations() {
+  if (!drcViolations || !layoutData) return;
+  const dbu = layoutData.dbUnitsPerMicron;
+  ctx.save();
+  ctx.strokeStyle = '#ef4444';
+  ctx.fillStyle   = 'rgba(239,68,68,0.15)';
+  ctx.lineWidth   = 1.5;
+  for (const v of drcViolations) {
+    if (v.x1 === undefined) continue;
+    const x1dbu = v.x1 * dbu, y1dbu = v.y1 * dbu;
+    const x2dbu = (v.x2 !== undefined ? v.x2 : v.x1) * dbu;
+    const y2dbu = (v.y2 !== undefined ? v.y2 : v.y1) * dbu;
+    if (!isRectVisible(x1dbu, y1dbu, x2dbu, y2dbu)) continue;
+    if (x2dbu - x1dbu < 1 && y2dbu - y1dbu < 1) {
+      // Point violation — draw ×
+      const [sx, sy] = toScreen((x1dbu + x2dbu) / 2, (y1dbu + y2dbu) / 2);
+      ctx.beginPath();
+      ctx.moveTo(sx - 5, sy - 5); ctx.lineTo(sx + 5, sy + 5);
+      ctx.moveTo(sx + 5, sy - 5); ctx.lineTo(sx - 5, sy + 5);
+      ctx.stroke();
+    } else {
+      const [sx, sy2] = toScreen(x1dbu, y2dbu);
+      const [sx2, sy] = toScreen(x2dbu, y1dbu);
+      ctx.fillRect(sx, sy2, sx2 - sx, sy - sy2);
+      ctx.strokeRect(sx, sy2, sx2 - sx, sy - sy2);
+    }
+  }
+  ctx.restore();
+}
+
+// Show DRC button when 6_final stage is loaded
+function checkDrcAvailable(stageId) {
+  if (!stageId || !stageId.startsWith('6_')) {
+    document.getElementById('btn-drc-overlay').style.display = 'none';
+    return;
+  }
+  const platform = document.getElementById('sel-platform').value;
+  const design   = document.getElementById('sel-design').value;
+  fetch(`/api/drc/violations/${platform}/${design}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.error) document.getElementById('btn-drc-overlay').style.display = 'block';
+    }).catch(() => {});
+}
+
+// ═══════════════════════════════════════════════════════
+//  Compare tab
+// ═══════════════════════════════════════════════════════
+function populateCompareSelectors() {
+  ['a','b'].forEach(side => {
+    const pSel = document.getElementById(`cmp-platform-${side}`);
+    const dSel = document.getElementById(`cmp-design-${side}`);
+    if (pSel.options.length > 1) return;  // already populated
+    const platforms = [...new Set(allDesigns.map(d => d.platform))].sort();
+    pSel.innerHTML = platforms.map(p => `<option value="${p}">${p}</option>`).join('');
+    pSel.onchange = () => {
+      const designs = allDesigns.filter(d => d.platform === pSel.value).map(d => d.design).sort();
+      dSel.innerHTML = designs.map(d => `<option value="${d}">${d}</option>`).join('');
+    };
+    pSel.dispatchEvent(new Event('change'));
+    // Default B to second design
+    if (side === 'b' && dSel.options.length > 1) dSel.selectedIndex = 1;
+  });
+}
+
+function runCompare() {
+  const pa = document.getElementById('cmp-platform-a').value;
+  const da = document.getElementById('cmp-design-a').value;
+  const pb = document.getElementById('cmp-platform-b').value;
+  const db = document.getElementById('cmp-design-b').value;
+  document.getElementById('compare-result').innerHTML =
+    '<div style="color:#64748b;font-size:0.85rem">Loading…</div>';
+  fetch(`/api/compare?platformA=${pa}&designA=${da}&platformB=${pb}&designB=${db}`)
+    .then(r => r.json())
+    .then(data => renderCompare(data, da, db))
+    .catch(() => {
+      document.getElementById('compare-result').innerHTML =
+        '<div style="color:#ef4444">Failed to load comparison data.</div>';
+    });
+}
+
+function renderCompare(data, nameA, nameB) {
+  const el = document.getElementById('compare-result');
+  const a = data.a, b = data.b;
+  if (!a || !b) { el.innerHTML = '<div style="color:#ef4444">No timing data for one or both designs.</div>'; return; }
+
+  const sa = a.summary || {}, sb = b.summary || {};
+  function fmtNs(v)  { return v !== null && v !== undefined ? v.toFixed(3) : '—'; }
+  function fmtMhz(v) { return v !== null && v !== undefined ? v.toFixed(1) : '—'; }
+  function fmtMw(v)  { return v !== null && v !== undefined ? v.toFixed(2) : '—'; }
+  function delta(va, vb, lowerIsBetter) {
+    if (va === null || va === undefined || vb === null || vb === undefined) return '<td>—</td>';
+    const d = vb - va;
+    const pct = va !== 0 ? ((d / Math.abs(va)) * 100).toFixed(1) : '—';
+    const improved = lowerIsBetter ? d < 0 : d > 0;
+    const cls = d === 0 ? '' : (improved ? 'delta-pos' : 'delta-neg');
+    const sign = d > 0 ? '+' : '';
+    return `<td class="${cls}">${sign}${pct !== '—' ? pct + ' %' : ''}</td>`;
+  }
+
+  const rows = [
+    ['WNS (ns)',        fmtNs(sa.wns),       fmtNs(sb.wns),       delta(sa.wns,       sb.wns,       false)],
+    ['TNS (ns)',        fmtNs(sa.tns),       fmtNs(sb.tns),       delta(sa.tns,       sb.tns,       false)],
+    ['fmax (MHz)',      fmtMhz(sa.fmax),     fmtMhz(sb.fmax),     delta(sa.fmax,      sb.fmax,      false)],
+    ['Power (mW)',      fmtMw(sa.power_mw),  fmtMw(sb.power_mw),  delta(sa.power_mw,  sb.power_mw,  true)],
+    ['Wirelength (µm)', sa.wirelength_um !== undefined && sa.wirelength_um !== null ? Math.round(sa.wirelength_um).toLocaleString() : '—',
+                        sb.wirelength_um !== undefined && sb.wirelength_um !== null ? Math.round(sb.wirelength_um).toLocaleString() : '—',
+                        delta(sa.wirelength_um, sb.wirelength_um, true)],
+    ['Utilization',    sa.utilization !== undefined && sa.utilization !== null ? (sa.utilization*100).toFixed(1)+'%' : '—',
+                       sb.utilization !== undefined && sb.utilization !== null ? (sb.utilization*100).toFixed(1)+'%' : '—',
+                       delta(sa.utilization, sb.utilization, true)],
+  ];
+
+  let html = `<table class="compare-table">
+    <thead><tr><th>Metric</th><th>${nameA}</th><th>${nameB}</th><th>Δ (B vs A)</th></tr></thead>
+    <tbody>`;
+  rows.forEach(([label, va, vb, deltaCell]) => {
+    html += `<tr><td>${label}</td><td>${va}</td><td>${vb}</td>${deltaCell}</tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
 </script>
 
 </body>

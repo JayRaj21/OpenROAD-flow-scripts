@@ -45,6 +45,125 @@ STAGE_LABELS = {
 _cache = {}
 
 
+def parse_timing_reports(platform, design, flow_dir):
+    """
+    Parse all available stage timing reports and return a dict of:
+      { stage_label: { wns, tns, worst_slack, fmax, period_min, setup_skew,
+                       power_mw, power_breakdown, wirelength_um, utilization,
+                       critical_path } }
+    plus a 'summary' key with the final (6_finish) values.
+    Missing values are None.
+    """
+    import json as _json
+    nickname = get_design_nickname(platform, design, flow_dir)
+    reports_dir = os.path.join(flow_dir, 'reports', platform, nickname, 'base')
+    logs_dir    = os.path.join(flow_dir, 'logs',    platform, nickname, 'base')
+
+    # (rpt_filename, label, json_prefix_glob)
+    REPORT_STAGES = [
+        ('3_detailed_place.rpt', 'Detailed Place', '3_5_place_dp'),
+        ('4_cts_final.rpt',      'CTS',            '4_1_cts'),
+        ('5_global_route.rpt',   'Global Route',   '5_1_grt'),
+        ('6_finish.rpt',         'Final',          '6_report'),
+    ]
+
+    def _parse_rpt(path):
+        if not os.path.exists(path):
+            return None
+        metrics = {
+            'wns': None, 'tns': None, 'worst_slack': None,
+            'fmax': None, 'period_min': None, 'setup_skew': None,
+        }
+        critical_path = []
+        in_path = False
+        with open(path, errors='replace') as f:
+            for line in f:
+                s = line.strip()
+                m = re.match(r'^tns\s+\S+\s+([-\d.]+)', s)
+                if m:
+                    metrics['tns'] = float(m.group(1))
+                m = re.match(r'^wns\s+\S+\s+([-\d.]+)', s)
+                if m:
+                    metrics['wns'] = float(m.group(1))
+                m = re.match(r'^worst slack\s+\S+\s+([-\d.]+)', s)
+                if m:
+                    metrics['worst_slack'] = float(m.group(1))
+                m = re.search(r'period_min\s*=\s*([\d.]+)\s+fmax\s*=\s*([\d.]+)', s)
+                if m:
+                    metrics['period_min'] = float(m.group(1))
+                    metrics['fmax'] = float(m.group(2))
+                m = re.match(r'([-\d.]+)\s+setup skew', s)
+                if m:
+                    metrics['setup_skew'] = float(m.group(1))
+                # Critical path parsing — only capture first path found
+                if not critical_path:
+                    if re.match(r'Path Type:', s):
+                        in_path = True
+                    if in_path:
+                        # Data lines: <fanout> <cap> <slew> <delay> <arrival> <desc>
+                        pm = re.match(
+                            r'^\s*\d+\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s+(.+)$', line)
+                        if pm:
+                            desc = pm.group(3).strip()
+                            entry_type = 'net' if '(net)' in desc else 'cell'
+                            cell_name_m = re.match(r'(\S+)', desc)
+                            critical_path.append({
+                                'name':       cell_name_m.group(1) if cell_name_m else desc,
+                                'delay_ps':   round(float(pm.group(1)) * 1000, 1),
+                                'arrival_ps': round(float(pm.group(2)) * 1000, 1),
+                                'type':       entry_type,
+                            })
+                        # End of path block
+                        if s.startswith('slack'):
+                            in_path = False
+        metrics['critical_path'] = critical_path
+        return metrics
+
+    def _parse_json_metrics(json_stem):
+        path = os.path.join(logs_dir, json_stem + '.json')
+        if not os.path.exists(path):
+            return {}
+        try:
+            with open(path) as f:
+                d = _json.load(f)
+        except Exception:
+            return {}
+        # Collect power fields — key prefixes vary by stage
+        power_internal = next((v for k, v in d.items() if 'power__internal' in k), None)
+        power_switch   = next((v for k, v in d.items() if 'power__switching' in k), None)
+        power_leak     = next((v for k, v in d.items() if 'power__leakage__total' in k), None)
+        power_total    = next((v for k, v in d.items() if k.endswith('power__total')), None)
+        wirelength     = next((v for k, v in d.items() if 'wirelength' in k and 'estimated' not in k), None)
+        util           = next((v for k, v in d.items() if 'utilization' in k and 'design__instance' in k), None)
+        result = {}
+        if power_total is not None:
+            result['power_mw'] = round(power_total * 1000, 4)
+            result['power_breakdown'] = {
+                'internal_mw': round((power_internal or 0) * 1000, 4),
+                'switching_mw': round((power_switch or 0) * 1000, 4),
+                'leakage_mw':  round((power_leak or 0) * 1000, 4),
+            }
+        if wirelength is not None:
+            result['wirelength_um'] = wirelength
+        if util is not None:
+            result['utilization'] = round(util, 4)
+        return result
+
+    stages = {}
+    for filename, label, json_stem in REPORT_STAGES:
+        path = os.path.join(reports_dir, filename)
+        result = _parse_rpt(path)
+        if result is not None:
+            result.update(_parse_json_metrics(json_stem))
+            stages[label] = result
+
+    return {
+        'stages': stages,
+        'summary': stages.get('Final') or (list(stages.values())[-1] if stages else None),
+        'reports_available': list(stages.keys()),
+    }
+
+
 def get_design_nickname(platform, design, flow_dir):
     config = os.path.join(flow_dir, 'designs', platform, design, 'config.mk')
     if os.path.exists(config):

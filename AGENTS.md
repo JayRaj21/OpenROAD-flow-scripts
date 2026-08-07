@@ -138,6 +138,7 @@ All endpoints in `flow/ui/app.py`:
 | `GET /api/congestion/image/<p>/<d>` | Returns predicted congestion PNG |
 | `GET /api/floorplan/suggest/<p>/<d>` | SSE: extracts graph if needed, runs GNN inference in-process |
 | `GET /api/floorplan/tcl/<p>/<d>` | Returns generated Tcl placement script |
+| `GET /api/timing/<p>/<d>` | Returns parsed timing metrics from stage .rpt files as JSON |
 | `GET /api/layout/stages/<p>/<d>` | Lists available ODB/DEF stages for a design |
 | `GET /api/layout/<p>/<d>/<stage>` | Returns parsed DEF data as JSON for the canvas renderer |
 

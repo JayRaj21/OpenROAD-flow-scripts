@@ -1,0 +1,45 @@
+# Host-side UI server image for OpenROAD-flow-scripts.
+#
+# Build (CPU PyTorch — default, ~2 GB image):
+#   docker build -t orfs-ui -f flow/Dockerfile.ui flow/
+#
+# Build (CUDA 12.1 PyTorch — for GPU inference, ~6 GB image):
+#   docker build \
+#     --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu121 \
+#     -t orfs-ui-gpu -f flow/Dockerfile.ui flow/
+#
+# Run (mounts the flow/ directory and the host Docker socket so the UI
+# can launch OpenROAD containers via util/docker_shell):
+#   docker run --rm -it \
+#     -v /var/run/docker.sock:/var/run/docker.sock \
+#     -v "$(pwd)/flow:/work" \
+#     -p 5000:5000 \
+#     orfs-ui
+#
+# Then open http://localhost:5000
+
+FROM python:3.11-slim
+
+# Docker CLI — needed so the UI server can exec util/docker_shell to run OpenROAD.
+# Install docker-cli only (not docker.io which is just the daemon in Debian Trixie+).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends docker-cli xauth \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch index URL — override at build time for CUDA builds
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
+
+# Install Python dependencies.
+# torch is installed separately so we can point at the right wheel index.
+COPY ui/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir torch --index-url "${TORCH_INDEX}" \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
+
+ENV PYTHONUNBUFFERED=1
+
+# flow/ is mounted at /work at runtime — nothing is baked in
+WORKDIR /work
+
+EXPOSE 5000
+
+CMD ["python3", "ui/app.py"]

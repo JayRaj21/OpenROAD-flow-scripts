@@ -24,6 +24,10 @@ get_container_engine () {
         container_engine="docker"
     elif [[ "$DOCKER_VERSION_STRING" == *"podman"* ]]; then
         container_engine="podman"
+    elif command -v docker &>/dev/null; then
+        # docker --version succeeded but output format wasn't recognised
+        # (e.g. docker.io inside a container).  Default to docker.
+        container_engine="docker"
     else
         echo "Unable to determine container engine using docker CLI"
         exit 1
@@ -61,7 +65,10 @@ IMAGE="${IMAGE:-${OR_IMAGE:-$DEFAULT_IMAGE}}"
 
 get_container_engine
 
-WORKSPACE=$(pwd)
+# ORFS_HOST_FLOW_DIR is set by run_ui.sh --docker so that when the UI server
+# runs inside a container, docker gets the host path for volume mounts instead
+# of the container-internal /work path.
+WORKSPACE="${ORFS_HOST_FLOW_DIR:-$(pwd)}"
 YOSYS_EXE=${YOSYS_EXE:-/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys}
 OPENROAD_EXE=${OPENROAD_EXE:-/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad}
 KLAYOUT_CMD=${KLAYOUT_CMD:-/usr/bin/klayout}
