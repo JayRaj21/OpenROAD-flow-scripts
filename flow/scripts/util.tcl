@@ -74,7 +74,10 @@ proc recover_power_helper { } {
 }
 
 proc extract_stage { input_file } {
-  if { ![regexp {/([0-9])_(([0-9])_)?} $input_file match num1 _ num2] } {
+  # Match the stage prefix on the basename, not the full path: an ancestor
+  # dir like ".../4_something/3_place.odb" would otherwise match "4_" -> stage 4.
+  set stage_file [file tail $input_file]
+  if { ![regexp {^([0-9])_(?:([0-9])_)?} $stage_file match num1 num2] } {
     puts "Error: Could not determine design stage from $input_file"
     exit 1
   }
@@ -304,6 +307,22 @@ proc orfs_write_sdc { output_file } {
     return
   }
   log_cmd write_sdc -no_timestamp $output_file
+}
+
+# For a stage that leaves the design unchanged, copying the input .odb
+# forward is much faster than serializing the in-memory database again
+# with write_db. Gated like orfs_write_db: in a single-process flow
+# (WRITE_ODB_AND_SDC_EACH_STAGE=0) the input file may not exist and no
+# stage file should be produced.
+#
+# exec cp rather than Tcl's file copy: file copy sets the destination
+# mtime with second resolution, which breaks make's timestamp-based
+# up-to-date checks for fast builds.
+proc orfs_copy_db { input_file output_file } {
+  if { !$::env(WRITE_ODB_AND_SDC_EACH_STAGE) } {
+    return
+  }
+  log_cmd exec cp $input_file $output_file
 }
 
 proc source_step_tcl { hook_type step_name } {

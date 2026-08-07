@@ -1,4 +1,4 @@
-utl::set_metrics_stage "floorplan__{}"
+utl::set_metrics_stage "synth__{}"
 source $::env(SCRIPTS_DIR)/load.tcl
 erase_non_stage_variables synth
 load_design 1_2_yosys.v 1_2_yosys.sdc
@@ -24,10 +24,14 @@ source_step_tcl PRE SYNTH
 # asap7/jpeg_lvt, asap7/swerv_wrapper, nangate45/ariane133).
 log_cmd eliminate_dead_logic
 
+report_design_area
+report_design_area_metrics
+
 source_step_tcl POST SYNTH
 orfs_write_db $::env(RESULTS_DIR)/1_synth.odb
 # Canonicalize 1_synth.sdc. The original SDC_FILE provided by
 # the user could have dependencies, such as sourcing util.tcl,
 # which are read in here and a canonicalized version is written
-# out by OpenSTA that has no dependencies.
+# out by OpenSTA that has no dependencies. Sole writer of
+# 1_synth.sdc.
 orfs_write_sdc $::env(RESULTS_DIR)/1_synth.sdc

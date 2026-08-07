@@ -51,6 +51,12 @@
   "ADDITIONAL_LIBS": {
     "description": "Hardened macro library files listed here. The library information is immutable and used throughout all stages. Not stored in the .odb file.\n"
   },
+  "ADDITIONAL_MEMORIES": {
+    "description": "Experimental. Space-separated list of user-supplied `.memories` files (the memories.json JSON schema) merged onto the set AUTO_MEMORIES detects \u2014 to force-convert a memory the idiomatic gate rejects, or to describe one the scanner cannot find. See docs/user/AutoMemories.md.\n",
+    "stages": [
+      "synth"
+    ]
+  },
   "ADDITIONAL_SITES": {
     "description": "Passed as -additional_sites to initialize_floorplan.\n",
     "stages": [
@@ -63,6 +69,10 @@
     "stages": [
       "All stages"
     ]
+  },
+  "AUTO_MEMORIES": {
+    "default": 0,
+    "description": "Experimental. When set to 1, memory-shaped modules in the RTL (firtool/CIRCT `R*/W*/RW*_` port convention, module boundary only) are detected pre-synthesis, inventoried in `$(RESULTS_DIR)/memories.json`, and \u2014 when idiomatic as an SRAM macro \u2014 given generated .lib/.lef views under `$(RESULTS_DIR)/memories/`. Synthesis blackboxes those modules and all later stages read the generated views, so an existing design gets macro-based results without a memory compiler. Supported for the asap7 platform only. See docs/user/AutoMemories.md.\n"
   },
   "BALANCE_ROWS": {
     "default": 0,
@@ -320,6 +330,13 @@
     "default": 1,
     "description": "Enable detail placement with improve_placement feature.\n"
   },
+  "ENABLE_PLACE_REPAIR_TIMING": {
+    "default": 0,
+    "description": "Run repair_timing during the placement resize stage using placement parasitics. Disabled by default; pre-CTS setup/hold repair is skipped unless this is set to 1.\n",
+    "stages": [
+      "place"
+    ]
+  },
   "ENABLE_RESISTANCE_AWARE": {
     "description": "Passed as -resistance_aware to global_route.\n",
     "stages": [
@@ -381,8 +398,15 @@
     ]
   },
   "GLOBAL_ROUTE_ARGS": {
-    "default": "-congestion_iterations 30 -congestion_report_iter_step 5 -verbose",
-    "description": "Replaces default arguments for global route.\n",
+    "default": "-congestion_report_iter_step 5 -verbose",
+    "description": "Replaces default arguments for global route. The -congestion_iterations default is set by the flow (30 for FastRoute, 10 for CUGR); add -congestion_iterations here to override it.\n",
+    "stages": [
+      "grt"
+    ]
+  },
+  "GLOBAL_ROUTE_USE_CUGR": {
+    "default": 0,
+    "description": "Passed as -use_cugr to global_route. Uses CUGR as the global routing solver instead of the default FastRoute solver. NOTE: CUGR is not ready for production.\n",
     "stages": [
       "grt"
     ]
@@ -395,6 +419,12 @@
   },
   "GPL_KEEP_OVERFLOW": {
     "description": "Passed as -keep_resize_below_overflow to global_placement. Only used when GPL_TIMING_DRIVEN is enabled.\n",
+    "stages": [
+      "place"
+    ]
+  },
+  "GPL_RANDOM_SEED": {
+    "description": "Specifies a random seed for global placement.  Useful for perturbation studies.\n",
     "stages": [
       "place"
     ]
@@ -412,6 +442,14 @@
     "stages": [
       "place"
     ]
+  },
+  "GRT_SEED": {
+    "description": "Specifies a random seed for global routing.  Useful for perturbation studies.\n",
+    "stages": [
+      "grt"
+    ],
+    "tunable": 1,
+    "type": "int"
   },
   "GUI_TIMING": {
     "default": 1,
@@ -565,15 +603,6 @@
       "grt"
     ]
   },
-  "MAX_REPAIR_TIMING_ITER": {
-    "description": "Maximum number of iterations for repair setup and repair hold.\n",
-    "stages": [
-      "cts",
-      "floorplan",
-      "grt",
-      "place"
-    ]
-  },
   "MAX_ROUTING_LAYER": {
     "description": "The highest metal layer name to be used in routing.\n",
     "stages": [
@@ -623,6 +652,13 @@
     "description": "Feature toggle to enable to run OpenROAD in hierarchical mode, otherwise considered flat. Will eventually be the default and this option will be retired.\n",
     "stages": [
       "All stages"
+    ]
+  },
+  "OPT_POST_GRT_WNS": {
+    "default": 1,
+    "description": "Optimize WNS after global routing by additional repair_timing that uses VT swap and wire rerouting only to minimize placement and routing disturbance\n",
+    "stages": [
+      "grt"
     ]
   },
   "OR_K": {
@@ -758,12 +794,6 @@
       "floorplan"
     ]
   },
-  "POST_REPAIR_TIMING_POST_PLACE_TCL": {
-    "description": "Specifies a Tcl script with commands to run after post-place timing repair.\n",
-    "stages": [
-      "place"
-    ]
-  },
   "POST_RESIZE_TCL": {
     "description": "Specifies a Tcl script with commands to run after resize.\n",
     "stages": [
@@ -860,12 +890,6 @@
       "floorplan"
     ]
   },
-  "PRE_REPAIR_TIMING_POST_PLACE_TCL": {
-    "description": "Specifies a Tcl script with commands to run before post-place timing repair.\n",
-    "stages": [
-      "place"
-    ]
-  },
   "PRE_RESIZE_TCL": {
     "description": "Specifies a Tcl script with commands to run before resize.\n",
     "stages": [
@@ -911,6 +935,12 @@
   "REMOVE_CELLS_FOR_LEC": {
     "description": "String patterns directly passed to write_verilog -remove_cells <> for lec checks.\n",
     "type": "string"
+  },
+  "REMOVE_LIBS_FOR_LEC": {
+    "description": "List of Liberty files to exclude from LEC. This is required for cases where a Verilog black box needs to be used instead of a Liberty file.\n",
+    "stages": [
+      "cts"
+    ]
   },
   "REPAIR_PDN_VIA_LAYER": {
     "description": "Remove power grid vias which generate DRC violations after detailed routing.\n"
@@ -1196,6 +1226,7 @@
     "default": 0,
     "description": "If set to 1, then metrics, report_metrics does nothing. Useful to speed up builds.\n",
     "stages": [
+      "synth",
       "floorplan",
       "place",
       "cts",
@@ -1210,13 +1241,6 @@
       "cts",
       "floorplan",
       "grt"
-    ]
-  },
-  "SLANG_PLUGIN_PATH": {
-    "default": "slang",
-    "description": "Path to the slang plugin for Yosys. This can be a full path to a custom-built plugin (e.g. for Bazel builds) or just the plugin name.\n",
-    "stages": [
-      "synth"
     ]
   },
   "SLEW_MARGIN": {
@@ -1366,6 +1390,13 @@
       "synth"
     ]
   },
+  "SYNTH_USE_SYN": {
+    "default": 0,
+    "description": "If set to 1, run synthesis using the \"syn\" tool built into OpenROAD (the synth_syn.tcl flow) instead of the default Yosys-based flow. Defaults to 0 (Yosys flow).\n",
+    "stages": [
+      "synth"
+    ]
+  },
   "SYNTH_WRAPPED_ADDERS": {
     "description": "Specify the adder modules that can be used for synthesis, separated by commas. The default adder module is determined by the first element of this variable.\n",
     "stages": [
@@ -1436,10 +1467,6 @@
   "USE_FILL": {
     "default": 0,
     "description": "Whether to perform metal density filling.\n"
-  },
-  "USE_NEGOTIATION": {
-    "default": 0,
-    "description": "Enable using negotiation legalizer for detailed placement.\n"
   },
   "VERILOG_DEFINES": {
     "description": "Preprocessor defines passed to the language frontend. Example: `-D HPDCACHE_ASSERT_OFF`\n",

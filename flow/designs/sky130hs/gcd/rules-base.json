@@ -1,11 +1,11 @@
 {
     "synth__canonical_netlist__hash": {
-        "value": "f219014011bbd73d3823b4238005063417a6b640",
+        "value": "0d441c6dac63d1d618655898f232573a121554ab",
         "compare": "==",
         "level": "warning"
     },
     "synth__netlist__hash": {
-        "value": "9e4dff0ce964391fc3d16a22ce574f08d9a7fe38",
+        "value": "e598d077042e416747a790b1a77de09f8600deb2",
         "compare": "==",
         "level": "warning"
     },
@@ -14,7 +14,7 @@
         "compare": "<="
     },
     "constraints__clocks__count": {
-        "value": 1,
+        "value": 2,
         "compare": "=="
     },
     "placeopt__design__instance__area": {
@@ -42,7 +42,7 @@
         "compare": ">="
     },
     "cts__timing__setup__tns": {
-        "value": -11.4,
+        "value": -12.0,
         "compare": ">="
     },
     "cts__timing__hold__ws": {
@@ -58,11 +58,11 @@
         "compare": "<="
     },
     "globalroute__timing__setup__ws": {
-        "value": -0.524,
+        "value": -1.0,
         "compare": ">="
     },
     "globalroute__timing__setup__tns": {
-        "value": -17.6,
+        "value": -25.0,
         "compare": ">="
     },
     "globalroute__timing__hold__ws": {
@@ -74,7 +74,7 @@
         "compare": ">="
     },
     "detailedroute__route__wirelength": {
-        "value": 13054,
+        "value": 18000,
         "compare": "<="
     },
     "detailedroute__route__drc_errors": {
@@ -90,11 +90,11 @@
         "compare": "<="
     },
     "finish__timing__setup__ws": {
-        "value": -0.423,
+        "value": -1.0,
         "compare": ">="
     },
     "finish__timing__setup__tns": {
-        "value": -13.6,
+        "value": -23.0,
         "compare": ">="
     },
     "finish__timing__hold__ws": {
