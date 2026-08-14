@@ -298,6 +298,42 @@ util/docker_shell make cts \
 
 ---
 
+### 2026-08-14 — Controlled before/after comparison
+
+Ran `util/compare_hook.sh` to compare the full flow from the same `3_place.odb`
+checkpoint, with and without the POST_CTS hook. Stage 1–4 numbers were identical
+in both runs, confirming a clean controlled comparison.
+
+**Results (`nangate45/ibex/base`):**
+
+```
+Stage            Baseline WNS   Hook WNS   Delta
+Global place       +0.000         +0.000     —
+Resizer            +0.000         +0.000     —
+Detail place       +0.000         +0.000     —
+CTS                -0.010         -0.010     —    (report written before hook runs)
+Global route       -0.020         -0.000   +0.020 ns  ← key improvement
+Finish             +0.000         +0.000     —
+```
+
+**Global route TNS:** -0.110 ns (baseline) → -0.000 ns (hook)  
+**Global route Fmax:** 451.4 MHz (baseline) → 454.0 MHz (hook, +2.6 MHz)  
+**Total power:** identical at 3.17e-02 W — upsize did not measurably increase power.
+
+**Interpretation:**  
+The hook's 3 ps improvement at CTS (AND2_X1 → AND2_X2 swap on `_27049_`) translated
+into 20 ps of recovered slack at global route, eliminating all setup violations before
+detail route ran. The gain amplified because upsizing reduces gate delay across the
+cell's entire fanout cone; when real wire parasitics were added at global route, the
+baseline was marginal enough to be pushed into violation while the hook version had
+just enough headroom to absorb them. Both designs closed timing at finish, but the
+hook version arrived at detail route with a cleaner slate.
+
+**Tooling added:** `util/compare_hook.sh` — runs both flows and prints tables
+back-to-back for repeatable before/after comparison.
+
+---
+
 ## Planned Next Steps
 
 1. Implement `pr_metrics.py` — reads checkpoint ODBs, reports HPWL/WNS/TNS/overflow.
