@@ -62,6 +62,34 @@ POWER_FLOOR_FRAC = 0.01
 # across all designs and process nodes.
 POWER_DENSITY_W_PER_MM2 = 10.0
 
+# Cell-type power multipliers relative to a baseline combinational gate.
+# Sequential cells (flip-flops) pay for a clock input on every cycle;
+# clock cells drive large net capacitance at the full clock frequency;
+# macros (SRAMs) are moderately dense but architecturally concentrated.
+# These are order-of-magnitude estimates — exact values require STA with
+# switching activity, which is not available at post-placement.
+_CLK_PATTERNS  = ("CLKBUF", "CLKINV", "CKBUF", "CKINV", "ICG", "CLKGATE",
+                  "__CLK", "__DLCLK")
+_SEQ_PATTERNS  = ("DFF", "SDFF", "LATCH", "__DFX", "__DLX", "__DLAT",
+                  "FD_", "_FD_")
+
+_WEIGHT_CLK  = 5.0   # clock tree cells
+_WEIGHT_SEQ  = 3.0   # flip-flops / latches
+_WEIGHT_MAC  = 2.0   # macro blocks (SRAMs, custom IP)
+_WEIGHT_COMB = 1.0   # default: combinational logic
+
+
+def _cell_power_weight(master_name: str, master_type_str: str) -> float:
+    """Return a power multiplier for a cell by type and name (case-insensitive)."""
+    if "BLOCK" in master_type_str.upper():
+        return _WEIGHT_MAC
+    name = master_name.upper()
+    if any(p in name for p in _CLK_PATTERNS):
+        return _WEIGHT_CLK
+    if any(p in name for p in _SEQ_PATTERNS):
+        return _WEIGHT_SEQ
+    return _WEIGHT_COMB
+
 
 def _parse_args():
     ap = argparse.ArgumentParser()
@@ -101,10 +129,13 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
     Return (power_grid_W, die_bounds_m) where power_grid_W is (grid, grid)
     in Watts and die_bounds_m is (x0, y0, width, height) in metres.
 
-    Cell area (µm²) is accumulated per bin, then the whole grid is rescaled
-    so it sums to total_power_w. A small uniform floor (POWER_FLOOR_FRAC of
-    total) is added to every cell to prevent zero-power rows from making
-    HotSpot's conductance matrix singular.
+    Each cell contributes area × power_weight to its bin, where weight is
+    derived from the master cell type (sequential > clock > macro > comb).
+    The weighted grid is then rescaled to total_power_w so absolute power
+    stays physically consistent across designs.
+
+    A small uniform floor (POWER_FLOOR_FRAC of total) is added to every cell
+    to prevent zero-power rows from making HotSpot's conductance matrix singular.
     """
     die = block.getDieArea()
     x0_dbu, y0_dbu = die.xMin(), die.yMin()
@@ -114,7 +145,11 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
 
     dbu_per_um = block.getDbUnitsPerMicron()
 
-    area_grid = np.zeros((grid, grid), dtype=np.float64)
+    weighted_grid = np.zeros((grid, grid), dtype=np.float64)
+
+    # Per-type weighted area tallies for the diagnostic printout.
+    type_counts = {"clk": 0, "seq": 0, "mac": 0, "comb": 0}
+    type_warea  = {"clk": 0.0, "seq": 0.0, "mac": 0.0, "comb": 0.0}
 
     for inst in block.getInsts():
         bbox = inst.getBBox()
@@ -126,24 +161,46 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
         gx = min(max(gx, 0), grid - 1)
         gy = min(max(gy, 0), grid - 1)
 
-        # Area in µm²
         w_um = (bbox.xMax() - bbox.xMin()) / dbu_per_um
         h_um = (bbox.yMax() - bbox.yMin()) / dbu_per_um
-        area_grid[gy, gx] += w_um * h_um
+        area_um2 = w_um * h_um
 
-    # Rescale so total power equals the user-supplied value
-    total_area = area_grid.sum()
-    if total_area > 0:
-        power_grid = area_grid / total_area * total_power_w
+        master = inst.getMaster()
+        weight = _cell_power_weight(master.getName(), str(master.getType()))
+        weighted_grid[gy, gx] += area_um2 * weight
+
+        # Diagnostics
+        if weight == _WEIGHT_CLK:
+            k = "clk"
+        elif weight == _WEIGHT_SEQ:
+            k = "seq"
+        elif weight == _WEIGHT_MAC:
+            k = "mac"
+        else:
+            k = "comb"
+        type_counts[k] += 1
+        type_warea[k]  += area_um2 * weight
+
+    total_warea = weighted_grid.sum()
+    if total_warea > 0:
+        power_grid = weighted_grid / total_warea * total_power_w
     else:
         power_grid = np.ones((grid, grid), dtype=np.float64) * total_power_w / (grid * grid)
 
     # Add power floor: prevents zero-power cells from creating singular rows.
-    # Floor = POWER_FLOOR_FRAC * total / N_cells so it's small relative to peaks.
     floor_per_cell = POWER_FLOOR_FRAC * total_power_w / (grid * grid)
     power_grid = np.maximum(power_grid, floor_per_cell)
-    # Renormalize to keep total power constant
     power_grid = power_grid / power_grid.sum() * total_power_w
+
+    # Print per-type breakdown so we can sanity-check the weighting.
+    total_n = sum(type_counts.values()) or 1
+    total_w = sum(type_warea.values()) or 1.0
+    print("[thermal] Cell-type power breakdown:")
+    for k, label in (("clk","clock"), ("seq","seq  "), ("mac","macro"), ("comb","comb ")):
+        pct_n = type_counts[k] / total_n * 100
+        pct_w = type_warea[k]  / total_w * 100
+        print(f"          {label}: {type_counts[k]:6d} cells "
+              f"({pct_n:5.1f}% count)  →  {pct_w:5.1f}% weighted power")
 
     # Die bounds in metres for HotSpot
     die_x0_m = _dbu_to_m(x0_dbu, dbu_per_um)
