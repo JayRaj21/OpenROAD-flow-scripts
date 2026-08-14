@@ -1,0 +1,216 @@
+# post_cts_timing_repair.tcl
+#
+# POST_CTS hook: identify instances on setup-critical paths and upsize them
+# to the next drive strength available in the loaded libraries.
+#
+# Only combinational cells following the TYPE_X<N> naming convention are
+# swapped. Flip-flops, clock cells, and cells already at maximum drive are
+# left untouched.
+#
+# After all swaps the placement is re-legalised (cell widths change) and
+# parasitics are re-estimated so downstream timing reflects the new sizes.
+#
+# Usage — add to a design config or Makefile:
+#   export POST_CTS_TCL = $(SCRIPTS_DIR)/post_cts_timing_repair.tcl
+#
+# Or source manually inside an OpenROAD session:
+#   source flow/scripts/post_cts_timing_repair.tcl
+
+namespace eval pctr {
+
+# -----------------------------------------------------------------------
+# Build a map: current_cell_name -> next_drive_cell_name
+# Discovered dynamically from whatever libraries are loaded, so this
+# works for any PDK that follows the _X<N> convention.
+# -----------------------------------------------------------------------
+proc build_upsize_map {} {
+    array set by_base {}
+    set db [::ord::get_db]
+
+    foreach lib [$db getLibs] {
+        foreach master [$lib getMasters] {
+            set name [$master getName]
+            if {[regexp {^(.+_X)(\d+)$} $name -> base drive]} {
+                lappend by_base($base) [list [expr {int($drive)}] $name]
+            }
+        }
+    }
+
+    array set upsize {}
+    foreach base [array names by_base] {
+        # Sort by drive strength numerically, build consecutive pairs
+        set sorted [lsort -integer -index 0 $by_base($base)]
+        for {set i 0} {$i < [llength $sorted] - 1} {incr i} {
+            set curr [lindex [lindex $sorted $i]       1]
+            set next [lindex [lindex $sorted [expr {$i+1}]] 1]
+            set upsize($curr) $next
+        }
+    }
+
+    return [array get upsize]
+}
+
+# -----------------------------------------------------------------------
+# Search all loaded libs for a master by name.
+# -----------------------------------------------------------------------
+proc find_master {name} {
+    set db [::ord::get_db]
+    foreach lib [$db getLibs] {
+        set m [$lib findMaster $name]
+        if {$m ne "NULL" && $m ne ""} { return $m }
+    }
+    return ""
+}
+
+# -----------------------------------------------------------------------
+# Parse a captured report_timing string.
+# Returns a list of {inst_name cell_name} for every cell pin on any path.
+# -----------------------------------------------------------------------
+proc parse_insts {report} {
+    set pairs {}
+    foreach line [split $report "\n"] {
+        # Timing report pin lines look like:
+        #   ... ^ inst_name/PIN (CELL_TYPE)
+        # The leading ^ or v indicates signal direction.
+        if {[regexp {[\^v] (\S+)/\S+ \((\w+)\)} $line -> inst cell]} {
+            lappend pairs [list $inst $cell]
+        }
+    }
+    return $pairs
+}
+
+# -----------------------------------------------------------------------
+# Cell types excluded from upsizing.
+# Flip-flops: changing drive alters hold/setup arcs non-trivially.
+# Clock cells: CTS balanced the tree for a specific drive; don't disturb.
+# -----------------------------------------------------------------------
+proc is_excluded {cell_name} {
+    foreach prefix {DFF SDFF DFFR DFFS DFFRS SDFFR SDFFS SDFFRS DLL DLH CLKBUF CLKGATE CLKGATETST} {
+        if {[string match "${prefix}*" $cell_name]} { return 1 }
+    }
+    return 0
+}
+
+# -----------------------------------------------------------------------
+# Main procedure.
+# path_count : number of worst paths to inspect for swap candidates
+# max_swaps  : hard cap on total swaps per invocation
+# -----------------------------------------------------------------------
+proc run {{path_count 10} {max_swaps 30}} {
+    set wns_before [sta::worst_slack -max]
+
+    if {$wns_before >= 0} {
+        puts "INFO \[pctr\] WNS [format %+.3f $wns_before] ns — no setup violations, skipping."
+        return
+    }
+    puts "INFO \[pctr\] WNS [format %+.3f $wns_before] ns — starting cell upsizing on critical paths."
+
+    array set upsize [build_upsize_map]
+    puts "INFO \[pctr\] Upsize map: [array size upsize] candidate transitions loaded."
+
+    # Walk the N worst setup paths via the STA path object API.
+    # Each Path node exposes pin() and prevPath(); we extract the instance
+    # name from the full pin name string and look the instance up in ODB.
+    set all_ends [find_timing_paths -path_delay max -sort_by_slack]
+    set path_ends [lrange $all_ends 0 [expr {$path_count - 1}]]
+
+    array set seen {}
+    set candidates {}
+    set db    [::ord::get_db]
+    set block [[$db getChip] getBlock]
+
+    foreach path_end $path_ends {
+        set cur ""
+        catch { set cur [$path_end path] }
+        for {set depth 0} {$depth < 200} {incr depth} {
+            if {$cur eq "" || $cur eq "NULL"} { break }
+
+            set pin_name ""
+            catch { set pin_name [get_full_name [$cur pin]] }
+
+            if {$pin_name ne ""} {
+                set slash [string last "/" $pin_name]
+                if {$slash > 0} {
+                    set inst_name [string range $pin_name 0 [expr {$slash - 1}]]
+                    if {![info exists seen($inst_name)]} {
+                        set odb_inst [$block findInst $inst_name]
+                        if {$odb_inst ne "NULL" && $odb_inst ne ""} {
+                            set cell_name [[$odb_inst getMaster] getName]
+                            if {![is_excluded $cell_name] && [info exists upsize($cell_name)]} {
+                                set seen($inst_name) 1
+                                lappend candidates [list $inst_name $cell_name $upsize($cell_name)]
+                            }
+                        }
+                    }
+                }
+            }
+
+            set prev ""
+            catch { set prev [$cur prevPath] }
+            if {$prev eq "" || $prev eq "NULL"} { break }
+            set cur $prev
+        }
+    }
+
+    if {[llength $candidates] == 0} {
+        puts "INFO \[pctr\] No swappable instances found on critical paths."
+        return
+    }
+
+    # Cap to max_swaps
+    if {[llength $candidates] > $max_swaps} {
+        set candidates [lrange $candidates 0 [expr {$max_swaps - 1}]]
+    }
+
+    # Apply swaps via ODB
+    set db    [::ord::get_db]
+    set block [[$db getChip] getBlock]
+    set swap_count 0
+    set skip_count 0
+
+    foreach candidate $candidates {
+        lassign $candidate inst_name curr next
+
+        set inst [$block findInst $inst_name]
+        if {$inst eq "NULL" || $inst eq ""} {
+            puts "WARN \[pctr\] Instance not found in ODB: $inst_name — skipping."
+            incr skip_count
+            continue
+        }
+
+        set new_master [find_master $next]
+        if {$new_master eq ""} {
+            puts "WARN \[pctr\] Master not found in libs: $next — skipping."
+            incr skip_count
+            continue
+        }
+
+        $inst swapMaster $new_master
+        puts "INFO \[pctr\]   swapped  $inst_name  $curr -> $next"
+        incr swap_count
+    }
+
+    puts "INFO \[pctr\] $swap_count cell(s) upsized, $skip_count skipped."
+
+    if {$swap_count == 0} { return }
+
+    # Re-legalise placement (cell widths changed) then re-estimate parasitics
+    puts "INFO \[pctr\] Re-legalising placement after width changes..."
+    set result [catch { detailed_placement } msg]
+    if {$result != 0} {
+        puts "WARN \[pctr\] detailed_placement failed: $msg"
+        puts "WARN \[pctr\] Timing improvement may not be accurate — check placement manually."
+    }
+
+    estimate_parasitics -placement
+
+    set wns_after [sta::worst_slack -max]
+    set delta     [format %+.3f [expr {$wns_after - $wns_before}]]
+    puts "INFO \[pctr\] WNS: [format %+.3f $wns_before] ns -> [format %+.3f $wns_after] ns  (delta $delta ns)"
+    puts "INFO \[pctr\] Cell upsizing complete."
+}
+
+} ;# namespace pctr
+
+# Run automatically when sourced as a POST_CTS hook
+pctr::run
