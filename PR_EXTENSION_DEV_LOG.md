@@ -334,11 +334,133 @@ back-to-back for repeatable before/after comparison.
 
 ---
 
+---
+
+### 2026-08-14 — Phase 2 upgraded: iterative upsizing
+
+**Changed: `flow/scripts/post_cts_timing_repair.tcl`**
+
+The single-pass `run` proc was refactored into an iterative loop:
+
+**New structure:**
+
+- `collect_candidates upsize_arr path_count seen_arr` — finds new upsize candidates
+  on the N worst paths, skipping instances already swapped in prior iterations.
+- `apply_swaps candidates` — applies ODB swaps, returns {swap_count skip_count}.
+- `run {path_count 10} {max_swaps 30} {max_iters 5}` — outer loop:
+  1. Collect candidates (deduped via `seen` array)
+  2. Apply swaps
+  3. Re-legalise + re-estimate parasitics
+  4. Re-run STA; stop if WNS ≥ 0, no candidates, or no swaps applied
+  5. Repeat up to `max_iters` times
+
+**Why iterative matters:**  
+A single pass swaps cells on the *current* critical paths. After those swaps +
+re-legalisation, the critical paths may change — a previously non-critical path may
+become the new worst path. Each iteration finds new candidates on the updated critical
+paths, so the hook converges rather than leaving residual violations untouched.
+
+**The `seen` array spans all iterations**, so a cell that was upsized in iteration 1
+(e.g., `AND2_X1 → AND2_X2`) is not considered again in iteration 2 — it is already at
+the higher drive level and would need a second upsize (`AND2_X2 → AND2_X4`) to improve
+further. This is intentional: one upsize per cell per hook invocation keeps the area
+budget predictable.
+
+**Signature unchanged** — still invoked as `pctr::run` with no arguments for the
+standard 10-path / 30-swap / 5-iteration defaults.
+
+---
+
+---
+
+### 2026-08-14 — aes comparison revealed post-GRT hook gap; added post_grt_timing_repair.tcl
+
+**Observation from aes comparison:**  
+The post-CTS hook correctly skipped on `aes` because CTS timing was met (WNS +0.000).  
+The violations in aes (-0.020 at global route, -0.010 at finish) only appear once real
+wire parasitics are loaded by the GRT step — they are invisible at CTS time.
+
+**New file: `flow/scripts/post_grt_timing_repair.tcl`**
+
+Same iterative upsizing algorithm as `post_cts_timing_repair.tcl`, wired to the
+`POST_GLOBAL_ROUTE_TCL` hook point. One critical difference in the parasitic
+re-estimation step:
+
+| Hook | Parasitic call after swaps | Why |
+|---|---|---|
+| post_cts_timing_repair.tcl | `estimate_parasitics -placement` | GRT not yet run |
+| post_grt_timing_repair.tcl | `estimate_parasitics -global_routing` | GRT topology available |
+
+Using `-global_routing` means the hook's STA reflects the actual route topology, so
+the WNS reported inside the hook matches the global route report — no artificial
+optimism from placement-only estimates.
+
+Namespace: `pgtr` (vs `pctr` for the CTS hook) to avoid name collisions when both
+hooks are active in the same session.
+
+**Updated: `flow/util/compare_hook.sh`**
+
+Now accepts both hooks simultaneously by default (CTS + GRT). Flags to disable either:
+```bash
+# Both hooks (default)
+util/compare_hook.sh --platform nangate45 --design aes
+
+# CTS hook only
+util/compare_hook.sh --platform nangate45 --design aes --no-grt-hook
+
+# GRT hook only
+util/compare_hook.sh --platform nangate45 --design aes --no-cts-hook
+```
+
+---
+
+### 2026-08-14 — aes comparison shows post-GRT hook is redundant; architectural insight
+
+**Result:** aes baseline and hook numbers are identical. The GRT hook does not improve timing.
+
+**Root cause — reading `flow/scripts/global_route.tcl`:**
+
+The `POST_GLOBAL_ROUTE_TCL` hook fires at line 151, *after* all of the following have
+already run:
+1. `global_route` — builds the routing topology
+2. `estimate_parasitics -global_routing` — loads real wire RC
+3. `repair_design_helper` — fixes max-cap/max-slew violations
+4. `repair_timing_helper` — fixes setup/hold with gate sizing, buffer insertion, cell swapping
+5. Another `estimate_parasitics -global_routing`
+6. `report_metrics 5 "global route"` — writes `5_global_route.rpt`
+7. ← **Our hook fires here**
+
+ORFS's built-in `repair_timing` at step 4 is far more capable than our simple upsizing
+(it does buffer insertion, VT swaps, and multi-objective repair). By the time our hook
+runs, there are few or no candidates left.
+
+**Why ibex worked but aes does not:**  
+The post-CTS hook fires *before* the GRT repair. Our upsize reduces gate delay on the
+critical path, which becomes the starting point for GRT repair to refine further. That
+compounding effect is what eliminated ibex's violations entirely.
+
+For aes, CTS timing is met (+0.000 WNS), so the post-CTS hook correctly skips.
+The violations at global route (-0.020 WNS) appear when real parasitics are loaded,
+but the built-in GRT repair partially addresses them. The residual violations at finish
+(-0.010 WNS) are introduced by *detail routing* — the actual wire geometry after DRC-
+legal routing differs from the GRT topology estimate. Post-detail-route violations require
+an ECO (Engineering Change Order) flow, not simple cell upsizing.
+
+**Conclusion:**  
+The post-GRT hook is architecturally redundant with ORFS's built-in repair. The
+post-CTS hook is the correct intervention point: it runs before the built-in GRT repair,
+so improvements compound rather than compete.
+
+`post_grt_timing_repair.tcl` is kept for completeness and as a documented dead-end
+that explains *why* the post-CTS hook is the right intervention point.
+
+---
+
 ## Planned Next Steps
 
-1. Implement `pr_metrics.py` — reads checkpoint ODBs, reports HPWL/WNS/TNS/overflow.
-2. Run it on an existing completed design (e.g. `results/nangate45/ibex/base/`) and
-   verify the numbers match known-good reports.
-3. Implement `post_cts_timing_repair.tcl` — critical path cell swapping hook.
-4. Wire hook into a design config and measure WNS improvement.
-5. (Blocked on ML data) Option 2: congestion-feedback parameter tuner.
+1. ~~Implement `pr_metrics.py`~~ ✓ done
+2. ~~Implement `post_cts_timing_repair.tcl` — single-pass~~ ✓ done
+3. ~~Controlled before/after comparison on ibex~~ ✓ done
+4. ~~Make hook iterative~~ ✓ done
+5. ~~Add post-GRT hook — tested, found redundant with built-in repair~~ ✓ done (documented)
+6. (Blocked on ML data) Congestion-feedback parameter tuner.

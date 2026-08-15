@@ -1,27 +1,29 @@
-# post_cts_timing_repair.tcl
+# post_grt_timing_repair.tcl
 #
-# POST_CTS hook: identify instances on setup-critical paths and upsize them
-# to the next drive strength available in the loaded libraries.
+# POST_GLOBAL_ROUTE hook: identify instances on setup-critical paths and
+# upsize them to the next drive strength available in the loaded libraries.
 #
-# Only combinational cells following the TYPE_X<N> naming convention are
-# swapped. Flip-flops, clock cells, and cells already at maximum drive are
-# left untouched.
+# Complements post_cts_timing_repair.tcl.  At the post-CTS stage, parasitics
+# are estimated from placement; violations that only appear under real wire
+# geometry (like aes) are not yet visible.  By the time global routing has run,
+# actual route topology is known, so this hook catches those late-appearing
+# violations before detail routing locks in the geometry.
 #
-# After all swaps the placement is re-legalised (cell widths change) and
-# parasitics are re-estimated so downstream timing reflects the new sizes.
+# Algorithm is identical to the post-CTS hook.  The only difference is that
+# estimate_parasitics uses -global_routing (GRT topology) instead of
+# -placement (idealised RC estimates), which is accurate at this stage.
 #
 # Usage — add to a design config or Makefile:
-#   export POST_CTS_TCL = $(SCRIPTS_DIR)/post_cts_timing_repair.tcl
+#   export POST_GLOBAL_ROUTE_TCL = $(SCRIPTS_DIR)/post_grt_timing_repair.tcl
 #
-# Or source manually inside an OpenROAD session:
-#   source flow/scripts/post_cts_timing_repair.tcl
+# Or source manually inside an OpenROAD session after global_route has run:
+#   source flow/scripts/post_grt_timing_repair.tcl
 
-namespace eval pctr {
+namespace eval pgtr {
 
 # -----------------------------------------------------------------------
 # Build a map: current_cell_name -> next_drive_cell_name
-# Discovered dynamically from whatever libraries are loaded, so this
-# works for any PDK that follows the _X<N> convention.
+# Discovered dynamically from whatever libraries are loaded.
 # -----------------------------------------------------------------------
 proc build_upsize_map {} {
     array set by_base {}
@@ -38,10 +40,9 @@ proc build_upsize_map {} {
 
     array set upsize {}
     foreach base [array names by_base] {
-        # Sort by drive strength numerically, build consecutive pairs
         set sorted [lsort -integer -index 0 $by_base($base)]
         for {set i 0} {$i < [llength $sorted] - 1} {incr i} {
-            set curr [lindex [lindex $sorted $i]       1]
+            set curr [lindex [lindex $sorted $i]           1]
             set next [lindex [lindex $sorted [expr {$i+1}]] 1]
             set upsize($curr) $next
         }
@@ -63,26 +64,7 @@ proc find_master {name} {
 }
 
 # -----------------------------------------------------------------------
-# Parse a captured report_timing string.
-# Returns a list of {inst_name cell_name} for every cell pin on any path.
-# -----------------------------------------------------------------------
-proc parse_insts {report} {
-    set pairs {}
-    foreach line [split $report "\n"] {
-        # Timing report pin lines look like:
-        #   ... ^ inst_name/PIN (CELL_TYPE)
-        # The leading ^ or v indicates signal direction.
-        if {[regexp {[\^v] (\S+)/\S+ \((\w+)\)} $line -> inst cell]} {
-            lappend pairs [list $inst $cell]
-        }
-    }
-    return $pairs
-}
-
-# -----------------------------------------------------------------------
 # Cell types excluded from upsizing.
-# Flip-flops: changing drive alters hold/setup arcs non-trivially.
-# Clock cells: CTS balanced the tree for a specific drive; don't disturb.
 # -----------------------------------------------------------------------
 proc is_excluded {cell_name} {
     foreach prefix {DFF SDFF DFFR DFFS DFFRS SDFFR SDFFS SDFFRS DLL DLH CLKBUF CLKGATE CLKGATETST} {
@@ -93,8 +75,7 @@ proc is_excluded {cell_name} {
 
 # -----------------------------------------------------------------------
 # Collect upsize candidates from the N worst setup paths.
-# Returns a list of {inst_name curr_cell next_cell}, deduped.
-# Already-seen instances (array passed by name) are skipped.
+# seen_arr: array (by name) of already-swapped instances — skipped.
 # -----------------------------------------------------------------------
 proc collect_candidates {upsize_arr path_count seen_arr} {
     upvar $upsize_arr upsize
@@ -157,52 +138,44 @@ proc apply_swaps {candidates} {
 
         set inst [$block findInst $inst_name]
         if {$inst eq "NULL" || $inst eq ""} {
-            puts "WARN \[pctr\]   instance not found: $inst_name — skipping."
+            puts "WARN \[pgtr\]   instance not found: $inst_name — skipping."
             incr skip_count
             continue
         }
 
         set new_master [find_master $next]
         if {$new_master eq ""} {
-            puts "WARN \[pctr\]   master not found: $next — skipping."
+            puts "WARN \[pgtr\]   master not found: $next — skipping."
             incr skip_count
             continue
         }
 
         $inst swapMaster $new_master
-        puts "INFO \[pctr\]   swapped  $inst_name  $curr -> $next"
+        puts "INFO \[pgtr\]   swapped  $inst_name  $curr -> $next"
         incr swap_count
     }
     return [list $swap_count $skip_count]
 }
 
 # -----------------------------------------------------------------------
-# Main procedure — iterative upsizing.
-#
-# Each iteration:
-#   1. Find the N worst setup paths and collect upsize candidates.
-#   2. Apply swaps (skipping instances already swapped in prior iterations).
-#   3. Re-legalise placement and re-estimate parasitics.
-#   4. Re-run STA; stop if timing closed or no improvement was made.
+# Main procedure — iterative upsizing using GRT parasitics.
 #
 # path_count  : paths to inspect per iteration
 # max_swaps   : hard cap on total swaps across all iterations
-# max_iters   : iteration limit (guards against non-converging loops)
+# max_iters   : iteration limit
 # -----------------------------------------------------------------------
 proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
     set wns_before [sta::worst_slack -max]
 
     if {$wns_before >= 0} {
-        puts "INFO \[pctr\] WNS [format %+.3f $wns_before] ns — no setup violations, skipping."
+        puts "INFO \[pgtr\] WNS [format %+.3f $wns_before] ns — no setup violations, skipping."
         return
     }
-    puts "INFO \[pctr\] WNS [format %+.3f $wns_before] ns — starting iterative cell upsizing."
+    puts "INFO \[pgtr\] WNS [format %+.3f $wns_before] ns — starting iterative cell upsizing (post-GRT)."
 
     array set upsize [build_upsize_map]
-    puts "INFO \[pctr\] Upsize map: [array size upsize] candidate transitions loaded."
+    puts "INFO \[pgtr\] Upsize map: [array size upsize] candidate transitions loaded."
 
-    # 'seen' tracks every instance swapped across all iterations so we never
-    # upsize the same cell twice (it would already be at the next drive level).
     array set seen {}
     set total_swaps 0
     set wns_current $wns_before
@@ -210,57 +183,56 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
     for {set iter 1} {$iter <= $max_iters} {incr iter} {
         set remaining [expr {$max_swaps - $total_swaps}]
         if {$remaining <= 0} {
-            puts "INFO \[pctr\] Iter $iter: swap cap ($max_swaps) reached — stopping."
+            puts "INFO \[pgtr\] Iter $iter: swap cap ($max_swaps) reached — stopping."
             break
         }
 
-        puts "INFO \[pctr\] --- Iteration $iter (WNS [format %+.3f $wns_current] ns) ---"
+        puts "INFO \[pgtr\] --- Iteration $iter (WNS [format %+.3f $wns_current] ns) ---"
 
         set candidates [collect_candidates upsize $path_count seen]
 
         if {[llength $candidates] == 0} {
-            puts "INFO \[pctr\] Iter $iter: no new swappable instances on critical paths — stopping."
+            puts "INFO \[pgtr\] Iter $iter: no new swappable instances on critical paths — stopping."
             break
         }
 
-        # Cap this iteration's swaps to what's left in the budget
         if {[llength $candidates] > $remaining} {
             set candidates [lrange $candidates 0 [expr {$remaining - 1}]]
         }
 
         lassign [apply_swaps $candidates] swap_count skip_count
         incr total_swaps $swap_count
-        puts "INFO \[pctr\] Iter $iter: $swap_count cell(s) upsized, $skip_count skipped."
+        puts "INFO \[pgtr\] Iter $iter: $swap_count cell(s) upsized, $skip_count skipped."
 
         if {$swap_count == 0} {
-            puts "INFO \[pctr\] Iter $iter: nothing applied — stopping."
+            puts "INFO \[pgtr\] Iter $iter: nothing applied — stopping."
             break
         }
 
-        # Re-legalise (widths changed) then update wire models
+        # Re-legalise (widths changed) then re-estimate with GRT topology
         set result [catch { detailed_placement } msg]
         if {$result != 0} {
-            puts "WARN \[pctr\] detailed_placement failed: $msg"
+            puts "WARN \[pgtr\] detailed_placement failed: $msg"
         }
-        estimate_parasitics -placement
+        estimate_parasitics -global_routing
 
         set wns_new [sta::worst_slack -max]
         set delta   [format %+.3f [expr {$wns_new - $wns_current}]]
-        puts "INFO \[pctr\] Iter $iter: WNS [format %+.3f $wns_current] -> [format %+.3f $wns_new] ns  (delta $delta ns)"
+        puts "INFO \[pgtr\] Iter $iter: WNS [format %+.3f $wns_current] -> [format %+.3f $wns_new] ns  (delta $delta ns)"
 
         set wns_current $wns_new
 
         if {$wns_current >= 0} {
-            puts "INFO \[pctr\] Timing closed after iteration $iter."
+            puts "INFO \[pgtr\] Timing closed after iteration $iter."
             break
         }
     }
 
     set total_delta [format %+.3f [expr {$wns_current - $wns_before}]]
-    puts "INFO \[pctr\] Done: $total_swaps total swap(s), WNS [format %+.3f $wns_before] -> [format %+.3f $wns_current] ns  (total $total_delta ns)"
+    puts "INFO \[pgtr\] Done: $total_swaps total swap(s), WNS [format %+.3f $wns_before] -> [format %+.3f $wns_current] ns  (total $total_delta ns)"
 }
 
-} ;# namespace pctr
+} ;# namespace pgtr
 
-# Run automatically when sourced as a POST_CTS hook
-pctr::run
+# Run automatically when sourced as a POST_GLOBAL_ROUTE hook
+pgtr::run
