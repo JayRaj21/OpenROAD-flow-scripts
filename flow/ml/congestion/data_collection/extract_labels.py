@@ -15,7 +15,6 @@ import argparse
 import numpy as np
 from openroad import Design, Tech
 
-
 LAYER_COUNT = 10  # metal1 – metal10
 
 
@@ -24,13 +23,18 @@ def _parse_args():
     ap.add_argument("--odb", required=True, help="GRT stage ODB (5_1_grt.odb)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--grid", type=int, default=64)
-    ap.add_argument("--overflow-threshold", type=float, default=0.0,
-                    help="Overflow fraction above which a cell is a hotspot")
+    ap.add_argument(
+        "--overflow-threshold",
+        type=float,
+        default=0.0,
+        help="Overflow fraction above which a cell is a hotspot",
+    )
     return ap.parse_args()
 
 
-def extract_labels(odb_path: str, grid: int = 64,
-                   overflow_threshold: float = 0.0) -> dict:
+def extract_labels(
+    odb_path: str, grid: int = 64, overflow_threshold: float = 0.0
+) -> dict:
     tech = Tech()
     design = Design(tech)
     design.readDb(odb_path)
@@ -68,7 +72,7 @@ def extract_labels(odb_path: str, grid: int = 64,
                 capacity = gcell_grid.getCapacity(layer, ix, iy)
                 if capacity == 0:
                     continue
-                usage    = gcell_grid.getUsage(layer, ix, iy)
+                usage = gcell_grid.getUsage(layer, ix, iy)
                 overflow = max(0.0, (usage - capacity) / capacity)
 
                 cx = (x_grid[ix] + x_grid[ix + 1]) / 2
@@ -79,15 +83,13 @@ def extract_labels(odb_path: str, grid: int = 64,
                 gx = min(max(gx, 0), grid - 1)
                 gy = min(max(gy, 0), grid - 1)
 
-                heatmap[layer_idx, gy, gx] = max(
-                    heatmap[layer_idx, gy, gx], overflow
-                )
+                heatmap[layer_idx, gy, gx] = max(heatmap[layer_idx, gy, gx], overflow)
 
     # Clip to [0, 1] — values > 1 mean capacity exceeded by more than 100%
     heatmap = np.clip(heatmap, 0.0, 1.0)
 
     hotspot = (heatmap.max(axis=0) > overflow_threshold).astype(np.uint8)
-    score   = float(heatmap.mean())
+    score = float(heatmap.mean())
 
     return {"heatmap": heatmap, "hotspot": hotspot, "score": np.float32(score)}
 

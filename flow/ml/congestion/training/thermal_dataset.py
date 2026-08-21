@@ -75,7 +75,7 @@ class ThermalDataset(Dataset):
             )
 
         self.pairs = [(feat_files[k], therm_files[k]) for k in keys]
-        self.keys  = keys
+        self.keys = keys
 
         # Per-sample temperature ranges for reference / diagnostics.
         self.t_mins: list[float] = []
@@ -102,36 +102,42 @@ class ThermalDataset(Dataset):
         # the raw density inputs (which are already [0,1] from extraction).
         b_max = blurred.max()
         blurred = blurred / b_max if b_max > 0 else blurred
-        x = np.stack([
-            cell,
-            feat["macro_density"],
-            feat["pin_density"],
-            feat["fanout_density"],
-            blurred,
-        ]).astype(np.float32)   # (5, 64, 64)
+        x = np.stack(
+            [
+                cell,
+                feat["macro_density"],
+                feat["pin_density"],
+                feat["fanout_density"],
+                blurred,
+            ]
+        ).astype(
+            np.float32
+        )  # (5, 64, 64)
 
         therm = np.load(therm_path)
-        t = therm["thermal_map"].astype(np.float32)   # (64, 64)  °C
+        t = therm["thermal_map"].astype(np.float32)  # (64, 64)  °C
 
         # Per-sample normalisation: each design is independently [0, 1].
         t_lo, t_hi = float(t.min()), float(t.max())
         denom = (t_hi - t_lo) if t_hi > t_lo else 1.0
         t_norm = np.clip((t - t_lo) / denom, 0.0, 1.0)
 
-        x_t      = torch.from_numpy(x)
+        x_t = torch.from_numpy(x)
         target_t = torch.from_numpy(t_norm).unsqueeze(0)  # (1, 64, 64)
 
         if self.augment:
             if torch.rand(1).item() > 0.5:
-                x_t      = torch.flip(x_t,      dims=[2])
+                x_t = torch.flip(x_t, dims=[2])
                 target_t = torch.flip(target_t, dims=[2])
             if torch.rand(1).item() > 0.5:
-                x_t      = torch.flip(x_t,      dims=[1])
+                x_t = torch.flip(x_t, dims=[1])
                 target_t = torch.flip(target_t, dims=[1])
 
         return {"x": x_t, "thermal": target_t, "t_min": t_lo, "t_max": t_hi}
 
-    def denormalize(self, t_norm: torch.Tensor, t_min: float, t_max: float) -> torch.Tensor:
+    def denormalize(
+        self, t_norm: torch.Tensor, t_min: float, t_max: float
+    ) -> torch.Tensor:
         """Convert per-sample normalised [0,1] back to °C."""
         return t_norm * (t_max - t_min) + t_min
 
@@ -139,14 +145,15 @@ class ThermalDataset(Dataset):
 def split_thermal_dataset(
     dataset: ThermalDataset,
     train_frac: float = 0.7,
-    val_frac:   float = 0.15,
+    val_frac: float = 0.15,
     seed: int = 42,
 ) -> tuple[Subset, Subset, Subset]:
-    n     = len(dataset)
-    n_tr  = max(1, int(n * train_frac))
+    n = len(dataset)
+    n_tr = max(1, int(n * train_frac))
     n_val = max(1, int(n * val_frac))
-    n_te  = max(0, n - n_tr - n_val)
+    n_te = max(0, n - n_tr - n_val)
     return random_split(
-        dataset, [n_tr, n_val, n_te],
+        dataset,
+        [n_tr, n_val, n_te],
         generator=torch.Generator().manual_seed(seed),
     )

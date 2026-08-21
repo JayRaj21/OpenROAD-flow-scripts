@@ -17,10 +17,10 @@ import os
 import re
 import sys
 
-
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _grep(path, pattern):
     """Return first match of pattern in file, or None."""
@@ -83,8 +83,11 @@ def parse_rpt(rpt_path):
         metrics["fmax_mhz"] = float(m.group(1))
 
     # Total power (last occurrence — power section is at the end)
-    for m in re.finditer(r"^Total\s+([\d.e+\-]+)\s+([\d.e+\-]+)\s+([\d.e+\-]+)\s+([\d.e+\-]+)",
-                         content, re.MULTILINE):
+    for m in re.finditer(
+        r"^Total\s+([\d.e+\-]+)\s+([\d.e+\-]+)\s+([\d.e+\-]+)\s+([\d.e+\-]+)",
+        content,
+        re.MULTILINE,
+    ):
         metrics["total_power_w"] = float(m.group(4))
 
     return metrics
@@ -133,31 +136,31 @@ def parse_grt_log(log_path):
 STAGES = [
     {
         "name": "Global place",
-        "rpt":  "3_global_place.rpt",
-        "log":  "3_3_place_gp.log",
+        "rpt": "3_global_place.rpt",
+        "log": "3_3_place_gp.log",
         "log_parser": "gp",
     },
     {
         "name": "Resizer",
-        "rpt":  "3_resizer.rpt",
+        "rpt": "3_resizer.rpt",
     },
     {
         "name": "Detail place",
-        "rpt":  "3_detailed_place.rpt",
+        "rpt": "3_detailed_place.rpt",
     },
     {
         "name": "CTS",
-        "rpt":  "4_cts_final.rpt",
+        "rpt": "4_cts_final.rpt",
     },
     {
         "name": "Global route",
-        "rpt":  "5_global_route.rpt",
-        "log":  "5_1_grt.log",
+        "rpt": "5_global_route.rpt",
+        "log": "5_1_grt.log",
         "log_parser": "grt",
     },
     {
         "name": "Finish",
-        "rpt":  "6_finish.rpt",
+        "rpt": "6_finish.rpt",
     },
 ]
 
@@ -165,6 +168,7 @@ STAGES = [
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def collect(reports_dir, logs_dir):
     rows = []
@@ -201,15 +205,19 @@ def print_table(rows, design_label):
     print("-" * 90)
 
     for name, m in rows:
-        wns        = fmt(m.get("wns"),           "{:+.3f}")
-        tns        = fmt(m.get("tns"),           "{:+.3f}")
-        ws         = fmt(m.get("worst_slack"),   "{:+.3f}")
-        fmax       = fmt(m.get("fmax_mhz"),      "{:.1f}")
-        hpwl       = fmt(m.get("hpwl"),          "{:,.0f}")
-        overflow   = fmt(m.get("gp_overflow") if "gp_overflow" in m
-                        else m.get("grt_overflow"), "{:.4f}")
+        wns = fmt(m.get("wns"), "{:+.3f}")
+        tns = fmt(m.get("tns"), "{:+.3f}")
+        ws = fmt(m.get("worst_slack"), "{:+.3f}")
+        fmax = fmt(m.get("fmax_mhz"), "{:.1f}")
+        hpwl = fmt(m.get("hpwl"), "{:,.0f}")
+        overflow = fmt(
+            m.get("gp_overflow") if "gp_overflow" in m else m.get("grt_overflow"),
+            "{:.4f}",
+        )
 
-        print(f"{name:<16} {wns:>10} {tns:>10} {ws:>12} {fmax:>11} {hpwl:>12} {overflow:>13}")
+        print(
+            f"{name:<16} {wns:>10} {tns:>10} {ws:>12} {fmax:>11} {hpwl:>12} {overflow:>13}"
+        )
 
     print("-" * 90)
 
@@ -231,27 +239,34 @@ def main():
     group.add_argument("--platform", help="Platform name (e.g. nangate45)")
     group.add_argument("--reports-dir", help="Direct path to reports directory")
 
-    parser.add_argument("--design",  help="Design name (required with --platform)")
-    parser.add_argument("--tag",     help="Tag / variant (default: base)", default="base")
+    parser.add_argument("--design", help="Design name (required with --platform)")
+    parser.add_argument("--tag", help="Tag / variant (default: base)", default="base")
     parser.add_argument("--logs-dir", help="Direct path to logs directory")
 
     # Root of the ORFS repo; defaults to the directory two levels above this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     flow_dir = os.path.dirname(script_dir)
-    parser.add_argument("--flow-dir", default=flow_dir,
-                        help=f"Path to flow/ directory (default: {flow_dir})")
+    parser.add_argument(
+        "--flow-dir",
+        default=flow_dir,
+        help=f"Path to flow/ directory (default: {flow_dir})",
+    )
 
     args = parser.parse_args()
 
     if args.platform:
         if not args.design:
             parser.error("--design is required when using --platform")
-        reports_dir = os.path.join(args.flow_dir, "reports", args.platform, args.design, args.tag)
-        logs_dir    = os.path.join(args.flow_dir, "logs",    args.platform, args.design, args.tag)
+        reports_dir = os.path.join(
+            args.flow_dir, "reports", args.platform, args.design, args.tag
+        )
+        logs_dir = os.path.join(
+            args.flow_dir, "logs", args.platform, args.design, args.tag
+        )
         label = f"{args.platform}/{args.design}/{args.tag}"
     else:
         reports_dir = args.reports_dir
-        logs_dir    = args.logs_dir or reports_dir.replace("/reports/", "/logs/")
+        logs_dir = args.logs_dir or reports_dir.replace("/reports/", "/logs/")
         label = reports_dir
 
     if not os.path.isdir(reports_dir):

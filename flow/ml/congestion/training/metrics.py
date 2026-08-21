@@ -16,18 +16,19 @@ def heatmap_mae(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return F.l1_loss(pred, target)
 
 
-def hotspot_iou(pred: torch.Tensor, target: torch.Tensor,
-                threshold: float = 0.5) -> torch.Tensor:
+def hotspot_iou(
+    pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5
+) -> torch.Tensor:
     """
     IoU between binarised predicted hotspot and ground-truth hotspot.
     pred, target: (B, 1, H, W) float in [0, 1]
     """
-    pred_bin   = (pred   > threshold).float()
+    pred_bin = (pred > threshold).float()
     target_bin = (target > threshold).float()
 
     intersection = (pred_bin * target_bin).sum(dim=(1, 2, 3))
-    union        = (pred_bin + target_bin).clamp(0, 1).sum(dim=(1, 2, 3))
-    iou          = intersection / (union + 1e-9)
+    union = (pred_bin + target_bin).clamp(0, 1).sum(dim=(1, 2, 3))
+    iou = intersection / (union + 1e-9)
     return iou.mean()
 
 
@@ -54,8 +55,8 @@ def compute_all(pred_out, batch) -> dict:
     Returns a plain dict of float values.
     """
     return {
-        "heatmap_mae":   heatmap_mae(pred_out.heatmap, batch["heatmap"]).item(),
-        "hotspot_iou":   hotspot_iou(pred_out.hotspot, batch["hotspot"]).item(),
-        "score_mae":     score_mae(pred_out.score,     batch["score"]).item(),
+        "heatmap_mae": heatmap_mae(pred_out.heatmap, batch["heatmap"]).item(),
+        "hotspot_iou": hotspot_iou(pred_out.hotspot, batch["hotspot"]).item(),
+        "score_mae": score_mae(pred_out.score, batch["score"]).item(),
         "score_pearson": score_pearson(pred_out.score, batch["score"]).item(),
     }

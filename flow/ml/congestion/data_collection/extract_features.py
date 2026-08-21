@@ -38,11 +38,11 @@ def extract_features(odb_path: str, grid: int = 64) -> dict[str, np.ndarray]:
     die_w = x1 - x0
     die_h = y1 - y0
 
-    cell_density   = np.zeros((grid, grid), dtype=np.float32)
-    macro_density  = np.zeros((grid, grid), dtype=np.float32)
-    pin_density    = np.zeros((grid, grid), dtype=np.float32)
-    fanout_sum     = np.zeros((grid, grid), dtype=np.float32)
-    fanout_count   = np.zeros((grid, grid), dtype=np.float32)
+    cell_density = np.zeros((grid, grid), dtype=np.float32)
+    macro_density = np.zeros((grid, grid), dtype=np.float32)
+    pin_density = np.zeros((grid, grid), dtype=np.float32)
+    fanout_sum = np.zeros((grid, grid), dtype=np.float32)
+    fanout_count = np.zeros((grid, grid), dtype=np.float32)
 
     for inst in block.getInsts():
         bbox = inst.getBBox()
@@ -76,8 +76,8 @@ def extract_features(odb_path: str, grid: int = 64) -> dict[str, np.ndarray]:
             fanout_count[gy, gx] += 1
 
     cell_area = die_w / grid * die_h / grid
-    cell_density  /= (cell_area + 1e-9)
-    macro_density /= (cell_area + 1e-9)
+    cell_density /= cell_area + 1e-9
+    macro_density /= cell_area + 1e-9
 
     max_pins = pin_density.max()
     if max_pins > 0:
@@ -89,9 +89,9 @@ def extract_features(odb_path: str, grid: int = 64) -> dict[str, np.ndarray]:
         fanout_density /= max_fo
 
     return {
-        "cell_density":  cell_density,
+        "cell_density": cell_density,
         "macro_density": macro_density,
-        "pin_density":   pin_density,
+        "pin_density": pin_density,
         "fanout_density": fanout_density,
     }
 

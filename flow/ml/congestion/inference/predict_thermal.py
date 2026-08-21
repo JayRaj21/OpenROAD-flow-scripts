@@ -41,22 +41,35 @@ from unet import CongestionUNet
 
 
 def _parse_args():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument("--features",
-                       help="Pre-extracted *_features.npz from extract_features.py")
-    group.add_argument("--odb",
-                       help="Placed ODB (3_place.odb) — features extracted automatically")
+    group.add_argument(
+        "--features", help="Pre-extracted *_features.npz from extract_features.py"
+    )
+    group.add_argument(
+        "--odb", help="Placed ODB (3_place.odb) — features extracted automatically"
+    )
 
-    ap.add_argument("--checkpoint", required=True,
-                    help="Path to thermal_best.pt checkpoint")
-    ap.add_argument("--out", required=True,
-                    help="Output .npz path for predicted thermal map")
-    ap.add_argument("--base-features", type=int, default=32,
-                    help="base_features used when training (default 32)")
-    ap.add_argument("--grid", type=int, default=64,
-                    help="Grid size (must match training, default 64)")
+    ap.add_argument(
+        "--checkpoint", required=True, help="Path to thermal_best.pt checkpoint"
+    )
+    ap.add_argument(
+        "--out", required=True, help="Output .npz path for predicted thermal map"
+    )
+    ap.add_argument(
+        "--base-features",
+        type=int,
+        default=32,
+        help="base_features used when training (default 32)",
+    )
+    ap.add_argument(
+        "--grid",
+        type=int,
+        default=64,
+        help="Grid size (must match training, default 64)",
+    )
     return ap.parse_args()
 
 
@@ -67,8 +80,16 @@ def _extract_features_from_odb(odb_path: str, grid: int) -> str:
     feat_script = "/work/ml/congestion/data_collection/extract_features.py"
 
     cmd = [
-        "util/docker_shell", "openroad", "-python", feat_script,
-        "--odb", odb_path, "--out", cont_out, "--grid", str(grid),
+        "util/docker_shell",
+        "openroad",
+        "-python",
+        feat_script,
+        "--odb",
+        odb_path,
+        "--out",
+        cont_out,
+        "--grid",
+        str(grid),
     ]
     print(f"[predict] Extracting features from {odb_path} ...")
     result = subprocess.run(cmd, capture_output=False, stdin=subprocess.DEVNULL)
@@ -87,12 +108,14 @@ def _extract_features_from_odb(odb_path: str, grid: int) -> str:
 def load_features(features_path: str) -> torch.Tensor:
     """Load *_features.npz and return (1, 4, H, W) tensor."""
     npz = np.load(features_path)
-    x = np.stack([
-        npz["cell_density"],
-        npz["macro_density"],
-        npz["pin_density"],
-        npz["fanout_density"],
-    ]).astype(np.float32)
+    x = np.stack(
+        [
+            npz["cell_density"],
+            npz["macro_density"],
+            npz["pin_density"],
+            npz["fanout_density"],
+        ]
+    ).astype(np.float32)
     return torch.from_numpy(x).unsqueeze(0)  # (1, 4, H, W)
 
 
@@ -123,9 +146,11 @@ def predict(args):
     # Per-sample normalised output [0, 1]: 1 = predicted hottest point in design.
     thermal_norm = out.heatmap[0, 0].cpu().numpy().astype(np.float32)
 
-    print(f"[predict] Relative hotspot map: "
-          f"min={thermal_norm.min():.3f}  max={thermal_norm.max():.3f}  "
-          f"mean={thermal_norm.mean():.3f}")
+    print(
+        f"[predict] Relative hotspot map: "
+        f"min={thermal_norm.min():.3f}  max={thermal_norm.max():.3f}  "
+        f"mean={thermal_norm.mean():.3f}"
+    )
 
     np.savez(args.out, thermal_pred_norm=thermal_norm)
     print(f"[predict] Saved → {args.out}")

@@ -41,27 +41,43 @@ def train(args):
 
     dataset = ThermalDataset(args.data_dir, augment=True)
     print(f"Dataset: {len(dataset)} samples")
-    print(f"  Per-sample T range: {dataset.t_min:.1f}°C – {dataset.t_max:.1f}°C  "
-          f"(each sample normalised independently)")
+    print(
+        f"  Per-sample T range: {dataset.t_min:.1f}°C – {dataset.t_max:.1f}°C  "
+        f"(each sample normalised independently)"
+    )
 
     if len(dataset) < 3:
-        print("WARNING: fewer than 3 samples — results will not generalise. "
-              "Run extract_thermal_batch.sh to collect more data first.")
+        print(
+            "WARNING: fewer than 3 samples — results will not generalise. "
+            "Run extract_thermal_batch.sh to collect more data first."
+        )
 
     train_set, val_set, test_set = split_thermal_dataset(dataset)
     print(f"  Train: {len(train_set)}  Val: {len(val_set)}  Test: {len(test_set)}")
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
-                              num_workers=2, pin_memory=True)
-    val_loader   = DataLoader(val_set,   batch_size=args.batch_size, shuffle=False,
-                              num_workers=2, pin_memory=True)
+    train_loader = DataLoader(
+        train_set,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        val_set,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+    )
 
     # U-Net: 4-channel input, 1-channel thermal output.
     # num_heatmap_layers=1 gives a single temperature map — no wasted channels.
     # base_features=32 gives ~7M parameters — appropriate for 64×64 spatial task.
     # in_channels=5: cell, macro, pin, fanout + Gaussian-blurred cell density
     # (pre-diffused channel approximates lateral thermal spreading).
-    model = CongestionUNet(in_channels=5, base_features=32, num_heatmap_layers=1).to(device)
+    model = CongestionUNet(in_channels=5, base_features=32, num_heatmap_layers=1).to(
+        device
+    )
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=1e-6
@@ -75,9 +91,9 @@ def train(args):
         model.train()
         train_loss = 0.0
         for batch in train_loader:
-            x      = batch["x"].to(device)
+            x = batch["x"].to(device)
             target = batch["thermal"].to(device)
-            pred   = model(x)
+            pred = model(x)
             thermal_pred = pred.heatmap  # (B, 1, H, W) — single thermal channel
             loss = _loss(thermal_pred, target)
             optimizer.zero_grad()
@@ -92,14 +108,14 @@ def train(args):
         val_mae_norm = 0.0  # normalised MAE [0, 1]
         with torch.no_grad():
             for batch in val_loader:
-                x      = batch["x"].to(device)
+                x = batch["x"].to(device)
                 target = batch["thermal"].to(device)
-                pred   = model(x)
+                pred = model(x)
                 thermal_pred = pred.heatmap  # (B, 1, H, W)
                 val_loss += _loss(thermal_pred, target).item()
                 val_mae_norm += (thermal_pred - target).abs().mean().item()
 
-        val_loss     /= len(val_loader)
+        val_loss /= len(val_loader)
         val_mae_norm /= len(val_loader)
 
         scheduler.step()
@@ -124,14 +140,18 @@ def train(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--data-dir",       default="ml/congestion/data",
-                    help="Directory containing *_features.npz and *_thermal_labels.npz")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--data-dir",
+        default="ml/congestion/data",
+        help="Directory containing *_features.npz and *_thermal_labels.npz",
+    )
     ap.add_argument("--checkpoint-dir", default="ml/congestion/checkpoints")
-    ap.add_argument("--epochs",     type=int,   default=100)
-    ap.add_argument("--batch-size", type=int,   default=8)
-    ap.add_argument("--lr",         type=float, default=1e-3)
+    ap.add_argument("--epochs", type=int, default=100)
+    ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--lr", type=float, default=1e-3)
     train(ap.parse_args())
 
 

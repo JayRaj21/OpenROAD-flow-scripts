@@ -33,19 +33,24 @@ from pathlib import Path
 FLOW_DIR = Path(__file__).resolve().parents[3]
 LOG_DIR = Path(__file__).parent / "logs"
 NPROC = multiprocessing.cpu_count()
-MIN_UTIL = 55       # don't try below this utilization
-UTIL_STEP = 10      # drop by this much on FLW-0024
+MIN_UTIL = 55  # don't try below this utilization
+UTIL_STEP = 10  # drop by this much on FLW-0024
 
 FLW0024_RE = re.compile(r"\[ERROR FLW-0024\]")
-DPL0038_RE = re.compile(r"\[ERROR DPL-0038\]")   # legalizer: utilization > 100% after CTS
+DPL0038_RE = re.compile(
+    r"\[ERROR DPL-0038\]"
+)  # legalizer: utilization > 100% after CTS
 PDN_MISSING_RE = re.compile(r"No rule to make target '.*grid_strategy.*\.tcl'")
 GRT0116_RE = re.compile(r"\[ERROR GRT-0116\]|Global routing finished with congestion")
-GRT0232_RE = re.compile(r"\[ERROR GRT-0232\]")   # congestion too high: retry at lower util
+GRT0232_RE = re.compile(
+    r"\[ERROR GRT-0232\]"
+)  # congestion too high: retry at lower util
 
 STOP_ON_ERROR = False  # set by --stop-on-error flag
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def log(msg):
     print(f"[PIPELINE] {msg}", flush=True)
@@ -89,8 +94,10 @@ def handle_failure(label: str, stage: str, output: str) -> bool:
 
 def container_to_host(container_path: str) -> Path:
     """Map /work/... container path to the host filesystem equivalent."""
-    assert container_path.startswith("/work/"), f"Expected /work/... path, got: {container_path}"
-    return FLOW_DIR / container_path[len("/work/"):]
+    assert container_path.startswith(
+        "/work/"
+    ), f"Expected /work/... path, got: {container_path}"
+    return FLOW_DIR / container_path[len("/work/") :]
 
 
 def run(args: list, timeout=7200) -> tuple[int, str]:
@@ -153,7 +160,9 @@ def _make(stage, design, platform, util, results_dir, objects_dir, pdn_tcl=None)
     # causes ODB-0269 (empty markers path) when RESULTS_DIR uses a custom tag.
     reports_dir = results_dir.replace("/work/results/", "/work/reports/")
     cmd = [
-        "util/docker_shell", "make", target,
+        "util/docker_shell",
+        "make",
+        target,
         f"DESIGN_CONFIG={design_config}",
         f"CORE_UTILIZATION={util}",
         f"RESULTS_DIR={results_dir}",
@@ -174,6 +183,7 @@ def _make(stage, design, platform, util, results_dir, objects_dir, pdn_tcl=None)
 
 
 # ── Extraction ─────────────────────────────────────────────────────────────
+
 
 def extract_data(results_dir: str, out_label: str) -> bool:
     """
@@ -210,23 +220,33 @@ def extract_data(results_dir: str, out_label: str) -> bool:
         log("3_place.odb not found — skipping extraction.")
         return False
 
-    data_dir  = "/work/ml/congestion/data"
-    graph_out   = f"{data_dir}/{out_label}_graph.npz"
-    feat_out    = f"{data_dir}/{out_label}_features.npz"
-    label_out   = f"{data_dir}/{out_label}_labels.npz"
+    data_dir = "/work/ml/congestion/data"
+    graph_out = f"{data_dir}/{out_label}_graph.npz"
+    feat_out = f"{data_dir}/{out_label}_features.npz"
+    label_out = f"{data_dir}/{out_label}_labels.npz"
     thermal_out = f"{data_dir}/{out_label}_thermal_labels.npz"
 
     # ── 0. Pre-placement netlist graph (GNN input, Track 1) ───────────────
     synth_odb = f"{results_dir}/1_synth.odb"
     if (results_host / "1_synth.odb").exists():
         log(f"Extracting netlist graph from {synth_odb}")
-        rc, out = run([
-            "util/docker_shell", "openroad", "-python",
-            "/work/ml/congestion/data_collection/extract_netlist_features.py",
-            "--odb", synth_odb, "--out", graph_out,
-        ], timeout=300)
+        rc, out = run(
+            [
+                "util/docker_shell",
+                "openroad",
+                "-python",
+                "/work/ml/congestion/data_collection/extract_netlist_features.py",
+                "--odb",
+                synth_odb,
+                "--out",
+                graph_out,
+            ],
+            timeout=300,
+        )
         if rc != 0:
-            log("Netlist graph extraction failed or timed out — continuing without graph.")
+            log(
+                "Netlist graph extraction failed or timed out — continuing without graph."
+            )
         else:
             log(f"Saved: {graph_out}")
     else:
@@ -234,37 +254,63 @@ def extract_data(results_dir: str, out_label: str) -> bool:
 
     # ── 1. Placement features ──────────────────────────────────────────────
     log(f"Extracting placement features from {place_odb}")
-    rc, _ = run([
-        "util/docker_shell", "openroad", "-python",
-        "/work/ml/congestion/data_collection/extract_features.py",
-        "--odb", place_odb, "--out", feat_out,
-    ], timeout=300)
+    rc, _ = run(
+        [
+            "util/docker_shell",
+            "openroad",
+            "-python",
+            "/work/ml/congestion/data_collection/extract_features.py",
+            "--odb",
+            place_odb,
+            "--out",
+            feat_out,
+        ],
+        timeout=300,
+    )
     if rc != 0:
         log("Feature extraction failed or timed out.")
         return False
 
     # ── 2. Congestion labels ───────────────────────────────────────────────
     log(f"Extracting congestion labels from {grt_odb}")
-    rc, _ = run([
-        "util/docker_shell", "openroad", "-python",
-        "/work/ml/congestion/data_collection/extract_labels.py",
-        "--odb", grt_odb, "--out", label_out,
-    ], timeout=300)
+    rc, _ = run(
+        [
+            "util/docker_shell",
+            "openroad",
+            "-python",
+            "/work/ml/congestion/data_collection/extract_labels.py",
+            "--odb",
+            grt_odb,
+            "--out",
+            label_out,
+        ],
+        timeout=300,
+    )
     if rc != 0:
         log("Label extraction failed or timed out.")
         return False
 
     # ── 3. Thermal labels (requires HotSpot in OR_IMAGE) ──────────────────
     log(f"Extracting thermal labels from {place_odb}")
-    rc, out = run([
-        "util/docker_shell", "openroad", "-python",
-        "/work/ml/congestion/data_collection/extract_thermal_labels.py",
-        "--odb", place_odb, "--out", thermal_out,
-    ], timeout=300)
+    rc, out = run(
+        [
+            "util/docker_shell",
+            "openroad",
+            "-python",
+            "/work/ml/congestion/data_collection/extract_thermal_labels.py",
+            "--odb",
+            place_odb,
+            "--out",
+            thermal_out,
+        ],
+        timeout=300,
+    )
     if rc != 0:
         if "hotspot: not found" in out or "No such file" in out:
-            log("HotSpot not found in container — skipping thermal extraction. "
-                "Run with OR_IMAGE=openroad/orfs-ml:latest to enable it.")
+            log(
+                "HotSpot not found in container — skipping thermal extraction. "
+                "Run with OR_IMAGE=openroad/orfs-ml:latest to enable it."
+            )
         else:
             log("Thermal extraction failed or timed out — skipping.")
     else:
@@ -276,6 +322,7 @@ def extract_data(results_dir: str, out_label: str) -> bool:
 
 
 # ── Per-design runner ───────────────────────────────────────────────────────
+
 
 def run_design(cfg: dict) -> dict:
     platform = cfg["platform"]
@@ -311,8 +358,11 @@ def run_design(cfg: dict) -> dict:
 
         # If a successful GRT ODB already exists, skip straight to extraction.
         existing_grt = next(
-            (host_dir / n for n in ("5_1_grt-failed.odb", "5_1_grt.odb")
-             if (host_dir / n).exists()),
+            (
+                host_dir / n
+                for n in ("5_1_grt-failed.odb", "5_1_grt.odb")
+                if (host_dir / n).exists()
+            ),
             None,
         )
         if existing_grt is not None:
@@ -401,18 +451,25 @@ def run_design(cfg: dict) -> dict:
         return result
 
     result["status"] = "FAILED_ALL_UTILS"
-    log(f"Density errors persisted down to {MIN_UTIL}% — giving up on {platform}/{design}.")
+    log(
+        f"Density errors persisted down to {MIN_UTIL}% — giving up on {platform}/{design}."
+    )
     return result
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
+
 def main():
     global STOP_ON_ERROR
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--stop-on-error", action="store_true",
-                        help="Pause on unexpected failures instead of skipping silently")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--stop-on-error",
+        action="store_true",
+        help="Pause on unexpected failures instead of skipping silently",
+    )
     args = parser.parse_args()
     STOP_ON_ERROR = args.stop_on_error
 

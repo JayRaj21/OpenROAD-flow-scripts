@@ -29,12 +29,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "models"))
 def _load_model(model_name: str, checkpoint: str, device: torch.device):
     if model_name == "unet":
         from unet import CongestionUNet
+
         model = CongestionUNet(in_channels=4, base_features=32)
     elif model_name == "swin":
         from swin import CongestionSwin
+
         model = CongestionSwin(in_channels=4)
     elif model_name == "gnn":
         from gnn import CongestionGNN
+
         model = CongestionGNN()
     else:
         raise ValueError(f"Unknown model: {model_name}")
@@ -50,12 +53,15 @@ def predict(args):
     print(f"Device: {device}  Model: {args.model}")
 
     feat = np.load(args.features)
-    x = np.stack([
-        feat["cell_density"],
-        feat["macro_density"],
-        feat["pin_density"],
-        feat["fanout_density"],
-    ], axis=0).astype(np.float32)
+    x = np.stack(
+        [
+            feat["cell_density"],
+            feat["macro_density"],
+            feat["pin_density"],
+            feat["fanout_density"],
+        ],
+        axis=0,
+    ).astype(np.float32)
     x_t = torch.from_numpy(x).unsqueeze(0).to(device)
 
     model = _load_model(args.model, args.checkpoint, device)
@@ -90,27 +96,30 @@ def predict(args):
         else:
             out = model(x_t)
 
-    heatmap = out.heatmap.squeeze(0).cpu().numpy()   # (10, H, W)
+    heatmap = out.heatmap.squeeze(0).cpu().numpy()  # (10, H, W)
     hotspot = out.hotspot.squeeze(0).squeeze(0).cpu().numpy()  # (H, W)
-    score   = float(out.score.squeeze().cpu())
+    score = float(out.score.squeeze().cpu())
 
     os.makedirs(args.out_dir, exist_ok=True)
     tag = os.path.basename(args.features).replace("_features.npz", "")
     prefix = os.path.join(args.out_dir, f"{tag}_{args.model}")
 
-    np.save(f"{prefix}_heatmap.npy",  heatmap)
-    np.save(f"{prefix}_hotspot.npy",  hotspot)
+    np.save(f"{prefix}_heatmap.npy", heatmap)
+    np.save(f"{prefix}_hotspot.npy", hotspot)
 
     print(f"Score: {score:.4f}")
     print(f"Hotspot cells: {(hotspot > 0.5).sum()}/{hotspot.size}")
 
     layer_names = [f"metal{i+1}" for i in range(10)]
     for i, name in enumerate(layer_names):
-        print(f"  {name}: mean={heatmap[i].mean()*100:.1f}%  max={heatmap[i].max()*100:.1f}%")
+        print(
+            f"  {name}: mean={heatmap[i].mean()*100:.1f}%  max={heatmap[i].max()*100:.1f}%"
+        )
 
     # Visualise if matplotlib is available
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -140,10 +149,10 @@ def predict(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--features",   required=True)
-    ap.add_argument("--model",      choices=["unet", "swin", "gnn"], default="unet")
+    ap.add_argument("--features", required=True)
+    ap.add_argument("--model", choices=["unet", "swin", "gnn"], default="unet")
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--out-dir",    default="ml/congestion/data")
+    ap.add_argument("--out-dir", default="ml/congestion/data")
     predict(ap.parse_args())
 
 

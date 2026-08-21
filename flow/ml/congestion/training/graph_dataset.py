@@ -63,22 +63,24 @@ class GraphCongestionDataset(Dataset):
         graph_path, labels_path = self.samples[idx]
 
         g = np.load(graph_path, allow_pickle=False)
-        node_features = torch.from_numpy(g["node_features"])   # (N, 6)
-        edge_index    = torch.from_numpy(g["edge_index"])      # (2, E)
+        node_features = torch.from_numpy(g["node_features"])  # (N, 6)
+        edge_index = torch.from_numpy(g["edge_index"])  # (2, E)
         N = node_features.shape[0]
 
         l = np.load(labels_path)
         heatmap = torch.from_numpy(l["heatmap"].astype(np.float32))  # (10, G, G)
-        hotspot = torch.from_numpy(l["hotspot"].astype(np.float32)).unsqueeze(0)  # (1, G, G)
-        score   = torch.tensor([float(l["score"])], dtype=torch.float32)
+        hotspot = torch.from_numpy(l["hotspot"].astype(np.float32)).unsqueeze(
+            0
+        )  # (1, G, G)
+        score = torch.tensor([float(l["score"])], dtype=torch.float32)
 
         return {
             "node_features": node_features,
-            "edge_index":    edge_index,
-            "batch":         torch.zeros(N, dtype=torch.long),
-            "heatmap":       heatmap,
-            "hotspot":       hotspot,
-            "score":         score,
+            "edge_index": edge_index,
+            "batch": torch.zeros(N, dtype=torch.long),
+            "heatmap": heatmap,
+            "hotspot": hotspot,
+            "score": score,
         }
 
 
@@ -93,10 +95,10 @@ def graph_collate(items: list) -> dict:
     """
     node_feats_list = []
     edge_index_list = []
-    batch_list      = []
-    heatmaps        = []
-    hotspots        = []
-    scores          = []
+    batch_list = []
+    heatmaps = []
+    hotspots = []
+    scores = []
 
     node_offset = 0
     for b_idx, item in enumerate(items):
@@ -111,28 +113,29 @@ def graph_collate(items: list) -> dict:
 
     return {
         "node_features": torch.cat(node_feats_list, dim=0),
-        "edge_index":    torch.cat(edge_index_list, dim=1),
-        "batch":         torch.cat(batch_list,      dim=0),
-        "heatmap":       torch.stack(heatmaps),
-        "hotspot":       torch.stack(hotspots),
-        "score":         torch.stack(scores),
+        "edge_index": torch.cat(edge_index_list, dim=1),
+        "batch": torch.cat(batch_list, dim=0),
+        "heatmap": torch.stack(heatmaps),
+        "hotspot": torch.stack(hotspots),
+        "score": torch.stack(scores),
     }
 
 
 def split_graph_dataset(
     dataset: GraphCongestionDataset,
     train_frac: float = 0.7,
-    val_frac:   float = 0.15,
+    val_frac: float = 0.15,
     seed: int = 42,
 ) -> tuple:
     """Split into (train, val, test) subsets."""
-    n     = len(dataset)
-    n_tr  = max(1, int(n * train_frac))
+    n = len(dataset)
+    n_tr = max(1, int(n * train_frac))
     n_val = max(1, int(n * val_frac))
-    n_te  = max(0, n - n_tr - n_val)
+    n_te = max(0, n - n_tr - n_val)
     # Ensure sizes sum to n
     n_tr = n - n_val - n_te
     return random_split(
-        dataset, [n_tr, n_val, n_te],
+        dataset,
+        [n_tr, n_val, n_te],
         generator=torch.Generator().manual_seed(seed),
     )
