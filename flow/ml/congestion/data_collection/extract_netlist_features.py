@@ -50,12 +50,14 @@ from openroad import Design, Tech
 
 def _parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--odb",        required=True,
-                    help="Post-synthesis ODB (1_synth.odb)")
-    ap.add_argument("--out",        required=True,
-                    help="Output *_graph.npz path")
-    ap.add_argument("--fanout-cap", type=int, default=100,
-                    help="Skip nets with fanout above this (clocks/resets). Default 100.")
+    ap.add_argument("--odb", required=True, help="Post-synthesis ODB (1_synth.odb)")
+    ap.add_argument("--out", required=True, help="Output *_graph.npz path")
+    ap.add_argument(
+        "--fanout-cap",
+        type=int,
+        default=100,
+        help="Skip nets with fanout above this (clocks/resets). Default 100.",
+    )
     return ap.parse_args()
 
 
@@ -68,24 +70,24 @@ def _is_sequential(master_name: str) -> bool:
 
 
 def extract_netlist_features(odb_path: str, fanout_cap: int = 100) -> dict:
-    tech   = Tech()
+    tech = Tech()
     design = Design(tech)
     design.readDb(odb_path)
-    block  = design.getBlock()
+    block = design.getBlock()
 
     insts = list(block.getInsts())
     if not insts:
         raise RuntimeError("No instances found — is this a post-synthesis ODB?")
 
     # ── Pass 1: collect per-instance stats ────────────────────────────────
-    inst_index  = {}   # inst → node index
-    areas       = []
-    is_macro    = []
-    is_seq      = []
-    is_buf      = []
-    fanin_list  = []
+    inst_index = {}  # inst → node index
+    areas = []
+    is_macro = []
+    is_seq = []
+    is_buf = []
+    fanin_list = []
     fanout_list = []
-    node_names  = []
+    node_names = []
 
     for idx, inst in enumerate(insts):
         inst_index[inst.getName()] = idx
@@ -98,36 +100,39 @@ def extract_netlist_features(odb_path: str, fanout_cap: int = 100) -> dict:
         is_buf.append(1.0 if (master.isBuf() or master.isInverter()) else 0.0)
         node_names.append(inst.getName())
 
-        fanin  = sum(1 for it in inst.getITerms() if it.isInputSignal())
+        fanin = sum(1 for it in inst.getITerms() if it.isInputSignal())
         fanout = sum(1 for it in inst.getITerms() if it.isOutputSignal())
         fanin_list.append(fanin)
         fanout_list.append(fanout)
 
     N = len(insts)
-    areas      = np.array(areas,       dtype=np.float32)
-    fanin_arr  = np.array(fanin_list,  dtype=np.float32)
+    areas = np.array(areas, dtype=np.float32)
+    fanin_arr = np.array(fanin_list, dtype=np.float32)
     fanout_arr = np.array(fanout_list, dtype=np.float32)
 
     # Normalise to [0, 1]
-    area_norm   = areas    / (areas.max()      + 1e-9)
-    fanin_norm  = fanin_arr  / (fanin_arr.max()  + 1e-9)
-    fanout_norm = fanout_arr / (fanout_arr.max()  + 1e-9)
+    area_norm = areas / (areas.max() + 1e-9)
+    fanin_norm = fanin_arr / (fanin_arr.max() + 1e-9)
+    fanout_norm = fanout_arr / (fanout_arr.max() + 1e-9)
 
-    node_features = np.stack([
-        area_norm,
-        np.array(is_macro,  dtype=np.float32),
-        np.array(is_seq,    dtype=np.float32),
-        np.array(is_buf,    dtype=np.float32),
-        fanin_norm,
-        fanout_norm,
-    ], axis=1)  # (N, 6)
+    node_features = np.stack(
+        [
+            area_norm,
+            np.array(is_macro, dtype=np.float32),
+            np.array(is_seq, dtype=np.float32),
+            np.array(is_buf, dtype=np.float32),
+            fanin_norm,
+            fanout_norm,
+        ],
+        axis=1,
+    )  # (N, 6)
 
     # ── Pass 2: build edges from nets ─────────────────────────────────────
     # For each net: find the driver iterm (output) and all sink iterms (input).
     # Add one directed edge driver→sink per sink.
     # Skip nets above fanout_cap (clocks, resets, scan chains).
-    edge_src     = []
-    edge_dst     = []
+    edge_src = []
+    edge_dst = []
     edge_weights = []
 
     skipped_nets = 0
@@ -138,7 +143,7 @@ def extract_netlist_features(odb_path: str, fanout_cap: int = 100) -> dict:
 
         # Collect driver(s) and sinks
         drivers = []
-        sinks   = []
+        sinks = []
         for it in iterms:
             inst = it.getInst()
             if inst is None:
@@ -171,23 +176,24 @@ def extract_netlist_features(odb_path: str, fanout_cap: int = 100) -> dict:
             "and contains connected nets."
         )
 
-    edge_index  = np.array([edge_src, edge_dst], dtype=np.int64)   # (2, E)
-    edge_weight = np.array(edge_weights,          dtype=np.float32) # (E,)
+    edge_index = np.array([edge_src, edge_dst], dtype=np.int64)  # (2, E)
+    edge_weight = np.array(edge_weights, dtype=np.float32)  # (E,)
 
     num_macros = int(sum(is_macro))
 
     print(f"  Instances : {N}  (macros: {num_macros})")
-    print(f"  Edges     : {edge_index.shape[1]}  "
-          f"(skipped {skipped_nets} high-fanout nets > {fanout_cap})")
-    print(f"  Seq cells : {int(sum(is_seq))}  "
-          f"Buffers: {int(sum(is_buf))}")
+    print(
+        f"  Edges     : {edge_index.shape[1]}  "
+        f"(skipped {skipped_nets} high-fanout nets > {fanout_cap})"
+    )
+    print(f"  Seq cells : {int(sum(is_seq))}  " f"Buffers: {int(sum(is_buf))}")
 
     return {
         "node_features": node_features,
-        "edge_index":    edge_index,
-        "edge_weight":   edge_weight,
-        "node_names":    np.array(node_names),
-        "num_macros":    np.array([num_macros], dtype=np.int64),
+        "edge_index": edge_index,
+        "edge_weight": edge_weight,
+        "node_names": np.array(node_names),
+        "num_macros": np.array([num_macros], dtype=np.int64),
     }
 
 

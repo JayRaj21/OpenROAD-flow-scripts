@@ -67,7 +67,9 @@ def _eval_deep(model, loader, device, grid=64, is_gnn=False, is_diffusion=False)
     totals = {"heatmap_mae": 0, "hotspot_iou": 0, "score_mae": 0, "score_pearson": 0}
     n = 0
     N = grid * grid
-    edge_base = _make_8neighbor_edges(grid, device)  # sparse 8-neighbor, same as training
+    edge_base = _make_8neighbor_edges(
+        grid, device
+    )  # sparse 8-neighbor, same as training
     N_edges = edge_base.shape[1]
 
     with torch.no_grad():
@@ -85,15 +87,18 @@ def _eval_deep(model, loader, device, grid=64, is_gnn=False, is_diffusion=False)
                 y_norm = yy.flatten().repeat(B).to(device)
                 bv = torch.arange(B, device=device).repeat_interleave(N)
                 offsets = torch.arange(B, device=device).unsqueeze(1) * N
-                edges = (edge_base.unsqueeze(0) + offsets.unsqueeze(-1)).reshape(2, B * N_edges)
+                edges = (edge_base.unsqueeze(0) + offsets.unsqueeze(-1)).reshape(
+                    2, B * N_edges
+                )
                 pred = model(feats, edges, bv, x_norm, y_norm)
             elif is_diffusion:
                 pred = model.sample(x, n_samples=1)
             else:
                 pred = model(x)
 
-            m = compute_all(pred, {k: v.to(device) for k, v in batch.items()
-                                   if k != "x"})
+            m = compute_all(
+                pred, {k: v.to(device) for k, v in batch.items() if k != "x"}
+            )
             for k in totals:
                 totals[k] += m[k]
             n += 1
@@ -110,34 +115,35 @@ def _eval_classical(model, data_dir, grid=64):
 
     # Use same 20% test split as deep models (GroupShuffleSplit seed=42)
     from sklearn.model_selection import GroupShuffleSplit
+
     gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
     _, test_idx = next(gss.split(X, groups=design_ids))
 
-    X_test   = X[test_idx]
-    hmap_gt  = y_heatmap[test_idx]
-    hot_gt   = y_hotspot[test_idx].astype(int)
+    X_test = X[test_idx]
+    hmap_gt = y_heatmap[test_idx]
+    hot_gt = y_hotspot[test_idx].astype(int)
 
     pred = model.predict(X_test)
     hmap_flat = pred["heatmap"].reshape(10, -1).T
-    hot_flat  = (pred["hotspot"].flatten() > 0.5).astype(int)
+    hot_flat = (pred["hotspot"].flatten() > 0.5).astype(int)
 
     hmap_mae = mean_absolute_error(hmap_gt, hmap_flat)
-    hot_iou  = jaccard_score(hot_gt, hot_flat, zero_division=0)
+    hot_iou = jaccard_score(hot_gt, hot_flat, zero_division=0)
 
     return {
-        "heatmap_mae":   hmap_mae,
-        "hotspot_iou":   hot_iou,
-        "score_mae":     0.0,     # design-level score not easily split
+        "heatmap_mae": hmap_mae,
+        "hotspot_iou": hot_iou,
+        "score_mae": 0.0,  # design-level score not easily split
         "score_pearson": 0.0,
     }
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir",        default="ml/congestion/data")
-    ap.add_argument("--checkpoint-dir",  default="ml/congestion/checkpoints")
-    ap.add_argument("--grid",   type=int, default=64)
-    ap.add_argument("--batch",  type=int, default=4)
+    ap.add_argument("--data-dir", default="ml/congestion/data")
+    ap.add_argument("--checkpoint-dir", default="ml/congestion/checkpoints")
+    ap.add_argument("--grid", type=int, default=64)
+    ap.add_argument("--batch", type=int, default=4)
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -153,10 +159,36 @@ def main():
 
     # Deep models
     deep_models = [
-        ("U-Net",     "unet_best.pt",      lambda c: _load_deep(CongestionUNet, c, device, in_channels=4, base_features=32), False, False),
-        ("GNN",       "gnn_best.pt",       lambda c: _load_deep(CongestionGNN,  c, device, grid=args.grid), True,  False),
-        ("Swin",      "swin_best.pt",      lambda c: _load_deep(CongestionSwin, c, device, in_channels=4), False, False),
-        ("Diffusion", "diffusion_best.pt", lambda c: _load_deep(CongestionDiffusion, c, device), False, True),
+        (
+            "U-Net",
+            "unet_best.pt",
+            lambda c: _load_deep(
+                CongestionUNet, c, device, in_channels=4, base_features=32
+            ),
+            False,
+            False,
+        ),
+        (
+            "GNN",
+            "gnn_best.pt",
+            lambda c: _load_deep(CongestionGNN, c, device, grid=args.grid),
+            True,
+            False,
+        ),
+        (
+            "Swin",
+            "swin_best.pt",
+            lambda c: _load_deep(CongestionSwin, c, device, in_channels=4),
+            False,
+            False,
+        ),
+        (
+            "Diffusion",
+            "diffusion_best.pt",
+            lambda c: _load_deep(CongestionDiffusion, c, device),
+            False,
+            True,
+        ),
     ]
 
     for name, fname, loader_fn, is_gnn, is_diff in deep_models:
@@ -166,23 +198,30 @@ def main():
             continue
         print(f"Evaluating {name}...")
         model = loader_fn(path)
-        results[name] = _eval_deep(model, loader, device,
-                                   grid=args.grid, is_gnn=is_gnn, is_diffusion=is_diff)
+        results[name] = _eval_deep(
+            model, loader, device, grid=args.grid, is_gnn=is_gnn, is_diffusion=is_diff
+        )
 
     # Ensemble (no checkpoint — uses loaded U-Net + Swin)
     if "U-Net" in results and "Swin" in results:
         print("Evaluating Ensemble (U-Net + Swin average)...")
-        ens = CongestionEnsemble(
-            mode="average",
-            unet_checkpoint=ckpt("unet_best.pt"),
-            swin_checkpoint=ckpt("swin_best.pt"),
-            device=device,
-        ).to(device).eval()
+        ens = (
+            CongestionEnsemble(
+                mode="average",
+                unet_checkpoint=ckpt("unet_best.pt"),
+                swin_checkpoint=ckpt("swin_best.pt"),
+                device=device,
+            )
+            .to(device)
+            .eval()
+        )
         results["Ensemble"] = _eval_deep(ens, loader, device)
 
     # Classical models
-    for name, fname, cls in [("RF", "rf.pkl", RandomForestCongestion),
-                              ("XGBoost", "xgb.pkl", XGBoostCongestion)]:
+    for name, fname, cls in [
+        ("RF", "rf.pkl", RandomForestCongestion),
+        ("XGBoost", "xgb.pkl", XGBoostCongestion),
+    ]:
         path = ckpt(fname)
         if not os.path.exists(path):
             print(f"  {name}: checkpoint not found ({path}), skipping")

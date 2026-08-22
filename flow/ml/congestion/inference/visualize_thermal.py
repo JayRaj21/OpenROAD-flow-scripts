@@ -20,6 +20,7 @@ import os
 import sys
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,11 +32,12 @@ from unet import CongestionUNet
 
 
 def _parse_args():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--data-dir",   default="ml/congestion/data")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--data-dir", default="ml/congestion/data")
     ap.add_argument("--checkpoint", default="ml/congestion/checkpoints/thermal_best.pt")
-    ap.add_argument("--out",        default="thermal_report.html")
+    ap.add_argument("--out", default="thermal_report.html")
     ap.add_argument("--base-features", type=int, default=32)
     return ap.parse_args()
 
@@ -44,7 +46,9 @@ def _arr_to_b64(arr, cmap="hot", vmin=0, vmax=1, colorbar_label=None):
     """Render array to a base64 PNG, optionally with a labelled colorbar."""
     if colorbar_label is not None:
         fig, (ax, cax) = plt.subplots(
-            1, 2, figsize=(3.0, 2.5),
+            1,
+            2,
+            figsize=(3.0, 2.5),
             gridspec_kw={"width_ratios": [10, 0.5], "wspace": 0.05},
             layout="constrained",
         )
@@ -72,21 +76,22 @@ def _arr_to_b64(arr, cmap="hot", vmin=0, vmax=1, colorbar_label=None):
 
 
 def _platform(label):
-    if label.startswith("asap7"):      return "asap7"
-    if label.startswith("nangate45"):  return "nangate45"
+    if label.startswith("asap7"):
+        return "asap7"
+    if label.startswith("nangate45"):
+        return "nangate45"
     return "sky130hd"
 
 
 def collect(data_dir, model, device):
     thermal_files = glob.glob(os.path.join(data_dir, "*_thermal_labels.npz"))
     labels = sorted(
-        os.path.basename(p).replace("_thermal_labels.npz", "")
-        for p in thermal_files
+        os.path.basename(p).replace("_thermal_labels.npz", "") for p in thermal_files
     )
 
     rows = []
     for label in labels:
-        feat_path  = os.path.join(data_dir, f"{label}_features.npz")
+        feat_path = os.path.join(data_dir, f"{label}_features.npz")
         therm_path = os.path.join(data_dir, f"{label}_thermal_labels.npz")
         if not os.path.exists(feat_path):
             print(f"  [skip] {label} — no features file")
@@ -97,9 +102,15 @@ def collect(data_dir, model, device):
         blurred = gaussian_filter(cell, sigma=3.0)
         b_max = blurred.max()
         blurred = blurred / b_max if b_max > 0 else blurred
-        x = np.stack([cell, feat["macro_density"],
-                      feat["pin_density"], feat["fanout_density"],
-                      blurred]).astype(np.float32)
+        x = np.stack(
+            [
+                cell,
+                feat["macro_density"],
+                feat["pin_density"],
+                feat["fanout_density"],
+                blurred,
+            ]
+        ).astype(np.float32)
         x_t = torch.from_numpy(x).unsqueeze(0).to(device)
 
         t = np.load(therm_path)["thermal_map"].astype(np.float32)
@@ -110,7 +121,7 @@ def collect(data_dir, model, device):
         with torch.no_grad():
             pred = model(x_t).heatmap[0, 0].cpu().numpy()
 
-        mae  = float(np.abs(pred - t_norm).mean())
+        mae = float(np.abs(pred - t_norm).mean())
         with np.errstate(invalid="ignore"):
             corr = float(np.corrcoef(pred.ravel(), t_norm.ravel())[0, 1])
 
@@ -118,21 +129,25 @@ def collect(data_dir, model, device):
         # This is an approximation: assumes model output spans the same range as GT.
         pred_c = pred * (t_hi - t_lo) + t_lo
 
-        rows.append({
-            "label":  label,
-            "corr":   round(corr, 3),
-            "mae":    round(mae, 4),
-            "t_min":  round(t_lo, 1),
-            "t_max":  round(t_hi, 1),
-            "delta":  round(t_hi - t_lo, 2),
-            "cell":   _arr_to_b64(cell, "Blues", 0, float(cell.max()) or 1),
-            # Ground truth with °C colorbar so absolute temperatures are readable.
-            "gt":     _arr_to_b64(t, "hot", t_lo, t_hi, colorbar_label="°C"),
-            # Predicted in °C (rescaled from normalised output via GT range).
-            "pred":   _arr_to_b64(pred_c, "hot", t_lo, t_hi, colorbar_label="°C"),
-        })
-        print(f"  {label:45s}  corr={corr:+.3f}  mae={mae:.3f}  "
-              f"{t_lo:.0f}–{t_hi:.0f}°C")
+        rows.append(
+            {
+                "label": label,
+                "corr": round(corr, 3),
+                "mae": round(mae, 4),
+                "t_min": round(t_lo, 1),
+                "t_max": round(t_hi, 1),
+                "delta": round(t_hi - t_lo, 2),
+                "cell": _arr_to_b64(cell, "Blues", 0, float(cell.max()) or 1),
+                # Ground truth with °C colorbar so absolute temperatures are readable.
+                "gt": _arr_to_b64(t, "hot", t_lo, t_hi, colorbar_label="°C"),
+                # Predicted in °C (rescaled from normalised output via GT range).
+                "pred": _arr_to_b64(pred_c, "hot", t_lo, t_hi, colorbar_label="°C"),
+            }
+        )
+        print(
+            f"  {label:45s}  corr={corr:+.3f}  mae={mae:.3f}  "
+            f"{t_lo:.0f}–{t_hi:.0f}°C"
+        )
 
     return rows
 
@@ -271,8 +286,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    model = CongestionUNet(in_channels=5, base_features=args.base_features,
-                           num_heatmap_layers=1).to(device)
+    model = CongestionUNet(
+        in_channels=5, base_features=args.base_features, num_heatmap_layers=1
+    ).to(device)
     state = torch.load(args.checkpoint, map_location=device)
     model.load_state_dict(state)
     model.eval()

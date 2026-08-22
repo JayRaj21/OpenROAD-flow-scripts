@@ -65,21 +65,30 @@ POWER_DENSITY_W_PER_MM2 = 10.0
 
 def _parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--odb", required=True,
-                    help="Placed ODB (3_place.odb or 5_1_grt.odb)")
-    ap.add_argument("--out", required=True,
-                    help="Output .npz path for thermal labels")
-    ap.add_argument("--grid", type=int, default=64,
-                    help="Output grid resolution (default 64 → 64x64). "
-                         "HotSpot may use a coarser grid internally for small dies.")
-    ap.add_argument("--power-density", type=float, default=POWER_DENSITY_W_PER_MM2,
-                    help=f"Power density in W/mm² (default {POWER_DENSITY_W_PER_MM2}). "
-                         "Total power = density × die_area, keeping temperatures "
-                         "physically consistent across process nodes.")
+    ap.add_argument(
+        "--odb", required=True, help="Placed ODB (3_place.odb or 5_1_grt.odb)"
+    )
+    ap.add_argument("--out", required=True, help="Output .npz path for thermal labels")
+    ap.add_argument(
+        "--grid",
+        type=int,
+        default=64,
+        help="Output grid resolution (default 64 → 64x64). "
+        "HotSpot may use a coarser grid internally for small dies.",
+    )
+    ap.add_argument(
+        "--power-density",
+        type=float,
+        default=POWER_DENSITY_W_PER_MM2,
+        help=f"Power density in W/mm² (default {POWER_DENSITY_W_PER_MM2}). "
+        "Total power = density × die_area, keeping temperatures "
+        "physically consistent across process nodes.",
+    )
     return ap.parse_args()
 
 
 # ── Phase 1: power grid from ODB ───────────────────────────────────────────
+
 
 def _dbu_to_m(val: float, dbu_per_um: float) -> float:
     """Convert OpenDB database units → metres."""
@@ -136,7 +145,9 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
     if total_area > 0:
         power_grid = area_grid / total_area * total_power_w
     else:
-        power_grid = np.ones((grid, grid), dtype=np.float64) * total_power_w / (grid * grid)
+        power_grid = (
+            np.ones((grid, grid), dtype=np.float64) * total_power_w / (grid * grid)
+        )
 
     # Add power floor: prevents zero-power cells from creating singular rows.
     # Floor = POWER_FLOOR_FRAC * total / N_cells so it's small relative to peaks.
@@ -148,16 +159,18 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
     # Die bounds in metres for HotSpot
     die_x0_m = _dbu_to_m(x0_dbu, dbu_per_um)
     die_y0_m = _dbu_to_m(y0_dbu, dbu_per_um)
-    die_w_m  = _dbu_to_m(die_w_dbu, dbu_per_um)
-    die_h_m  = _dbu_to_m(die_h_dbu, dbu_per_um)
+    die_w_m = _dbu_to_m(die_w_dbu, dbu_per_um)
+    die_h_m = _dbu_to_m(die_h_dbu, dbu_per_um)
 
     return power_grid, (die_x0_m, die_y0_m, die_w_m, die_h_m)
 
 
 # ── Phase 2: write HotSpot input files ─────────────────────────────────────
 
-def write_hotspot_inputs(power_grid: np.ndarray, die_bounds_m: tuple,
-                         grid: int, work_dir: Path) -> tuple:
+
+def write_hotspot_inputs(
+    power_grid: np.ndarray, die_bounds_m: tuple, grid: int, work_dir: Path
+) -> tuple:
     """
     Write a .flp (floorplan) and .ptrace (power trace) for HotSpot.
 
@@ -181,23 +194,27 @@ def write_hotspot_inputs(power_grid: np.ndarray, die_bounds_m: tuple,
     with open(flp_path, "w") as f:
         for gy in range(grid):
             for gx in range(grid):
-                name  = f"u{gy}_{gx}"
+                name = f"u{gy}_{gx}"
                 x_pos = die_x0 + gx * cell_w
                 y_pos = die_y0 + gy * cell_h
-                f.write(f"{name}\t{cell_w:.6e}\t{cell_h:.6e}"
-                        f"\t{x_pos:.6e}\t{y_pos:.6e}\n")
+                f.write(
+                    f"{name}\t{cell_w:.6e}\t{cell_h:.6e}"
+                    f"\t{x_pos:.6e}\t{y_pos:.6e}\n"
+                )
 
     ptrace_path = work_dir / "design.ptrace"
     with open(ptrace_path, "w") as f:
         f.write("\t".join(names) + "\n")
-        powers = [f"{power_grid[gy, gx]:.6e}"
-                  for gy in range(grid) for gx in range(grid)]
+        powers = [
+            f"{power_grid[gy, gx]:.6e}" for gy in range(grid) for gx in range(grid)
+        ]
         f.write("\t".join(powers) + "\n")
 
     return flp_path, ptrace_path
 
 
 # ── Phase 3: run HotSpot ───────────────────────────────────────────────────
+
 
 def run_hotspot(flp_path: Path, ptrace_path: Path, work_dir: Path) -> Path:
     """
@@ -211,10 +228,14 @@ def run_hotspot(flp_path: Path, ptrace_path: Path, work_dir: Path) -> Path:
     steady_path = work_dir / "design.steady"
     cmd = [
         "hotspot",
-        "-f", str(flp_path),
-        "-p", str(ptrace_path),
-        "-steady_file", str(steady_path),
-        "-model_type", "block",
+        "-f",
+        str(flp_path),
+        "-p",
+        str(ptrace_path),
+        "-steady_file",
+        str(steady_path),
+        "-model_type",
+        "block",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(work_dir))
     if result.returncode != 0:
@@ -225,6 +246,7 @@ def run_hotspot(flp_path: Path, ptrace_path: Path, work_dir: Path) -> Path:
 
 
 # ── Phase 4: parse HotSpot output ──────────────────────────────────────────
+
 
 def parse_steady(steady_path: Path, grid: int) -> np.ndarray:
     """
@@ -253,6 +275,7 @@ def parse_steady(steady_path: Path, grid: int) -> np.ndarray:
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
+
 def main():
     args = _parse_args()
     target_grid = args.grid
@@ -277,12 +300,16 @@ def main():
     hs_grid = _adaptive_hotspot_grid(die_w_m, die_h_m, target_grid)
 
     if hs_grid < target_grid:
-        print(f"[thermal] Die {die_w_m*1e3:.2f}×{die_h_m*1e3:.2f} mm is small — "
-              f"using {hs_grid}×{hs_grid} HotSpot grid (min cell ≥{MIN_CELL_UM} µm), "
-              f"upsampling to {target_grid}×{target_grid} for output")
+        print(
+            f"[thermal] Die {die_w_m*1e3:.2f}×{die_h_m*1e3:.2f} mm is small — "
+            f"using {hs_grid}×{hs_grid} HotSpot grid (min cell ≥{MIN_CELL_UM} µm), "
+            f"upsampling to {target_grid}×{target_grid} for output"
+        )
     else:
-        print(f"[thermal] Die: {die_w_m*1e3:.2f}×{die_h_m*1e3:.2f} mm  "
-              f"({die_area_mm2:.4f} mm²)  Grid: {hs_grid}×{hs_grid}")
+        print(
+            f"[thermal] Die: {die_w_m*1e3:.2f}×{die_h_m*1e3:.2f} mm  "
+            f"({die_area_mm2:.4f} mm²)  Grid: {hs_grid}×{hs_grid}"
+        )
 
     power_grid, die_bounds_m = build_power_grid(block, hs_grid, total_power_w)
     print(f"[thermal] Total power: {power_grid.sum()*1e3:.1f} mW")
@@ -292,13 +319,16 @@ def main():
         flp_path, ptrace_path = write_hotspot_inputs(
             power_grid, die_bounds_m, hs_grid, work_dir
         )
-        print(f"[thermal] Running HotSpot ({hs_grid}×{hs_grid} = {hs_grid**2} blocks)...")
+        print(
+            f"[thermal] Running HotSpot ({hs_grid}×{hs_grid} = {hs_grid**2} blocks)..."
+        )
         steady_path = run_hotspot(flp_path, ptrace_path, work_dir)
         temp_map_hs = parse_steady(steady_path, hs_grid)
 
     # Upsample HotSpot output to target_grid if a coarser grid was used.
     if hs_grid < target_grid:
         from scipy.ndimage import zoom
+
         scale = target_grid / hs_grid
         temp_map = zoom(temp_map_hs, scale, order=1).astype(np.float32)
         # Also upsample power_grid so saved arrays are always (target_grid, target_grid)
@@ -307,9 +337,11 @@ def main():
         temp_map = temp_map_hs
         power_grid_out = power_grid.astype(np.float32)
 
-    print(f"[thermal] Temperature: min={temp_map.min():.1f}°C  "
-          f"max={temp_map.max():.1f}°C  "
-          f"peak-to-peak={temp_map.max()-temp_map.min():.1f}°C")
+    print(
+        f"[thermal] Temperature: min={temp_map.min():.1f}°C  "
+        f"max={temp_map.max():.1f}°C  "
+        f"peak-to-peak={temp_map.max()-temp_map.min():.1f}°C"
+    )
 
     np.savez(
         args.out,

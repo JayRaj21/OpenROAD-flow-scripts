@@ -38,10 +38,10 @@ from heads import HeatmapHead, HotspotHead, ScoreHead
 
 CongestionOutput = namedtuple("CongestionOutput", ["heatmap", "hotspot", "score"])
 
-NODE_FEATURES = 6   # area_norm, is_macro, is_seq, is_buf, fanin_norm, fanout_norm
-EMBED_DIM     = 64
-DECODER_DIM   = 64
-SEED_SIZE     = 4   # spatial seed is SEED_SIZE × SEED_SIZE before upsampling
+NODE_FEATURES = 6  # area_norm, is_macro, is_seq, is_buf, fanin_norm, fanout_norm
+EMBED_DIM = 64
+DECODER_DIM = 64
+SEED_SIZE = 4  # spatial seed is SEED_SIZE × SEED_SIZE before upsampling
 
 
 def _build_decoder(decoder_dim: int, out_channels: int, grid: int) -> nn.Sequential:
@@ -53,8 +53,9 @@ def _build_decoder(decoder_dim: int, out_channels: int, grid: int) -> nn.Sequent
     checkerboard artefacts. Each stage doubles the spatial resolution.
     """
     n_steps = int(math.log2(grid // SEED_SIZE))
-    assert SEED_SIZE * (2 ** n_steps) == grid, \
-        f"grid={grid} must be SEED_SIZE={SEED_SIZE} × a power of 2"
+    assert (
+        SEED_SIZE * (2**n_steps) == grid
+    ), f"grid={grid} must be SEED_SIZE={SEED_SIZE} × a power of 2"
 
     layers = []
     in_ch = decoder_dim
@@ -80,11 +81,11 @@ class CongestionGNN(nn.Module):
         spatial_channels: int = 32,  # channels fed into the output heads
     ):
         super().__init__()
-        self.grid        = grid
+        self.grid = grid
         self.decoder_dim = decoder_dim
 
         # ── Encoder ───────────────────────────────────────────────────────
-        self.proj  = nn.Linear(NODE_FEATURES, embed_dim)
+        self.proj = nn.Linear(NODE_FEATURES, embed_dim)
 
         self.sage1 = SAGEConv(embed_dim, embed_dim)
         self.norm1 = LayerNorm(embed_dim)
@@ -107,13 +108,13 @@ class CongestionGNN(nn.Module):
         # ── Output heads (identical to U-Net for fair comparison) ─────────
         self.heatmap_head = HeatmapHead(spatial_channels, num_layers=10)
         self.hotspot_head = HotspotHead(spatial_channels)
-        self.score_head   = ScoreHead(spatial_channels)
+        self.score_head = ScoreHead(spatial_channels)
 
     def forward(
         self,
-        x: torch.Tensor,          # (N, 6)  node features
+        x: torch.Tensor,  # (N, 6)  node features
         edge_index: torch.Tensor,  # (2, E)  COO edges
-        batch: torch.Tensor,       # (N,)    batch assignment per node
+        batch: torch.Tensor,  # (N,)    batch assignment per node
     ) -> CongestionOutput:
 
         # Encode
@@ -123,12 +124,12 @@ class CongestionGNN(nn.Module):
         h = F.relu(self.norm3(self.sage3(h, edge_index)))
 
         # Global pool: mean + max → graph fingerprint
-        h_mean = global_mean_pool(h, batch)          # (B, embed_dim)
-        h_max  = global_max_pool(h, batch)           # (B, embed_dim)
-        h_global = torch.cat([h_mean, h_max], dim=1) # (B, 2*embed_dim)
+        h_mean = global_mean_pool(h, batch)  # (B, embed_dim)
+        h_max = global_max_pool(h, batch)  # (B, embed_dim)
+        h_global = torch.cat([h_mean, h_max], dim=1)  # (B, 2*embed_dim)
 
         # Project to spatial seed
-        seed = self.seed_mlp(h_global)                       # (B, D*S*S)
+        seed = self.seed_mlp(h_global)  # (B, D*S*S)
         B = seed.shape[0]
         seed = seed.view(B, self.decoder_dim, SEED_SIZE, SEED_SIZE)
 

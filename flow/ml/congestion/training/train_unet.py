@@ -42,10 +42,20 @@ def train(args):
     train_set, val_set, _ = split_dataset(dataset)
     print(f"Train: {len(train_set)}  Val: {len(val_set)}")
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
-                              num_workers=2, pin_memory=True)
-    val_loader   = DataLoader(val_set,   batch_size=args.batch_size, shuffle=False,
-                              num_workers=2, pin_memory=True)
+    train_loader = DataLoader(
+        train_set,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        val_set,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+    )
 
     model = CongestionUNet(in_channels=4, base_features=32).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -72,15 +82,20 @@ def train(args):
 
         model.eval()
         val_loss = 0.0
-        val_metrics = {"heatmap_mae": 0, "hotspot_iou": 0,
-                       "score_mae": 0, "score_pearson": 0}
+        val_metrics = {
+            "heatmap_mae": 0,
+            "hotspot_iou": 0,
+            "score_mae": 0,
+            "score_pearson": 0,
+        }
         with torch.no_grad():
             for batch in val_loader:
                 x = batch["x"].to(device)
                 pred = model(x)
                 val_loss += _loss(pred, batch, device).item()
-                m = compute_all(pred, {k: v.to(device) for k, v in batch.items()
-                                       if k != "x"})
+                m = compute_all(
+                    pred, {k: v.to(device) for k, v in batch.items() if k != "x"}
+                )
                 for k in val_metrics:
                     val_metrics[k] += m[k]
         val_loss /= len(val_loader)
@@ -104,18 +119,17 @@ def train(args):
             torch.save(model.state_dict(), ckpt)
             print(f"  -> saved {ckpt}")
 
-    torch.save(model.state_dict(),
-               os.path.join(args.checkpoint_dir, "unet_last.pt"))
+    torch.save(model.state_dict(), os.path.join(args.checkpoint_dir, "unet_last.pt"))
     print(f"Training complete. Best val loss: {best_val_loss:.4f}")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir",       default="ml/congestion/data")
+    ap.add_argument("--data-dir", default="ml/congestion/data")
     ap.add_argument("--checkpoint-dir", default="ml/congestion/checkpoints")
-    ap.add_argument("--epochs",  type=int,   default=100)
+    ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--batch-size", type=int, default=8)
-    ap.add_argument("--lr",      type=float, default=1e-3)
+    ap.add_argument("--lr", type=float, default=1e-3)
     train(ap.parse_args())
 
 

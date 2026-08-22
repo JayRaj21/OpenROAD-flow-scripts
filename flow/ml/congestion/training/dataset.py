@@ -39,52 +39,61 @@ class CongestionDataset(Dataset):
     def __getitem__(self, idx):
         feat_path, label_path = self.samples[idx]
 
-        feat  = np.load(feat_path)
+        feat = np.load(feat_path)
         label = np.load(label_path)
 
         # Stack the four input channels: (4, H, W)
-        x = np.stack([
-            feat["cell_density"],
-            feat["macro_density"],
-            feat["pin_density"],
-            feat["fanout_density"],
-        ], axis=0).astype(np.float32)
+        x = np.stack(
+            [
+                feat["cell_density"],
+                feat["macro_density"],
+                feat["pin_density"],
+                feat["fanout_density"],
+            ],
+            axis=0,
+        ).astype(np.float32)
 
-        heatmap = label["heatmap"].astype(np.float32)   # (10, H, W)
-        hotspot = label["hotspot"].astype(np.float32)   # (H, W)
-        score   = float(label["score"])
+        heatmap = label["heatmap"].astype(np.float32)  # (10, H, W)
+        hotspot = label["hotspot"].astype(np.float32)  # (H, W)
+        score = float(label["score"])
 
         if self.augment:
             x, heatmap, hotspot = self._augment(x, heatmap, hotspot)
 
         return {
-            "x":       torch.from_numpy(x),
+            "x": torch.from_numpy(x),
             "heatmap": torch.from_numpy(heatmap),
             "hotspot": torch.from_numpy(hotspot).unsqueeze(0),  # (1, H, W)
-            "score":   torch.tensor([score], dtype=torch.float32),
+            "score": torch.tensor([score], dtype=torch.float32),
         }
 
     @staticmethod
     def _augment(x, heatmap, hotspot):
         """Random horizontal/vertical flip — preserves physical validity."""
         if np.random.rand() > 0.5:
-            x       = np.flip(x,       axis=2).copy()
+            x = np.flip(x, axis=2).copy()
             heatmap = np.flip(heatmap, axis=2).copy()
             hotspot = np.flip(hotspot, axis=1).copy()
         if np.random.rand() > 0.5:
-            x       = np.flip(x,       axis=1).copy()
+            x = np.flip(x, axis=1).copy()
             heatmap = np.flip(heatmap, axis=1).copy()
             hotspot = np.flip(hotspot, axis=0).copy()
         return x, heatmap, hotspot
 
 
-def split_dataset(dataset: CongestionDataset, val_frac: float = 0.15,
-                  test_frac: float = 0.15, seed: int = 42):
+def split_dataset(
+    dataset: CongestionDataset,
+    val_frac: float = 0.15,
+    test_frac: float = 0.15,
+    seed: int = 42,
+):
     """Return (train, val, test) subsets."""
     from torch.utils.data import random_split
-    n     = len(dataset)
-    n_val  = max(1, int(n * val_frac))
+
+    n = len(dataset)
+    n_val = max(1, int(n * val_frac))
     n_test = max(1, int(n * test_frac))
     n_train = n - n_val - n_test
-    return random_split(dataset, [n_train, n_val, n_test],
-                        generator=torch.Generator().manual_seed(seed))
+    return random_split(
+        dataset, [n_train, n_val, n_test], generator=torch.Generator().manual_seed(seed)
+    )
