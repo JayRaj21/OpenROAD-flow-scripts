@@ -22,6 +22,7 @@ import os
 try:
     import openroad
     from openroad import Tech, Design
+
     HAS_OPENROAD = True
 except ImportError:
     HAS_OPENROAD = False
@@ -117,7 +118,9 @@ def extract_graph(odb_path: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract netlist graph from synthesis ODB")
+    parser = argparse.ArgumentParser(
+        description="Extract netlist graph from synthesis ODB"
+    )
     parser.add_argument("--odb", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
@@ -132,7 +135,9 @@ def main():
         num_macros=np.array([num_macros]),
     )
     print(f"Saved graph -> {args.out}")
-    print(f"  Nodes: {len(node_feat)}  Edges: {edge_index.shape[1]}  Macros: {num_macros}")
+    print(
+        f"  Nodes: {len(node_feat)}  Edges: {edge_index.shape[1]}  Macros: {num_macros}"
+    )
 
 
 if __name__ == "__main__":

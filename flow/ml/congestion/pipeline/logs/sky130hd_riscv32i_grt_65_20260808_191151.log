@@ -1,0 +1,100 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 10 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.1, build e9452d6'
++ [[ Docker version 29.7.1, build e9452d6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 10 -gt 0 ]]
++ CMD_STR='make grt DESIGN=riscv32i PLATFORM=sky130hd CORE_UTILIZATION=65 RESULTS_DIR=/work/results/sky130hd/riscv32i/pipeline_65 OBJECTS_DIR=/work/objects/sky130hd/riscv32i/pipeline_65 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/sky130hd/pdn.tcl PLACE_DENSITY_LB_ADDON=0.0 -j16'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;make grt DESIGN=riscv32i PLATFORM=sky130hd CORE_UTILIZATION=65 RESULTS_DIR=/work/results/sky130hd/riscv32i/pipeline_65 OBJECTS_DIR=/work/objects/sky130hd/riscv32i/pipeline_65 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/sky130hd/pdn.tcl PLACE_DENSITY_LB_ADDON=0.0 -j16'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ make grt DESIGN=riscv32i PLATFORM=sky130hd CORE_UTILIZATION=65 RESULTS_DIR=/work/results/sky130hd/riscv32i/pipeline_65 OBJECTS_DIR=/work/objects/sky130hd/riscv32i/pipeline_65 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/sky130hd/pdn.tcl PLACE_DENSITY_LB_ADDON=0.0 -j16
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 3_5_place_dp detail_place
+Running detail_place.tcl, stage 3_5_place_dp
+read_liberty /OpenROAD-flow-scripts/flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+read_db /work/results/sky130hd/riscv32i/pipeline_65/3_4_place_resized.odb
+read_sdc /work/results/sky130hd/riscv32i/pipeline_65/2_floorplan.sdc
+source /OpenROAD-flow-scripts/flow/platforms/sky130hd/setRC.tcl
+detailed_placement
+[INFO DPL-0006] Core area: 4384.20 um^2, Instances area: 4262.84 um^2, Utilization: 97.2%
+[INFO DPL-0005] Diamond search max displacement: +/- 500 sites horizontally, +/- 100 rows vertically.
+[INFO DPL-1101] Legalizing using diamond search.
+Movements Summary
+---------------------------------------
+Total cells:                     545
+Diamond Move Success:            542 ( 99.45%)
+Diamond Move Failure:              3
+Rip-up and replace Success:        0 (  0.00% of diamond failures)
+Rip-up and replace Failure:        3
+Total Placement Failures:          6
+---------------------------------------
+[INFO DPL-0034] Detailed placement failed on the following 6 instances:
+[INFO DPL-0035]  dpath.b_reg.out\[12\]$_DFFE_PP_
+[INFO DPL-0035]  dpath.b_reg.out\[13\]$_DFFE_PP_
+[INFO DPL-0035]  dpath.b_reg.out\[14\]$_DFFE_PP_
+[INFO DPL-0035]  dpath.a_reg.out\[15\]$_DFFE_PP_
+[INFO DPL-0035]  dpath.b_reg.out\[5\]$_DFFE_PP_
+[INFO DPL-0035]  dpath.b_reg.out\[6\]$_DFFE_PP_
+[ERROR DPL-0036] Detailed placement failed inside DPL.
+write_db /work/results/sky130hd/riscv32i/pipeline_65/3_5_place_dp-failed.odb
+Error: detail_place.tcl, 40 DPL-0036
+Elapsed time: 0:00.30[h:]min:sec. CPU time: user 0.25 sys 0.04 (99%). Peak memory: 121392KB.
+make[1]: *** [Makefile:472: do-3_5_place_dp] Error 1
+make: *** [Makefile:472: /work/results/sky130hd/riscv32i/pipeline_65/3_5_place_dp.odb] Error 2

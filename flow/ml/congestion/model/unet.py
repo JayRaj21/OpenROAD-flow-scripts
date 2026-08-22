@@ -49,7 +49,9 @@ class Up(nn.Module):
     def forward(self, x, skip):
         x = self.up(x)
         if x.shape != skip.shape:
-            x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=False)
+            x = F.interpolate(
+                x, size=skip.shape[2:], mode="bilinear", align_corners=False
+            )
         x = torch.cat([skip, x], dim=1)
         return self.conv(x)
 
@@ -65,7 +67,9 @@ class CongestionUNet(nn.Module):
         base_features: Width of the first encoder block; doubles at each depth
     """
 
-    def __init__(self, in_channels: int = 1, out_channels: int = 10, base_features: int = 32):
+    def __init__(
+        self, in_channels: int = 1, out_channels: int = 10, base_features: int = 32
+    ):
         super().__init__()
         f = base_features
 

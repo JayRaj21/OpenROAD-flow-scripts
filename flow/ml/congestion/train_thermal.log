@@ -1,0 +1,187 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 6 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs-ml:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.2, build a7dcaa6'
++ [[ Docker version 29.7.2, build a7dcaa6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=-ti
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 6 -gt 0 ]]
++ CMD_STR='python3 /work/ml/congestion/training/train_thermal.py --data-dir /work/ml/congestion/data --checkpoint-dir /work/ml/congestion/checkpoints'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -ti -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs-ml:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;python3 /work/ml/congestion/training/train_thermal.py --data-dir /work/ml/congestion/data --checkpoint-dir /work/ml/congestion/checkpoints'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ python3 /work/ml/congestion/training/train_thermal.py --data-dir /work/ml/congestion/data --checkpoint-dir /work/ml/congestion/checkpoints
+Device: cpu
+Dataset: 48 samples
+  Per-sample T range: 87.0°C – 147.9°C  (each sample normalised independently)
+  Train: 33  Val: 7  Test: 8
+/usr/local/lib/python3.10/dist-packages/torch/utils/data/dataloader.py:1102: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Epoch   1/100  train_mse=0.07062  val_mse=0.07659  val_mae=0.2371 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch   2/100  train_mse=0.06294  val_mse=0.06981  val_mae=0.2254 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch   3/100  train_mse=0.06013  val_mse=0.06950  val_mae=0.2207 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch   4/100  train_mse=0.05097  val_mse=0.07406  val_mae=0.2245 (norm)
+Epoch   5/100  train_mse=0.05785  val_mse=0.09719  val_mae=0.2509 (norm)
+Epoch   6/100  train_mse=0.05195  val_mse=0.07606  val_mae=0.2233 (norm)
+Epoch   7/100  train_mse=0.04771  val_mse=0.08963  val_mae=0.2406 (norm)
+Epoch   8/100  train_mse=0.04714  val_mse=0.06958  val_mae=0.2140 (norm)
+Epoch   9/100  train_mse=0.04851  val_mse=0.04384  val_mae=0.1736 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  10/100  train_mse=0.04458  val_mse=0.06349  val_mae=0.2065 (norm)
+Epoch  11/100  train_mse=0.04630  val_mse=0.05028  val_mae=0.1851 (norm)
+Epoch  12/100  train_mse=0.05145  val_mse=0.04927  val_mae=0.1850 (norm)
+Epoch  13/100  train_mse=0.05055  val_mse=0.04369  val_mae=0.1752 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  14/100  train_mse=0.05393  val_mse=0.05503  val_mae=0.1930 (norm)
+Epoch  15/100  train_mse=0.04403  val_mse=0.05002  val_mae=0.1880 (norm)
+Epoch  16/100  train_mse=0.05157  val_mse=0.05006  val_mae=0.1867 (norm)
+Epoch  17/100  train_mse=0.04879  val_mse=0.05271  val_mae=0.1915 (norm)
+Epoch  18/100  train_mse=0.04395  val_mse=0.04744  val_mae=0.1790 (norm)
+Epoch  19/100  train_mse=0.04411  val_mse=0.05218  val_mae=0.1958 (norm)
+Epoch  20/100  train_mse=0.06654  val_mse=0.04846  val_mae=0.1810 (norm)
+Epoch  21/100  train_mse=0.04574  val_mse=0.05666  val_mae=0.1997 (norm)
+Epoch  22/100  train_mse=0.04474  val_mse=0.05478  val_mae=0.1965 (norm)
+Epoch  23/100  train_mse=0.04653  val_mse=0.05196  val_mae=0.1921 (norm)
+Epoch  24/100  train_mse=0.04003  val_mse=0.05393  val_mae=0.1939 (norm)
+Epoch  25/100  train_mse=0.04518  val_mse=0.04543  val_mae=0.1768 (norm)
+Epoch  26/100  train_mse=0.05884  val_mse=0.04943  val_mae=0.1859 (norm)
+Epoch  27/100  train_mse=0.04899  val_mse=0.04323  val_mae=0.1691 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  28/100  train_mse=0.03830  val_mse=0.03979  val_mae=0.1642 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  29/100  train_mse=0.04128  val_mse=0.04363  val_mae=0.1702 (norm)
+Epoch  30/100  train_mse=0.04838  val_mse=0.04759  val_mae=0.1803 (norm)
+Epoch  31/100  train_mse=0.04128  val_mse=0.04606  val_mae=0.1801 (norm)
+Epoch  32/100  train_mse=0.04032  val_mse=0.04201  val_mae=0.1724 (norm)
+Epoch  33/100  train_mse=0.03993  val_mse=0.04056  val_mae=0.1658 (norm)
+Epoch  34/100  train_mse=0.04079  val_mse=0.03979  val_mae=0.1616 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  35/100  train_mse=0.04155  val_mse=0.03787  val_mae=0.1581 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  36/100  train_mse=0.03480  val_mse=0.03166  val_mae=0.1441 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  37/100  train_mse=0.04018  val_mse=0.03564  val_mae=0.1550 (norm)
+Epoch  38/100  train_mse=0.04167  val_mse=0.04349  val_mae=0.1713 (norm)
+Epoch  39/100  train_mse=0.04780  val_mse=0.05717  val_mae=0.1983 (norm)
+Epoch  40/100  train_mse=0.04116  val_mse=0.04230  val_mae=0.1651 (norm)
+Epoch  41/100  train_mse=0.03145  val_mse=0.04647  val_mae=0.1728 (norm)
+Epoch  42/100  train_mse=0.03614  val_mse=0.03201  val_mae=0.1470 (norm)
+Epoch  43/100  train_mse=0.04158  val_mse=0.07192  val_mae=0.2156 (norm)
+Epoch  44/100  train_mse=0.04875  val_mse=0.06292  val_mae=0.2031 (norm)
+Epoch  45/100  train_mse=0.04268  val_mse=0.03933  val_mae=0.1646 (norm)
+Epoch  46/100  train_mse=0.03764  val_mse=0.04549  val_mae=0.1754 (norm)
+Epoch  47/100  train_mse=0.03536  val_mse=0.04241  val_mae=0.1703 (norm)
+Epoch  48/100  train_mse=0.03449  val_mse=0.04734  val_mae=0.1753 (norm)
+Epoch  49/100  train_mse=0.03587  val_mse=0.04865  val_mae=0.1712 (norm)
+Epoch  50/100  train_mse=0.02784  val_mse=0.02982  val_mae=0.1401 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  51/100  train_mse=0.03756  val_mse=0.03265  val_mae=0.1491 (norm)
+Epoch  52/100  train_mse=0.02788  val_mse=0.03923  val_mae=0.1600 (norm)
+Epoch  53/100  train_mse=0.02897  val_mse=0.03031  val_mae=0.1412 (norm)
+Epoch  54/100  train_mse=0.02425  val_mse=0.03063  val_mae=0.1429 (norm)
+Epoch  55/100  train_mse=0.02553  val_mse=0.03509  val_mae=0.1519 (norm)
+Epoch  56/100  train_mse=0.04894  val_mse=0.03079  val_mae=0.1452 (norm)
+Epoch  57/100  train_mse=0.02193  val_mse=0.03743  val_mae=0.1595 (norm)
+Epoch  58/100  train_mse=0.03117  val_mse=0.03839  val_mae=0.1583 (norm)
+Epoch  59/100  train_mse=0.03300  val_mse=0.04534  val_mae=0.1696 (norm)
+Epoch  60/100  train_mse=0.02562  val_mse=0.04905  val_mae=0.1818 (norm)
+Epoch  61/100  train_mse=0.03807  val_mse=0.03489  val_mae=0.1478 (norm)
+Epoch  62/100  train_mse=0.03274  val_mse=0.04239  val_mae=0.1687 (norm)
+Epoch  63/100  train_mse=0.03232  val_mse=0.03101  val_mae=0.1452 (norm)
+Epoch  64/100  train_mse=0.02924  val_mse=0.03366  val_mae=0.1507 (norm)
+Epoch  65/100  train_mse=0.02603  val_mse=0.03610  val_mae=0.1555 (norm)
+Epoch  66/100  train_mse=0.02411  val_mse=0.03047  val_mae=0.1413 (norm)
+Epoch  67/100  train_mse=0.03214  val_mse=0.03365  val_mae=0.1459 (norm)
+Epoch  68/100  train_mse=0.02240  val_mse=0.03003  val_mae=0.1403 (norm)
+Epoch  69/100  train_mse=0.02182  val_mse=0.03170  val_mae=0.1423 (norm)
+Epoch  70/100  train_mse=0.02746  val_mse=0.02912  val_mae=0.1383 (norm)
+  -> saved /work/ml/congestion/checkpoints/thermal_best.pt
+Epoch  71/100  train_mse=0.02598  val_mse=0.03512  val_mae=0.1506 (norm)
+Epoch  72/100  train_mse=0.01984  val_mse=0.03182  val_mae=0.1446 (norm)
+Epoch  73/100  train_mse=0.02714  val_mse=0.03792  val_mae=0.1546 (norm)
+Epoch  74/100  train_mse=0.02063  val_mse=0.03646  val_mae=0.1520 (norm)
+Epoch  75/100  train_mse=0.02076  val_mse=0.03396  val_mae=0.1489 (norm)
+Epoch  76/100  train_mse=0.02547  val_mse=0.03604  val_mae=0.1512 (norm)
+Epoch  77/100  train_mse=0.02660  val_mse=0.03281  val_mae=0.1444 (norm)
+Epoch  78/100  train_mse=0.01741  val_mse=0.03293  val_mae=0.1457 (norm)
+Epoch  79/100  train_mse=0.01962  val_mse=0.03361  val_mae=0.1483 (norm)
+Epoch  80/100  train_mse=0.09028  val_mse=0.03751  val_mae=0.1557 (norm)
+Epoch  81/100  train_mse=0.02268  val_mse=0.03186  val_mae=0.1463 (norm)
+Epoch  82/100  train_mse=0.08796  val_mse=0.03319  val_mae=0.1442 (norm)
+Epoch  83/100  train_mse=0.01916  val_mse=0.03383  val_mae=0.1475 (norm)
+Epoch  84/100  train_mse=0.02921  val_mse=0.03120  val_mae=0.1422 (norm)
+Epoch  85/100  train_mse=0.02331  val_mse=0.03151  val_mae=0.1434 (norm)
+Epoch  86/100  train_mse=0.02521  val_mse=0.03188  val_mae=0.1445 (norm)
+Epoch  87/100  train_mse=0.02311  val_mse=0.03033  val_mae=0.1403 (norm)
+Epoch  88/100  train_mse=0.02118  val_mse=0.03292  val_mae=0.1477 (norm)
+Epoch  89/100  train_mse=0.02039  val_mse=0.03207  val_mae=0.1460 (norm)
+Epoch  90/100  train_mse=0.01742  val_mse=0.03085  val_mae=0.1399 (norm)
+Epoch  91/100  train_mse=0.03625  val_mse=0.03336  val_mae=0.1445 (norm)
+Epoch  92/100  train_mse=0.01738  val_mse=0.03411  val_mae=0.1492 (norm)
+Epoch  93/100  train_mse=0.01787  val_mse=0.03302  val_mae=0.1465 (norm)
+Epoch  94/100  train_mse=0.01774  val_mse=0.03209  val_mae=0.1462 (norm)
+Epoch  95/100  train_mse=0.02059  val_mse=0.03387  val_mae=0.1491 (norm)
+Epoch  96/100  train_mse=0.02122  val_mse=0.03425  val_mae=0.1493 (norm)
+Epoch  97/100  train_mse=0.01587  val_mse=0.03258  val_mae=0.1456 (norm)
+Epoch  98/100  train_mse=0.01638  val_mse=0.03143  val_mae=0.1411 (norm)
+Epoch  99/100  train_mse=0.01644  val_mse=0.03308  val_mae=0.1437 (norm)
+Epoch 100/100  train_mse=0.01757  val_mse=0.03304  val_mae=0.1458 (norm)
+Training complete.  Best val MSE: 0.02912

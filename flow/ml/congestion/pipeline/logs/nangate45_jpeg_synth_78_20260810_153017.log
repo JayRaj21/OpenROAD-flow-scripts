@@ -1,0 +1,864 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 8 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.2, build a7dcaa6'
++ [[ Docker version 29.7.2, build a7dcaa6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 8 -gt 0 ]]
++ CMD_STR='make synth DESIGN_CONFIG=./designs/nangate45/jpeg/config.mk CORE_UTILIZATION=78 RESULTS_DIR=/work/results/nangate45/jpeg/pipeline_78 OBJECTS_DIR=/work/objects/nangate45/jpeg/pipeline_78 REPORTS_DIR=/work/reports/nangate45/jpeg/pipeline_78 -j16'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;make synth DESIGN_CONFIG=./designs/nangate45/jpeg/config.mk CORE_UTILIZATION=78 RESULTS_DIR=/work/results/nangate45/jpeg/pipeline_78 OBJECTS_DIR=/work/objects/nangate45/jpeg/pipeline_78 REPORTS_DIR=/work/reports/nangate45/jpeg/pipeline_78 -j16'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ make synth DESIGN_CONFIG=./designs/nangate45/jpeg/config.mk CORE_UTILIZATION=78 RESULTS_DIR=/work/results/nangate45/jpeg/pipeline_78 OBJECTS_DIR=/work/objects/nangate45/jpeg/pipeline_78 REPORTS_DIR=/work/reports/nangate45/jpeg/pipeline_78 -j16
+mkdir -p /work/results/nangate45/jpeg/pipeline_78/
+echo 1.0 > /work/results/nangate45/jpeg/pipeline_78/clock_period.txt
+/OpenROAD-flow-scripts/flow/scripts/synth.sh /OpenROAD-flow-scripts/flow/scripts/synth_canonicalize.tcl /work/logs/nangate45/jpeg/base/1_1_yosys_canonicalize.log
+Using ABC area script.
+Extracting clock period from SDC file: /work/results/nangate45/jpeg/pipeline_78/clock_period.txt
+Setting clock period to 1.0
+1. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+2. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+3. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dct.v
+4. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dct_mac.v
+5. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dctu.v
+6. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dctub.v
+7. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_su.v
+8. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v
+9. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/fdct.v
+10. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_encoder.v
+11. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_qnr.v
+12. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_rle.v
+13. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_rle1.v
+14. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_rzs.v
+15. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/zigzag.v
+16. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/cells_clkgate.v
+17. Executing HIERARCHY pass (managing design hierarchy).
+18. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_encoder'.
+18.1. Analyzing design hierarchy..
+18.2. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_rle'.
+18.3. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_qnr'.
+18.4. Executing AST frontend in derive mode using pre-parsed AST for module `\fdct'.
+18.5. Analyzing design hierarchy..
+18.6. Executing AST frontend in derive mode using pre-parsed AST for module `\div_su'.
+18.7. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_rzs'.
+18.8. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_rle1'.
+18.9. Executing AST frontend in derive mode using pre-parsed AST for module `\zigzag'.
+Warning: Replacing memory \sresult with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/zigzag.v:131
+18.10. Executing AST frontend in derive mode using pre-parsed AST for module `\dct'.
+18.11. Analyzing design hierarchy..
+18.12. Executing AST frontend in derive mode using pre-parsed AST for module `\div_uu'.
+Warning: Replacing memory \q_pipe with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v:160
+Warning: Replacing memory \s_pipe with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v:151
+Warning: Replacing memory \d_pipe with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v:142
+18.13. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.14. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.15. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.16. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.17. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.18. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.19. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.20. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+18.21. Analyzing design hierarchy..
+18.22. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.23. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.24. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.25. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.26. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.27. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.28. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.29. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.30. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.31. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.32. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.33. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.34. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.35. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.36. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.37. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.38. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.39. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.40. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.41. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.42. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.43. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.44. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.45. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.46. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.47. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.48. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.49. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.50. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.51. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.52. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.53. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.54. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.55. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.56. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.57. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.58. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.59. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.60. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.61. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.62. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.63. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.64. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.65. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.66. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.67. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.68. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.69. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.70. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.71. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.72. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.73. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.74. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.75. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.76. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.77. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.78. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.79. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.80. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.81. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.82. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.83. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.84. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.85. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+18.86. Analyzing design hierarchy..
+18.87. Executing AST frontend in derive mode using pre-parsed AST for module `\dct_mac'.
+18.88. Analyzing design hierarchy..
+18.89. Analyzing design hierarchy..
+19. Executing OPT_CLEAN pass (remove unused cells and wires).
+Warning: Ignoring module $paramod$e2471d3acfddfd8f107137e4952b02d9e7720f44\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9e8342fceac8003655f9e71995b4fdeb8565fbe5\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$0f96740a02eb44c944b68d6b495a8cce162f1249\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$e6bd937dcb54fb0697fee40c5f9824ba6fd53538\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$da3415da01ee30cd3fa431ef7b8104a7c6ed9a24\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$b53123087aafc52fe604e5dcf6b6b1b8d73b2231\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$4dc5718e86f31fe555f7d39cf5ab7078c09f577a\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$fa41e4d02884503da5d6c381e868b8c261424a31\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$826cb5d104d530340b1f58495d2410742b2c32fe\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$88a8287894fa5d106cca0ce24429339f4a2785a9\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$0c5a5bd6be4ed818deaac08b02afbddb6897ffee\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$141303f1e6ff0436e3fa44dd8e1d8f51afed9a78\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$16cad72ebc555f93621a2c70f423f14f85bbeb07\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a8d3b7b4edaf7d596a54a187c8ed4a9561fa625a\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$56b31b71c3bccc1fb1f134779b3bdd5ab1b461c7\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$141b5017b00a41bd6bcdd772ef8ad836aaf4019f\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$37cd075c9fa8b3a4872c05f999800e89bc604dc4\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$26ce9ce45d1136272d6a188b0b22329681d6199b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$ca051f171e86125a3bcf4bd090f5be774b98c04e\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$3b47752d19f391915a818678f43c9a51f524cc48\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$b266e2f77428397c53d4afd55bef1da32efe03d9\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f06914ec453560c29e1738d8a2be788b84af024b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a184ef4c0e9b8e48eac4b335f6b36fd82c0c32d3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$6be19b0824fdb8c44e931702b04949b1ae101a34\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$1b119bd029c81aaa2221a23d15ab3b6b02f6efee\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9fe6c97945bcc341eadabee9cbdea0f75515e5c3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$44a044575968c599376fc32b4d9ee49faea5711d\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f1b01728a98736f8d413a71bd9a7600c5a6961e3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$04fdc4f446e06e0744e44efd615d1158fec3aeb8\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a523c923d4f86f07f4e81f5d8b04b352dfcc17be\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$c4f8cc56c0ef9356356d2a98d35862f209dd307b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$adcdc49d3fc5249816d353bb65629f56cf0927d3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bfc28a02cfebf191b4a982c9147f38f65a3f3469\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$7911a3968b23dded19efefb86cf26bb44e3a7781\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$785fe1ea8cdf428cbeb2f89081ee68c33feb7da2\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$2da196d8114b669d4bb3858ca0a91434452576e0\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a5796bae454a3870edf919a9404bde7ca4192701\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$eb0441514cb1002bdcaf5201d3067d7bd1bbd3e9\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$e9d96eb14c78f030ece167996f154f4849a68288\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$2ce29d501700894abc3f54c094daafc2d8c2c211\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$11fa2caec0040cf5bdd9aac167c50c8009d1fe68\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bd585d540938973e77d9fdfafe68a3c54bf55cb8\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$94a1b10314722615b96d6c8f661cbb82ecebf320\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$d348381a5c8d7c369f0c055d305d608d67b77e86\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$29130e85acc43116076719ea36da8d59b7490cc4\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$32a02d514417e24bb09b7885b9c053483ac7784d\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9beaa443332981731011e314e41ebdfa5267d059\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$fa85f450a22557b2687ca86acb15721a7fddf8e7\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$5778094f610ca183dd46956f589e4ea513d2316c\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$cf6677181b8958913bf11288905dc7e6338a7bf5\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$4895890460618319d2e2de05b5a45e21ba9e3f8b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$ee2aa8736952ca7eee7f4751cab786a479da4583\div_uu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$849c8591669cf197b80ef99050b300773b555aae\dct because it contains processes (run 'proc' command first).
+Warning: Ignoring module zigzag because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_rle1 because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_rzs because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod\div_su\z_width=s32'00000000000000000000000000011000 because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_qnr because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_rle because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_encoder because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$b5a8bcf0c5a3eb6704410e66fd72520afc96ea51\dct_mac because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$8cd9bf70556f3aa976ca66d64ee3b9c1b3a94e21\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$30e2d72cbb2d6c7d2f48769e891fec5593e1f756\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$022e4835c44d221125856d68f8603b7186431212\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f878842d6bc0ac80c3f795bb76ef86af701fb0a2\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bd5d8b7ea001bd9da1e8d07da4940a1f4c75e6b0\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bb43d9c07810ea45f23a5f680ee116bafcd9334e\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$c50cce30a10e9eb82ea37b86647b55ab680286c8\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9f831900faf0e9bfdbd9e0f8aa853df59256a109\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$53ab2e60687d01e7461fdffe1d34a14bacda6928\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$99c498a68fd2923ba65be259bfb6e7d8309d79f4\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f5bb6813249a03e2893277297591ec050ac518dc\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$696f85e1ea63d2b5ad7171a625fd3b51a665057d\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$8f6708f3156f3d6d195809cddd67c9b8c08cd488\dctu because it contains processes (run 'proc' command first).
+20. Executing RTLIL backend.
+Warnings: 78 unique messages, 78 total
+End of script. Logfile hash: b1af076467, time: 1.27s, user: 1.04s, system: 0.22s, MEM: 584.55 MB peak
+Yosys 0.64+post (git sha1 UNKNOWN-dirty, g++ 11.4.0-1ubuntu1~22.04.3 -fPIC -O3)
+Time spent: 92% 1x hierarchy (1 sec), 3% 4x read_liberty (0 sec), ...
+Elapsed time: 0:01.43[h:]min:sec. CPU time: user 1.16 sys 0.26 (99%). Peak memory: 598584KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+1_1_yosys_canonicalize    .rtlil          1            584 56c9540922259f15a1ff
+/OpenROAD-flow-scripts/flow/scripts/synth.sh /OpenROAD-flow-scripts/flow/scripts/synth.tcl /work/logs/nangate45/jpeg/base/1_2_yosys.log
+/OpenROAD-flow-scripts/flow/scripts/synth.sh /OpenROAD-flow-scripts/flow/scripts/synth.tcl /work/logs/nangate45/jpeg/base/1_2_yosys.log
+Using ABC area script.
+Extracting clock period from SDC file: /work/results/nangate45/jpeg/pipeline_78/clock_period.txt
+Setting clock period to 1.0
+1. Executing RTLIL frontend.
+2. Executing HIERARCHY pass (managing design hierarchy).
+2.1. Analyzing design hierarchy..
+2.2. Analyzing design hierarchy..
+3. Executing SYNTH pass.
+3.1. Executing HIERARCHY pass (managing design hierarchy).
+3.1.1. Analyzing design hierarchy..
+3.1.2. Analyzing design hierarchy..
+3.2. Executing PROC pass (convert processes to netlists).
+3.2.1. Executing PROC_CLEAN pass (remove empty switches from decision trees).
+3.2.2. Executing PROC_RMDEAD pass (remove dead branches from decision trees).
+3.2.3. Executing PROC_PRUNE pass (remove redundant assignments in processes).
+Using ABC area script.
+Extracting clock period from SDC file: /work/results/nangate45/jpeg/pipeline_78/clock_period.txt
+Setting clock period to 1.0
+1. Executing RTLIL frontend.
+3.2.4. Executing PROC_INIT pass (extract init attributes).
+3.2.5. Executing PROC_ARST pass (detect async resets in processes).
+3.2.6. Executing PROC_ROM pass (convert switches to ROMs).
+3.2.7. Executing PROC_MUX pass (convert decision trees to multiplexers).
+2. Executing HIERARCHY pass (managing design hierarchy).
+2.1. Analyzing design hierarchy..
+2.2. Analyzing design hierarchy..
+3. Executing SYNTH pass.
+3.1. Executing HIERARCHY pass (managing design hierarchy).
+3.1.1. Analyzing design hierarchy..
+3.1.2. Analyzing design hierarchy..
+3.2. Executing PROC pass (convert processes to netlists).
+3.2.1. Executing PROC_CLEAN pass (remove empty switches from decision trees).
+3.2.2. Executing PROC_RMDEAD pass (remove dead branches from decision trees).
+3.2.3. Executing PROC_PRUNE pass (remove redundant assignments in processes).
+3.2.4. Executing PROC_INIT pass (extract init attributes).
+3.2.5. Executing PROC_ARST pass (detect async resets in processes).
+3.2.6. Executing PROC_ROM pass (convert switches to ROMs).
+3.2.8. Executing PROC_DLATCH pass (convert process syncs to latches).
+3.2.7. Executing PROC_MUX pass (convert decision trees to multiplexers).
+3.2.9. Executing PROC_DFF pass (convert process syncs to FFs).
+3.2.8. Executing PROC_DLATCH pass (convert process syncs to latches).
+3.2.10. Executing PROC_MEMWR pass (convert process memory writes to cells).
+3.2.11. Executing PROC_CLEAN pass (remove empty switches from decision trees).
+3.2.12. Executing OPT_EXPR pass (perform const folding).
+3.3. Executing FLATTEN pass (flatten design).
+3.2.9. Executing PROC_DFF pass (convert process syncs to FFs).
+3.2.10. Executing PROC_MEMWR pass (convert process memory writes to cells).
+3.2.11. Executing PROC_CLEAN pass (remove empty switches from decision trees).
+3.2.12. Executing OPT_EXPR pass (perform const folding).
+3.3. Executing FLATTEN pass (flatten design).
+3.4. Executing OPT_EXPR pass (perform const folding).
+3.5. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.4. Executing OPT_EXPR pass (perform const folding).
+3.5. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.6. Executing CHECK pass (checking for obvious problems).
+3.6. Executing CHECK pass (checking for obvious problems).
+3.7. Executing OPT pass (performing simple optimizations).
+3.7.1. Executing OPT_EXPR pass (perform const folding).
+3.7.2. Executing OPT_MERGE pass (detect identical cells).
+3.7.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.7. Executing OPT pass (performing simple optimizations).
+3.7.1. Executing OPT_EXPR pass (perform const folding).
+3.7.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.7.5. Executing OPT_MERGE pass (detect identical cells).
+3.7.2. Executing OPT_MERGE pass (detect identical cells).
+3.7.6. Executing OPT_DFF pass (perform DFF optimizations).
+3.7.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.7.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.7.5. Executing OPT_MERGE pass (detect identical cells).
+3.7.6. Executing OPT_DFF pass (perform DFF optimizations).
+3.7.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.7.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.7.8. Executing OPT_EXPR pass (perform const folding).
+3.7.9. Rerunning OPT passes. (Maybe there is more to do..)
+3.7.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.7.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.7.12. Executing OPT_MERGE pass (detect identical cells).
+3.7.13. Executing OPT_DFF pass (perform DFF optimizations).
+3.7.8. Executing OPT_EXPR pass (perform const folding).
+3.7.9. Rerunning OPT passes. (Maybe there is more to do..)
+3.7.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.7.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.7.12. Executing OPT_MERGE pass (detect identical cells).
+3.7.13. Executing OPT_DFF pass (perform DFF optimizations).
+3.7.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.7.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.7.15. Executing OPT_EXPR pass (perform const folding).
+3.7.16. Finished fast OPT passes. (There is nothing left to do.)
+3.8. Executing FSM pass (extract and optimize FSM).
+3.8.1. Executing FSM_DETECT pass (finding FSMs in design).
+3.7.15. Executing OPT_EXPR pass (perform const folding).
+3.8.2. Executing FSM_EXTRACT pass (extracting FSM from design).
+3.8.3. Executing FSM_OPT pass (simple optimizations of FSMs).
+3.8.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.7.16. Finished fast OPT passes. (There is nothing left to do.)
+3.8. Executing FSM pass (extract and optimize FSM).
+3.8.1. Executing FSM_DETECT pass (finding FSMs in design).
+3.8.2. Executing FSM_EXTRACT pass (extracting FSM from design).
+3.8.5. Executing FSM_OPT pass (simple optimizations of FSMs).
+3.8.6. Executing FSM_RECODE pass (re-assigning FSM state encoding).
+3.8.7. Executing FSM_INFO pass (dumping all available information on FSM cells).
+3.8.8. Executing FSM_MAP pass (mapping FSMs to basic logic).
+3.8.3. Executing FSM_OPT pass (simple optimizations of FSMs).
+3.8.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9. Executing OPT pass (performing simple optimizations).
+3.9.1. Executing OPT_EXPR pass (perform const folding).
+3.9.2. Executing OPT_MERGE pass (detect identical cells).
+3.9.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.5. Executing OPT_MERGE pass (detect identical cells).
+3.9.6. Executing OPT_DFF pass (perform DFF optimizations).
+3.8.5. Executing FSM_OPT pass (simple optimizations of FSMs).
+3.8.6. Executing FSM_RECODE pass (re-assigning FSM state encoding).
+3.8.7. Executing FSM_INFO pass (dumping all available information on FSM cells).
+3.8.8. Executing FSM_MAP pass (mapping FSMs to basic logic).
+3.9. Executing OPT pass (performing simple optimizations).
+3.9.1. Executing OPT_EXPR pass (perform const folding).
+3.9.2. Executing OPT_MERGE pass (detect identical cells).
+3.9.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.5. Executing OPT_MERGE pass (detect identical cells).
+3.9.6. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.8. Executing OPT_EXPR pass (perform const folding).
+3.9.9. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.12. Executing OPT_MERGE pass (detect identical cells).
+3.9.13. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.8. Executing OPT_EXPR pass (perform const folding).
+3.9.9. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.12. Executing OPT_MERGE pass (detect identical cells).
+3.9.13. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.15. Executing OPT_EXPR pass (perform const folding).
+3.9.16. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.17. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.18. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.19. Executing OPT_MERGE pass (detect identical cells).
+3.9.20. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.21. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.15. Executing OPT_EXPR pass (perform const folding).
+3.9.16. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.17. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.22. Executing OPT_EXPR pass (perform const folding).
+3.9.18. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.19. Executing OPT_MERGE pass (detect identical cells).
+3.9.20. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.23. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.24. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.25. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.26. Executing OPT_MERGE pass (detect identical cells).
+3.9.27. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.21. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.28. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.22. Executing OPT_EXPR pass (perform const folding).
+3.9.23. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.24. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.25. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.26. Executing OPT_MERGE pass (detect identical cells).
+3.9.27. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.29. Executing OPT_EXPR pass (perform const folding).
+3.9.30. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.31. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.32. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.33. Executing OPT_MERGE pass (detect identical cells).
+3.9.34. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.28. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.35. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.29. Executing OPT_EXPR pass (perform const folding).
+3.9.30. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.31. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.32. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.33. Executing OPT_MERGE pass (detect identical cells).
+3.9.34. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.36. Executing OPT_EXPR pass (perform const folding).
+3.9.37. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.38. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.39. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.40. Executing OPT_MERGE pass (detect identical cells).
+3.9.41. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.35. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.42. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.36. Executing OPT_EXPR pass (perform const folding).
+3.9.37. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.38. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.39. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.40. Executing OPT_MERGE pass (detect identical cells).
+3.9.41. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.43. Executing OPT_EXPR pass (perform const folding).
+3.9.44. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.45. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.46. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.47. Executing OPT_MERGE pass (detect identical cells).
+3.9.48. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.42. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.49. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.43. Executing OPT_EXPR pass (perform const folding).
+3.9.44. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.45. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.46. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.47. Executing OPT_MERGE pass (detect identical cells).
+3.9.48. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.50. Executing OPT_EXPR pass (perform const folding).
+3.9.51. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.52. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.53. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.54. Executing OPT_MERGE pass (detect identical cells).
+3.9.55. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.49. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.56. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.50. Executing OPT_EXPR pass (perform const folding).
+3.9.51. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.52. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.53. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.54. Executing OPT_MERGE pass (detect identical cells).
+3.9.55. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.57. Executing OPT_EXPR pass (perform const folding).
+3.9.58. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.59. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.60. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.61. Executing OPT_MERGE pass (detect identical cells).
+3.9.62. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.56. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.63. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.57. Executing OPT_EXPR pass (perform const folding).
+3.9.58. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.59. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.60. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.61. Executing OPT_MERGE pass (detect identical cells).
+3.9.64. Executing OPT_EXPR pass (perform const folding).
+3.9.62. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.65. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.66. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.67. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.68. Executing OPT_MERGE pass (detect identical cells).
+3.9.69. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.63. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.70. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.64. Executing OPT_EXPR pass (perform const folding).
+3.9.65. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.66. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.67. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.71. Executing OPT_EXPR pass (perform const folding).
+3.9.68. Executing OPT_MERGE pass (detect identical cells).
+3.9.69. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.72. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.73. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.74. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.75. Executing OPT_MERGE pass (detect identical cells).
+3.9.76. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.70. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.77. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.71. Executing OPT_EXPR pass (perform const folding).
+3.9.72. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.73. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.78. Executing OPT_EXPR pass (perform const folding).
+3.9.74. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.75. Executing OPT_MERGE pass (detect identical cells).
+3.9.76. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.79. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.80. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.81. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.82. Executing OPT_MERGE pass (detect identical cells).
+3.9.83. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.77. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.84. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.78. Executing OPT_EXPR pass (perform const folding).
+3.9.79. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.80. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.85. Executing OPT_EXPR pass (perform const folding).
+3.9.81. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.82. Executing OPT_MERGE pass (detect identical cells).
+3.9.83. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.86. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.87. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.88. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.89. Executing OPT_MERGE pass (detect identical cells).
+3.9.90. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.84. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.91. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.85. Executing OPT_EXPR pass (perform const folding).
+3.9.86. Rerunning OPT passes. (Maybe there is more to do..)
+3.9.87. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.9.92. Executing OPT_EXPR pass (perform const folding).
+3.9.88. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.9.89. Executing OPT_MERGE pass (detect identical cells).
+3.9.90. Executing OPT_DFF pass (perform DFF optimizations).
+3.9.93. Finished fast OPT passes. (There is nothing left to do.)
+3.10. Executing WREDUCE pass (reducing word size of cells).
+3.9.91. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.11. Executing PEEPOPT pass (run peephole optimizers).
+3.12. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.9.92. Executing OPT_EXPR pass (perform const folding).
+3.9.93. Finished fast OPT passes. (There is nothing left to do.)
+3.10. Executing WREDUCE pass (reducing word size of cells).
+3.11. Executing PEEPOPT pass (run peephole optimizers).
+3.13. Executing ALUMACC pass (create $alu and $macc cells).
+3.12. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.14. Executing SHARE pass (SAT-based resource sharing).
+3.15. Executing OPT pass (performing simple optimizations).
+3.15.1. Executing OPT_EXPR pass (perform const folding).
+3.15.2. Executing OPT_MERGE pass (detect identical cells).
+3.15.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.13. Executing ALUMACC pass (create $alu and $macc cells).
+3.15.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.15.5. Executing OPT_MERGE pass (detect identical cells).
+3.15.6. Executing OPT_DFF pass (perform DFF optimizations).
+3.14. Executing SHARE pass (SAT-based resource sharing).
+3.15.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.15. Executing OPT pass (performing simple optimizations).
+3.15.1. Executing OPT_EXPR pass (perform const folding).
+3.15.2. Executing OPT_MERGE pass (detect identical cells).
+3.15.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+3.15.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+3.15.5. Executing OPT_MERGE pass (detect identical cells).
+3.15.8. Executing OPT_EXPR pass (perform const folding).
+3.15.6. Executing OPT_DFF pass (perform DFF optimizations).
+3.15.9. Finished fast OPT passes. (There is nothing left to do.)
+3.16. Executing MEMORY pass.
+3.16.1. Executing OPT_MEM pass (optimize memories).
+3.16.2. Executing OPT_MEM_PRIORITY pass (removing unnecessary memory write priority relations).
+3.15.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.16.3. Executing OPT_MEM_FEEDBACK pass (finding memory read-to-write feedback paths).
+3.16.4. Executing MEMORY_BMUX2ROM pass (converting muxes to ROMs).
+3.16.5. Executing MEMORY_DFF pass (merging $dff cells to $memrd).
+3.15.8. Executing OPT_EXPR pass (perform const folding).
+3.15.9. Finished fast OPT passes. (There is nothing left to do.)
+3.16.6. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.16. Executing MEMORY pass.
+3.16.1. Executing OPT_MEM pass (optimize memories).
+3.16.2. Executing OPT_MEM_PRIORITY pass (removing unnecessary memory write priority relations).
+3.16.3. Executing OPT_MEM_FEEDBACK pass (finding memory read-to-write feedback paths).
+3.16.4. Executing MEMORY_BMUX2ROM pass (converting muxes to ROMs).
+3.16.5. Executing MEMORY_DFF pass (merging $dff cells to $memrd).
+3.16.7. Executing MEMORY_SHARE pass (consolidating $memrd/$memwr cells).
+3.16.6. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.16.8. Executing OPT_MEM_WIDEN pass (optimize memories where all ports are wide).
+3.16.9. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.16.10. Executing MEMORY_COLLECT pass (generating $mem cells).
+3.16.7. Executing MEMORY_SHARE pass (consolidating $memrd/$memwr cells).
+3.17. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.16.8. Executing OPT_MEM_WIDEN pass (optimize memories where all ports are wide).
+3.16.9. Executing OPT_CLEAN pass (remove unused cells and wires).
+3.16.10. Executing MEMORY_COLLECT pass (generating $mem cells).
+3.17. Executing OPT_CLEAN pass (remove unused cells and wires).
+ERROR: TCL interpreter returned an error: Traceback (most recent call last):
+  File "/OpenROAD-flow-scripts/flow/scripts/mem_dump.py", line 112, in <module>
+    json_data = json.load(file)
+  File "/usr/lib/python3.10/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+  File "/usr/lib/python3.10/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+  File "/usr/lib/python3.10/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+  File "/usr/lib/python3.10/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+Elapsed time: 0:01.33[h:]min:sec. CPU time: user 1.21 sys 0.12 (99%). Peak memory: 68560KB.
+make[1]: *** [Makefile:266: do-yosys] Error 1
+make: *** [Makefile:277: /work/results/nangate45/jpeg/pipeline_78/1_2_yosys.v] Error 2
+make: *** Waiting for unfinished jobs....
+4. Executing SYNTH pass.
+4.1. Executing OPT pass (performing simple optimizations).
+4.1.1. Executing OPT_EXPR pass (perform const folding).
+4.1.2. Executing OPT_MERGE pass (detect identical cells).
+4.1.3. Executing OPT_DFF pass (perform DFF optimizations).
+4.1.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.1.5. Rerunning OPT passes. (Removed registers in this run.)
+4.1.6. Executing OPT_EXPR pass (perform const folding).
+4.1.7. Executing OPT_MERGE pass (detect identical cells).
+4.1.8. Executing OPT_DFF pass (perform DFF optimizations).
+4.1.9. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.1.10. Rerunning OPT passes. (Removed registers in this run.)
+4.1.11. Executing OPT_EXPR pass (perform const folding).
+4.1.12. Executing OPT_MERGE pass (detect identical cells).
+4.1.13. Executing OPT_DFF pass (perform DFF optimizations).
+4.1.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.1.15. Finished fast OPT passes.
+4.2. Executing MEMORY_MAP pass (converting memories to logic and flip-flops).
+4.3. Executing OPT pass (performing simple optimizations).
+4.3.1. Executing OPT_EXPR pass (perform const folding).
+4.3.2. Executing OPT_MERGE pass (detect identical cells).
+4.3.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.5. Executing OPT_MERGE pass (detect identical cells).
+4.3.6. Executing OPT_SHARE pass.
+4.3.7. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.8. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.9. Executing OPT_EXPR pass (perform const folding).
+4.3.10. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.11. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.12. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.13. Executing OPT_MERGE pass (detect identical cells).
+4.3.14. Executing OPT_SHARE pass.
+4.3.15. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.16. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.17. Executing OPT_EXPR pass (perform const folding).
+4.3.18. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.19. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.20. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.21. Executing OPT_MERGE pass (detect identical cells).
+4.3.22. Executing OPT_SHARE pass.
+4.3.23. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.24. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.25. Executing OPT_EXPR pass (perform const folding).
+4.3.26. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.27. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.28. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.29. Executing OPT_MERGE pass (detect identical cells).
+4.3.30. Executing OPT_SHARE pass.
+4.3.31. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.32. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.33. Executing OPT_EXPR pass (perform const folding).
+4.3.34. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.35. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.36. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.37. Executing OPT_MERGE pass (detect identical cells).
+4.3.38. Executing OPT_SHARE pass.
+4.3.39. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.40. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.41. Executing OPT_EXPR pass (perform const folding).
+4.3.42. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.43. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.44. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.45. Executing OPT_MERGE pass (detect identical cells).
+4.3.46. Executing OPT_SHARE pass.
+4.3.47. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.48. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.49. Executing OPT_EXPR pass (perform const folding).
+4.3.50. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.51. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.52. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.53. Executing OPT_MERGE pass (detect identical cells).
+4.3.54. Executing OPT_SHARE pass.
+4.3.55. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.56. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.57. Executing OPT_EXPR pass (perform const folding).
+4.3.58. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.59. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.60. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.61. Executing OPT_MERGE pass (detect identical cells).
+4.3.62. Executing OPT_SHARE pass.
+4.3.63. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.64. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.65. Executing OPT_EXPR pass (perform const folding).
+4.3.66. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.67. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.68. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.69. Executing OPT_MERGE pass (detect identical cells).
+4.3.70. Executing OPT_SHARE pass.
+4.3.71. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.72. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.73. Executing OPT_EXPR pass (perform const folding).
+4.3.74. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.75. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.76. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.77. Executing OPT_MERGE pass (detect identical cells).
+4.3.78. Executing OPT_SHARE pass.
+4.3.79. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.80. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.81. Executing OPT_EXPR pass (perform const folding).
+4.3.82. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.83. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.84. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.85. Executing OPT_MERGE pass (detect identical cells).
+4.3.86. Executing OPT_SHARE pass.
+4.3.87. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.88. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.89. Executing OPT_EXPR pass (perform const folding).
+4.3.90. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.91. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.92. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.93. Executing OPT_MERGE pass (detect identical cells).
+4.3.94. Executing OPT_SHARE pass.
+4.3.95. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.96. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.97. Executing OPT_EXPR pass (perform const folding).
+4.3.98. Rerunning OPT passes. (Maybe there is more to do..)
+4.3.99. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+4.3.100. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+4.3.101. Executing OPT_MERGE pass (detect identical cells).
+4.3.102. Executing OPT_SHARE pass.
+4.3.103. Executing OPT_DFF pass (perform DFF optimizations).
+4.3.104. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.3.105. Executing OPT_EXPR pass (perform const folding).
+4.3.106. Finished fast OPT passes. (There is nothing left to do.)
+4.4. Executing TECHMAP pass (map to technology primitives).
+4.4.1. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/tools/install/yosys/bin/../share/yosys/techmap.v
+4.4.2. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/platforms/common/lcu_kogge_stone.v
+4.4.3. Continuing TECHMAP pass.
+4.5. Executing OPT pass (performing simple optimizations).
+4.5.1. Executing OPT_EXPR pass (perform const folding).
+4.5.2. Executing OPT_MERGE pass (detect identical cells).
+4.5.3. Executing OPT_DFF pass (perform DFF optimizations).
+4.5.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.5.5. Rerunning OPT passes. (Removed registers in this run.)
+4.5.6. Executing OPT_EXPR pass (perform const folding).
+4.5.7. Executing OPT_MERGE pass (detect identical cells).
+4.5.8. Executing OPT_DFF pass (perform DFF optimizations).
+4.5.9. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.5.10. Rerunning OPT passes. (Removed registers in this run.)
+4.5.11. Executing OPT_EXPR pass (perform const folding).
+4.5.12. Executing OPT_MERGE pass (detect identical cells).
+4.5.13. Executing OPT_DFF pass (perform DFF optimizations).
+4.5.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+4.5.15. Finished fast OPT passes.
+4.6. Executing HIERARCHY pass (managing design hierarchy).
+4.6.1. Analyzing design hierarchy..
+4.6.2. Analyzing design hierarchy..
+4.7. Printing statistics.
+4.8. Executing CHECK pass (checking for obvious problems).
+5. Executing OPT pass (performing simple optimizations).
+5.1. Executing OPT_EXPR pass (perform const folding).
+5.2. Executing OPT_MERGE pass (detect identical cells).
+5.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+5.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+5.5. Executing OPT_MERGE pass (detect identical cells).
+5.6. Executing OPT_DFF pass (perform DFF optimizations).
+5.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+5.8. Executing OPT_EXPR pass (perform const folding).
+5.9. Rerunning OPT passes. (Maybe there is more to do..)
+5.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+5.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+5.12. Executing OPT_MERGE pass (detect identical cells).
+5.13. Executing OPT_DFF pass (perform DFF optimizations).
+5.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+5.15. Executing OPT_EXPR pass (perform const folding).
+5.16. Finished fast OPT passes. (There is nothing left to do.)
+6. Executing EXTRACT_FA pass (find and extract full/half adders).
+7. Executing TECHMAP pass (map to technology primitives).
+7.1. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/cells_adders.v
+7.2. Continuing TECHMAP pass.
+8. Executing TECHMAP pass (map to technology primitives).
+8.1. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/tools/install/yosys/bin/../share/yosys/techmap.v
+8.2. Continuing TECHMAP pass.
+9. Executing OPT pass (performing simple optimizations).
+9.1. Executing OPT_EXPR pass (perform const folding).
+9.2. Executing OPT_MERGE pass (detect identical cells).
+9.3. Executing OPT_DFF pass (perform DFF optimizations).
+9.4. Executing OPT_CLEAN pass (remove unused cells and wires).
+9.5. Finished fast OPT passes.
+10. Executing TECHMAP pass (map to technology primitives).
+10.1. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/cells_latch.v
+10.2. Continuing TECHMAP pass.
+11. Executing DFFLIBMAP pass (mapping DFF cells to sequential cells from liberty file).
+11.1. Executing DFFLEGALIZE pass (convert FFs to types supported by the target).
+12. Executing OPT pass (performing simple optimizations).
+12.1. Executing OPT_EXPR pass (perform const folding).
+12.2. Executing OPT_MERGE pass (detect identical cells).
+12.3. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+12.4. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+12.5. Executing OPT_MERGE pass (detect identical cells).
+12.6. Executing OPT_DFF pass (perform DFF optimizations).
+12.7. Executing OPT_CLEAN pass (remove unused cells and wires).
+12.8. Executing OPT_EXPR pass (perform const folding).
+12.9. Rerunning OPT passes. (Maybe there is more to do..)
+12.10. Executing OPT_MUXTREE pass (detect dead branches in mux trees).
+12.11. Executing OPT_REDUCE pass (consolidate $*mux and $reduce_* inputs).
+12.12. Executing OPT_MERGE pass (detect identical cells).
+12.13. Executing OPT_DFF pass (perform DFF optimizations).
+12.14. Executing OPT_CLEAN pass (remove unused cells and wires).
+12.15. Executing OPT_EXPR pass (perform const folding).
+12.16. Finished fast OPT passes. (There is nothing left to do.)
+13. Executing SETUNDEF pass (replace undef values with defined constants).
+abc -script /OpenROAD-flow-scripts/flow/scripts/abc_area.script -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -dont_use TAPCELL_X1 -dont_use FILLCELL_X1 -dont_use AOI211_X1 -dont_use OAI211_X1 -constr /work/objects/nangate45/jpeg/pipeline_78/abc.constr -D 1.0
+14. Executing ABC pass (technology mapping using ABC).
+14.1. Extracting gate netlist of module `\jpeg_encoder' to `<abc-temp-dir>/input.blif'..
+14.1.1. Executed ABC.
+14.1.2. Re-integrating ABC results.
+Took 9 seconds: abc -script /OpenROAD-flow-scripts/flow/scripts/abc_area.script -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -dont_use TAPCELL_X1 -dont_use FILLCELL_X1 -dont_use AOI211_X1 -dont_use OAI211_X1 -constr /work/objects/nangate45/jpeg/pipeline_78/abc.constr -D 1.0
+15. Executing SPLITNETS pass (splitting up multi-bit signals).
+16. Executing OPT_CLEAN pass (remove unused cells and wires).
+17. Executing HILOMAP pass (mapping to constant drivers).
+18. Executing INSBUF pass (insert buffer cells for connected wires).
+19. Executing CHECK pass (checking for obvious problems).
+20. Printing statistics.
+21. Executing CHECK pass (checking for obvious problems).
+22. Executing Verilog backend.
+22.1. Executing BMUXMAP pass.
+22.2. Executing DEMUXMAP pass.
+exec cp /OpenROAD-flow-scripts/flow/designs/nangate45/jpeg/constraint.sdc /work/results/nangate45/jpeg/pipeline_78/1_synth.sdc
+End of script. Logfile hash: ebadaf3f8d, time: 30.04s, user: 25.78s, system: 0.46s, MEM: 417.33 MB peak
+Yosys 0.64+post (git sha1 UNKNOWN-dirty, g++ 11.4.0-1ubuntu1~22.04.3 -fPIC -O3)
+Time spent: 25% 1x abc (8 sec), 20% 1x extract_fa (6 sec), ...
+Elapsed time: 0:30.20[h:]min:sec. CPU time: user 29.95 sys 4.80 (115%). Peak memory: 427348KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+1_2_yosys                 .v              1             66 9f4cd041255cd6e81eaf
+1_2_yosys                 .sdc                             a2b385a66ccb51f766f5
+cp /OpenROAD-flow-scripts/flow/designs/nangate45/jpeg/constraint.sdc /work/results/nangate45/jpeg/pipeline_78/1_2_yosys.sdc

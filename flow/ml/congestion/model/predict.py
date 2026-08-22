@@ -17,8 +17,16 @@ import torch
 from unet import CongestionUNet
 
 LAYER_NAMES = [
-    "metal1", "metal2", "metal3", "metal4", "metal5",
-    "metal6", "metal7", "metal8", "metal9", "metal10",
+    "metal1",
+    "metal2",
+    "metal3",
+    "metal4",
+    "metal5",
+    "metal6",
+    "metal7",
+    "metal8",
+    "metal9",
+    "metal10",
 ]
 
 
@@ -28,7 +36,12 @@ def predict(placement: np.ndarray, checkpoint: str, device: torch.device) -> np.
     model.to(device)
     model.eval()
 
-    x = torch.tensor(placement, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    x = (
+        torch.tensor(placement, dtype=torch.float32)
+        .unsqueeze(0)
+        .unsqueeze(0)
+        .to(device)
+    )
     with torch.no_grad():
         pred = model(x)
     return pred.squeeze(0).cpu().numpy()  # (10, H, W)
@@ -59,11 +72,17 @@ def save_image(congestion: np.ndarray, path: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Predict congestion from placement grid")
+    parser = argparse.ArgumentParser(
+        description="Predict congestion from placement grid"
+    )
     parser.add_argument("--placement", required=True, help="Input placement .npy file")
     parser.add_argument("--checkpoint", required=True, help="Model checkpoint .pt file")
-    parser.add_argument("--out", required=True, help="Output predicted congestion .npy file")
-    parser.add_argument("--image", default=None, help="Optional output image path (.png)")
+    parser.add_argument(
+        "--out", required=True, help="Output predicted congestion .npy file"
+    )
+    parser.add_argument(
+        "--image", default=None, help="Optional output image path (.png)"
+    )
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

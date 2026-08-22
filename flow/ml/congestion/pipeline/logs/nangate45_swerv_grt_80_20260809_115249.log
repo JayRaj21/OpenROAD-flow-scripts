@@ -1,0 +1,259 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 8 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.1, build e9452d6'
++ [[ Docker version 29.7.1, build e9452d6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 8 -gt 0 ]]
++ CMD_STR='make grt DESIGN_CONFIG=./designs/nangate45/swerv/config.mk CORE_UTILIZATION=80 RESULTS_DIR=/work/results/nangate45/swerv/pipeline_80 OBJECTS_DIR=/work/objects/nangate45/swerv/pipeline_80 PLACE_DENSITY_LB_ADDON=0.0 -j16'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;make grt DESIGN_CONFIG=./designs/nangate45/swerv/config.mk CORE_UTILIZATION=80 RESULTS_DIR=/work/results/nangate45/swerv/pipeline_80 OBJECTS_DIR=/work/objects/nangate45/swerv/pipeline_80 PLACE_DENSITY_LB_ADDON=0.0 -j16'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ make grt DESIGN_CONFIG=./designs/nangate45/swerv/config.mk CORE_UTILIZATION=80 RESULTS_DIR=/work/results/nangate45/swerv/pipeline_80 OBJECTS_DIR=/work/objects/nangate45/swerv/pipeline_80 PLACE_DENSITY_LB_ADDON=0.0 -j16
+make: *** No rule to make target '/work/results/nangate45/swerv/pipeline_80/2_1_floorplan.sdc', needed by '/work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc'.  Stop.
+make: *** Waiting for unfinished jobs....
+/OpenROAD-flow-scripts/flow/scripts/synth.sh /OpenROAD-flow-scripts/flow/scripts/synth_canonicalize.tcl /work/logs/nangate45/swerv/base/1_1_yosys_canonicalize.log
+Using ABC speed script.
+Extracting clock period from SDC file: /work/results/nangate45/swerv/pipeline_80/clock_period.txt
+Setting clock period to 0.46
+1. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+2. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+3. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/swerv/swerv_wrapper.sv2v.v
+4. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/platforms/nangate45/cells_clkgate.v
+5. Executing HIERARCHY pass (managing design hierarchy).
+6. Executing AST frontend in derive mode using pre-parsed AST for module `\swerv'.
+6.1. Analyzing design hierarchy..
+6.2. Executing AST frontend in derive mode using pre-parsed AST for module `\dma_ctrl'.
+6.3. Executing AST frontend in derive mode using pre-parsed AST for module `\pic_ctrl'.
+6.4. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu'.
+6.5. Executing AST frontend in derive mode using pre-parsed AST for module `\exu'.
+6.6. Executing AST frontend in derive mode using pre-parsed AST for module `\dec'.
+6.7. Executing AST frontend in derive mode using pre-parsed AST for module `\ifu'.
+6.8. Executing AST frontend in derive mode using pre-parsed AST for module `\dmi_wrapper'.
+6.9. Executing AST frontend in derive mode using pre-parsed AST for module `\dbg'.
+6.10. Executing AST frontend in derive mode using pre-parsed AST for module `\rvclkhdr'.
+6.11. Analyzing design hierarchy..
+6.12. Executing AST frontend in derive mode using pre-parsed AST for module `\clockhdr'.
+6.13. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH64'.
+6.14. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH2'.
+6.15. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH1'.
+6.16. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH4'.
+6.17. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH32'.
+6.18. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH3'.
+6.19. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH32'.
+6.20. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH3'.
+6.21. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffsc_WIDTH1'.
+6.22. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH1'.
+6.23. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH5'.
+6.24. Executing AST frontend in derive mode using pre-parsed AST for module `\dmi_jtag_to_core_sync'.
+6.25. Executing AST frontend in derive mode using pre-parsed AST for module `\rvjtag_tap'.
+6.26. Executing AST frontend in derive mode using pre-parsed AST for module `\ifu_mem_ctl'.
+6.27. Executing AST frontend in derive mode using pre-parsed AST for module `\ifu_aln_ctl'.
+6.28. Executing AST frontend in derive mode using pre-parsed AST for module `\ifu_bp_ctl'.
+6.29. Executing AST frontend in derive mode using pre-parsed AST for module `\ifu_ifc_ctl'.
+6.30. Executing AST frontend in derive mode using pre-parsed AST for module `\dec_trigger'.
+6.31. Executing AST frontend in derive mode using pre-parsed AST for module `\dec_gpr_ctl_GPR_BANKS1_GPR_BANKS_LOG21'.
+6.32. Executing AST frontend in derive mode using pre-parsed AST for module `\dec_tlu_ctl'.
+6.33. Executing AST frontend in derive mode using pre-parsed AST for module `\dec_decode_ctl'.
+6.34. Executing AST frontend in derive mode using pre-parsed AST for module `\dec_ib_ctl'.
+6.35. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH31'.
+6.36. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH2'.
+6.37. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH63'.
+6.38. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH33'.
+6.39. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH74'.
+6.40. Executing AST frontend in derive mode using pre-parsed AST for module `\exu_alu_ctl'.
+6.41. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH5'.
+6.42. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH76'.
+6.43. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH20'.
+6.44. Executing AST frontend in derive mode using pre-parsed AST for module `\exu_div_ctl'.
+6.45. Executing AST frontend in derive mode using pre-parsed AST for module `\exu_mul_ctl'.
+6.46. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_bus_intf'.
+6.47. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_clkdomain'.
+6.48. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_trigger'.
+6.49. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_ecc'.
+6.50. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_stbuf'.
+6.51. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_dccm_ctl'.
+6.52. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_lsc_ctl'.
+6.53. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH4'.
+6.54. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH8'.
+6.55. Executing AST frontend in derive mode using pre-parsed AST for module `\cmp_and_mux_ID_BITS8_INTPRIORITY_BITS4'.
+6.56. Executing AST frontend in derive mode using pre-parsed AST for module `\configurable_gw'.
+6.57. Executing AST frontend in derive mode using pre-parsed AST for module `\rvsyncss_WIDTH8'.
+6.58. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH32'.
+6.59. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH8'.
+6.60. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH64'.
+6.61. Executing AST frontend in derive mode using pre-parsed AST for module `\rvrangecheck_f00c0000_32'.
+6.62. Executing AST frontend in derive mode using pre-parsed AST for module `\rvrangecheck_f0040000_64'.
+6.63. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffsc_WIDTH2'.
+6.64. Analyzing design hierarchy..
+6.65. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH64'.
+6.66. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH18'.
+6.67. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_addrcheck'.
+6.68. Executing AST frontend in derive mode using pre-parsed AST for module `\rvlsadder'.
+6.69. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH12'.
+6.70. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH7'.
+6.71. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH16'.
+6.72. Executing AST frontend in derive mode using pre-parsed AST for module `\rvecc_encode'.
+6.73. Executing AST frontend in derive mode using pre-parsed AST for module `\rvecc_decode'.
+6.74. Executing AST frontend in derive mode using pre-parsed AST for module `\rvmaskandmatch'.
+6.75. Executing AST frontend in derive mode using pre-parsed AST for module `\lsu_bus_buffer'.
+6.76. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH33'.
+6.77. Executing AST frontend in derive mode using pre-parsed AST for module `\rvtwoscomp_WIDTH32'.
+6.78. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH6'.
+6.79. Executing AST frontend in derive mode using pre-parsed AST for module `\rvbradder'.
+6.80. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH12'.
+6.81. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH74'.
+6.82. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH20'.
+6.83. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH76'.
+6.84. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH63'.
+6.85. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH31'.
+6.86. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH68'.
+6.87. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH37'.
+6.88. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH67'.
+6.89. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH9'.
+6.90. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH26'.
+6.91. Executing AST frontend in derive mode using pre-parsed AST for module `\dec_dec_ctl'.
+6.92. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH10'.
+6.93. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH6'.
+6.94. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH17'.
+6.95. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH14'.
+6.96. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH8'.
+6.97. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH22'.
+6.98. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH15'.
+6.99. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH34'.
+6.100. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH38'.
+6.101. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH22'.
+6.102. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH11'.
+6.103. Executing AST frontend in derive mode using pre-parsed AST for module `\rvsyncss_WIDTH6'.
+6.104. Executing AST frontend in derive mode using pre-parsed AST for module `\rvbtb_ghr_hash'.
+6.105. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH9'.
+6.106. Executing AST frontend in derive mode using pre-parsed AST for module `\rvbtb_tag_hash'.
+6.107. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH28'.
+6.108. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH13'.
+6.109. Executing AST frontend in derive mode using pre-parsed AST for module `\rvbtb_addr_hash'.
+6.110. Executing AST frontend in derive mode using pre-parsed AST for module `\ifu_compress_ctl'.
+6.111. Executing AST frontend in derive mode using pre-parsed AST for module `\rveven_paritycheck'.
+6.112. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH128'.
+6.113. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH48'.
+6.114. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffe_WIDTH53'.
+6.115. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdffs_WIDTH11'.
+6.116. Executing AST frontend in derive mode using pre-parsed AST for module `\rveven_paritygen_WIDTH16'.
+6.117. Executing AST frontend in derive mode using pre-parsed AST for module `\OPENROAD_CLKGATE'.
+6.118. Analyzing design hierarchy..
+6.119. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH53'.
+6.120. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH48'.
+6.121. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH128'.
+6.122. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH16'.
+6.123. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH28'.
+6.124. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH26'.
+6.125. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH14'.
+6.126. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH17'.
+6.127. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH37'.
+6.128. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH67'.
+6.129. Executing AST frontend in derive mode using pre-parsed AST for module `\rvdff_WIDTH68'.
+6.130. Analyzing design hierarchy..
+6.131. Analyzing design hierarchy..
+7. Executing OPT_CLEAN pass (remove unused cells and wires).
+Warning: Ignoring module rvdff_WIDTH128 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH48 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH53 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH13 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH9 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH11 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH22 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH38 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH34 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH15 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH10 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH31 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH63 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH76 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH20 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH74 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH6 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH33 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH7 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH12 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH18 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH32 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH8 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH4 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH5 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvjtag_tap because it contains processes (run 'proc' command first).
+Warning: Ignoring module dmi_jtag_to_core_sync because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH1 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH3 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH2 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH64 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH68 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH67 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH37 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH17 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH14 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH26 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH28 because it contains processes (run 'proc' command first).
+Warning: Ignoring module rvdff_WIDTH16 because it contains processes (run 'proc' command first).
+8. Executing RTLIL backend.
+Warnings: 39 unique messages, 39 total
+End of script. Logfile hash: badb842300, time: 4.54s, user: 4.48s, system: 0.28s, MEM: 911.43 MB peak
+Yosys 0.64+post (git sha1 UNKNOWN-dirty, g++ 11.4.0-1ubuntu1~22.04.3 -fPIC -O3)
+Time spent: 52% 1x hierarchy (2 sec), 23% 4x read_verilog (1 sec), ...
+Elapsed time: 0:04.75[h:]min:sec. CPU time: user 4.64 sys 0.33 (104%). Peak memory: 937068KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+1_1_yosys_canonicalize    .rtlil          4            915 877e741a56cd477025b5

@@ -1,0 +1,745 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 9 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.1, build e9452d6'
++ [[ Docker version 29.7.1, build e9452d6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 9 -gt 0 ]]
++ CMD_STR='make grt DESIGN=swerv PLATFORM=nangate45 CORE_UTILIZATION=80 RESULTS_DIR=/work/results/nangate45/swerv/pipeline_80 OBJECTS_DIR=/work/objects/nangate45/swerv/pipeline_80 PLACE_DENSITY_LB_ADDON=0.0 -j16'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;make grt DESIGN=swerv PLATFORM=nangate45 CORE_UTILIZATION=80 RESULTS_DIR=/work/results/nangate45/swerv/pipeline_80 OBJECTS_DIR=/work/objects/nangate45/swerv/pipeline_80 PLACE_DENSITY_LB_ADDON=0.0 -j16'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ make grt DESIGN=swerv PLATFORM=nangate45 CORE_UTILIZATION=80 RESULTS_DIR=/work/results/nangate45/swerv/pipeline_80 OBJECTS_DIR=/work/objects/nangate45/swerv/pipeline_80 PLACE_DENSITY_LB_ADDON=0.0 -j16
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 3_1_place_gp_skip_io global_place_skip_io
+Running global_place_skip_io.tcl, stage 3_1_place_gp_skip_io
+cp /work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc /work/results/nangate45/swerv/pipeline_80/3_place.sdc
+read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+read_db /work/results/nangate45/swerv/pipeline_80/2_floorplan.odb
+read_sdc /work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc
+source /OpenROAD-flow-scripts/flow/platforms/nangate45/setRC.tcl
+[INFO GPL-0022] Initialize gpl and calculate uniform density.
+Placement density is 0.9699999785423279, computed from PLACE_DENSITY_LB_ADDON  0.0 and lower bound 0.9599999785423279
+global_placement -skip_io -density 0.9699999785423279 -pad_left 0 -pad_right 0
+[INFO GPL-0001] ---- Initialize GPL Main Data Structures
+[INFO GPL-0002] DBU: 2000
+[INFO GPL-0003] SiteSize: (  0.190  1.400 ) um
+[INFO GPL-0004] CoreBBox: (  1.140  1.400 ) ( 29.640 29.400 ) um
+[INFO GPL-0036] Movable instances area:        663.138 um^2
+[INFO GPL-0037] Total instances area:          673.778 um^2
+[INFO GPL-0035] Pin density area adjust:        86.630 um^2
+[INFO GPL-0032] ---- Initialize Region: Top-level
+[INFO GPL-0006] Number of instances:               561
+[INFO GPL-0007] Movable instances:                 521
+[INFO GPL-0008] Fixed instances:                    40
+[INFO GPL-0009] Dummy instances:                     0
+[INFO GPL-0010] Number of nets:                    592
+[INFO GPL-0011] Number of pins:                   1644
+[INFO GPL-0012] Die BBox:  (  0.000  0.000 ) ( 30.790 30.790 ) um
+[INFO GPL-0013] Core BBox: (  1.140  1.400 ) ( 29.640 29.400 ) um
+[INFO GPL-0016] Core area:                     798.000 um^2
+[INFO GPL-0014] Region name: top-level.
+[INFO GPL-0015] Region area:                   798.000 um^2
+[INFO GPL-0017] Fixed instances area:           10.640 um^2
+[INFO GPL-0018] Movable instances area:        749.768 um^2
+[INFO GPL-0019] Utilization:                    95.226 %
+[INFO GPL-0020] Standard cells area:           749.768 um^2
+[INFO GPL-0021] Large instances area:            0.000 um^2
+[INFO GPL-0005] ---- Execute Conjugate Gradient Initial Placement.
+[INFO GPL-0051] Source of initial instance position counters:
+	Odb location = 0	Core center = 521	Region center = 0
+[INFO GPL-0033] ---- Initialize Nesterov Region: Top-level
+[INFO GPL-0023] Placement target density:       0.9700
+[INFO GPL-0024] Movable insts average area:      1.439 um^2
+[INFO GPL-0025] Ideal bin area:                  1.484 um^2
+[INFO GPL-0026] Ideal bin count:                   537
+[INFO GPL-0027] Total bin area:                798.000 um^2
+[INFO GPL-0028] Bin count (X, Y):          16 ,     16
+[INFO GPL-0029] Bin size (W * H):       1.781 *  1.750 um
+[INFO GPL-0030] Number of bins:                    256
+[INFO GPL-0084] ---- Execute Nesterov Global Placement.
+[INFO GPL-0031] HPWL: Half-Perimeter Wirelength
+Iteration | Overflow |     HPWL (um) |  HPWL(%) |   Penalty | Group
+---------------------------------------------------------------
+        0 |   0.9679 |  4.738400e+02 |   +0.00% |  4.87e-14 |      
+       10 |   0.9724 |  2.288465e+02 |  -51.70% |  7.93e-14 |      
+       20 |   0.9725 |  2.273070e+02 |   -0.67% |  1.29e-13 |      
+       30 |   0.9725 |  2.273095e+02 |   +0.00% |  2.10e-13 |      
+       40 |   0.9725 |  2.272785e+02 |   -0.01% |  3.43e-13 |      
+       50 |   0.9725 |  2.273095e+02 |   +0.01% |  5.58e-13 |      
+       60 |   0.9724 |  2.273395e+02 |   +0.01% |  9.09e-13 |      
+       70 |   0.9723 |  2.273140e+02 |   -0.01% |  1.48e-12 |      
+       80 |   0.9722 |  2.274350e+02 |   +0.05% |  2.41e-12 |      
+       90 |   0.9719 |  2.277315e+02 |   +0.13% |  3.93e-12 |      
+      100 |   0.9713 |  2.282655e+02 |   +0.23% |  6.40e-12 |      
+      110 |   0.9703 |  2.295740e+02 |   +0.57% |  1.04e-11 |      
+      120 |   0.9674 |  2.336525e+02 |   +1.78% |  1.70e-11 |      
+      130 |   0.9673 |  2.541950e+02 |   +8.79% |  2.77e-11 |      
+      140 |   0.9532 |  3.612475e+02 |  +42.11% |  4.50e-11 |      
+      150 |   0.9220 |  4.724680e+02 |  +30.79% |  7.34e-11 |      
+      160 |   0.8934 |  6.272695e+02 |  +32.76% |  1.20e-10 |      
+      170 |   0.8605 |  7.522290e+02 |  +19.92% |  1.95e-10 |      
+      180 |   0.8432 |  8.671570e+02 |  +15.28% |  3.17e-10 |      
+      190 |   0.8017 |  9.912700e+02 |  +14.31% |  5.16e-10 |      
+      200 |   0.7609 |  1.120193e+03 |  +13.01% |  8.41e-10 |      
+      210 |   0.7153 |  1.247951e+03 |  +11.41% |  1.37e-09 |      
+      220 |   0.6708 |  1.368646e+03 |   +9.67% |  2.23e-09 |      
+      230 |   0.6247 |  1.492205e+03 |   +9.03% |  3.64e-09 |      
+      240 |   0.5717 |  1.621784e+03 |   +8.68% |  5.92e-09 |      
+      250 |   0.5199 |  1.730767e+03 |   +6.72% |  9.65e-09 |      
+      260 |   0.4687 |  1.835172e+03 |   +6.03% |  1.57e-08 |      
+      270 |   0.4126 |  1.926251e+03 |   +4.96% |  2.56e-08 |      
+      280 |   0.3543 |  2.004908e+03 |   +4.08% |  4.17e-08 |      
+      290 |   0.2985 |  2.038236e+03 |   +1.66% |  6.27e-08 |      
+      300 |   0.2642 |  2.098152e+03 |   +2.94% |  9.23e-08 |      
+      310 |   0.2340 |  2.131765e+03 |   +1.60% |  1.36e-07 |      
+      320 |   0.2084 |  2.171287e+03 |   +1.85% |  2.00e-07 |      
+      330 |   0.1788 |  2.190374e+03 |   +0.88% |  2.95e-07 |      
+      340 |   0.1467 |  2.201111e+03 |   +0.49% |  4.35e-07 |      
+      350 |   0.1221 |  2.203868e+03 |   +0.13% |  6.40e-07 |      
+      360 |   0.1002 |  2.209468e+03 |   +0.25% |  9.43e-07 |      
+      361 |   0.0991 |  2.210736e+03 |          |  1.02e-06 |      
+---------------------------------------------------------------
+[INFO GPL-1001] Global placement finished at iteration 361
+[INFO GPL-1002] Placed Cell Area              749.7678
+[INFO GPL-1003] Available Free Area           787.3600
+[INFO GPL-1004] Minimum Feasible Density        0.9600 (cell_area / free_area)
+[INFO GPL-1006]   Suggested Target Densities:
+[INFO GPL-1007]     - For 90% usage of free space: 1.0581
+[INFO GPL-1008]     - For 80% usage of free space: 1.1903
+[WARNING GPL-1015] High uniform density (>0.96) may cause congestion or legalization issues.
+[INFO GPL-1014] Final placement area: 749.77 (+0.00%)
+Design area 674 um^2 84% utilization.
+write_db /work/results/nangate45/swerv/pipeline_80/3_1_place_gp_skip_io.odb
+Elapsed time: 0:00.41[h:]min:sec. CPU time: user 3.27 sys 0.03 (810%). Peak memory: 112572KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+3_1_place_gp_skip_io      .odb            0            109 523523c5f2519981f285
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 3_2_place_iop io_placement
+Running io_placement.tcl, stage 3_2_place_iop
+read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+read_db /work/results/nangate45/swerv/pipeline_80/3_1_place_gp_skip_io.odb
+read_sdc /work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc
+source /OpenROAD-flow-scripts/flow/platforms/nangate45/setRC.tcl
+place_pins -hor_layers metal5 -ver_layers metal6
+Found 0 macro blocks.
+Using 2 tracks default min distance between IO pins.
+[INFO PPL-0001] Number of available slots 204
+[INFO PPL-0002] Number of I/O             54
+[INFO PPL-0003] Number of I/O w/sink      54
+[INFO PPL-0004] Number of I/O w/o sink    0
+[INFO PPL-0005] Slots per section         200
+[INFO PPL-0008] Successfully assigned pins to sections.
+[INFO PPL-0012] I/O nets HPWL: 453.59 um.
+Design area 674 um^2 84% utilization.
+write_db /work/results/nangate45/swerv/pipeline_80/3_2_place_iop.odb
+Elapsed time: 0:00.21[h:]min:sec. CPU time: user 0.17 sys 0.04 (99%). Peak memory: 111664KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+3_2_place_iop             .odb            0            109 bef8106dc399d166dca5
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 3_3_place_gp global_place
+Running global_place.tcl, stage 3_3_place_gp
+read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+read_db /work/results/nangate45/swerv/pipeline_80/3_2_place_iop.odb
+read_sdc /work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc
+source /OpenROAD-flow-scripts/flow/platforms/nangate45/setRC.tcl
+[INFO RSZ-0026] Removed 17 buffers.
+Perform port buffering...
+[INFO RSZ-0027] Inserted 35 BUF_X1 input buffers.
+[INFO RSZ-0028] Inserted 18 BUF_X1 output buffers.
+[INFO GPL-0022] Initialize gpl and calculate uniform density.
+Placement density is 0.9800000286102295, computed from PLACE_DENSITY_LB_ADDON  0.0 and lower bound 0.9700000286102295
+global_placement -density 0.9800000286102295 -pad_left 0 -pad_right 0 -routability_driven -timing_driven -force_center_initial_place -min_phi_coef 0.95 -max_phi_coef 1.05
+[INFO GPL-0001] ---- Initialize GPL Main Data Structures
+[INFO GPL-0002] DBU: 2000
+[INFO GPL-0003] SiteSize: (  0.190  1.400 ) um
+[INFO GPL-0004] CoreBBox: (  1.140  1.400 ) ( 29.640 29.400 ) um
+[INFO GPL-0036] Movable instances area:        675.640 um^2
+[INFO GPL-0037] Total instances area:          686.280 um^2
+[INFO GPL-0035] Pin density area adjust:        85.983 um^2
+[INFO GPL-0032] ---- Initialize Region: Top-level
+[INFO GPL-0006] Number of instances:               597
+[INFO GPL-0007] Movable instances:                 557
+[INFO GPL-0008] Fixed instances:                    40
+[INFO GPL-0009] Dummy instances:                     0
+[INFO GPL-0010] Number of nets:                    628
+[INFO GPL-0011] Number of pins:                   1770
+[INFO GPL-0012] Die BBox:  (  0.000  0.000 ) ( 30.790 30.790 ) um
+[INFO GPL-0013] Core BBox: (  1.140  1.400 ) ( 29.640 29.400 ) um
+[INFO GPL-0016] Core area:                     798.000 um^2
+[INFO GPL-0014] Region name: top-level.
+[INFO GPL-0015] Region area:                   798.000 um^2
+[INFO GPL-0017] Fixed instances area:           10.640 um^2
+[INFO GPL-0018] Movable instances area:        761.623 um^2
+[INFO GPL-0019] Utilization:                    96.731 %
+[INFO GPL-0020] Standard cells area:           761.623 um^2
+[INFO GPL-0021] Large instances area:            0.000 um^2
+[INFO GPL-0005] ---- Execute Conjugate Gradient Initial Placement.
+[INFO GPL-0051] Source of initial instance position counters:
+	Odb location = 0	Core center = 557	Region center = 0
+[InitialPlace]  Iter: 1 conjugate gradient residual: 0.00000011 HPWL: 7833916
+[InitialPlace]  Iter: 2 conjugate gradient residual: 0.00000007 HPWL: 5544685
+[InitialPlace]  Iter: 3 conjugate gradient residual: 0.00000008 HPWL: 5550112
+[InitialPlace]  Iter: 4 conjugate gradient residual: 0.00000011 HPWL: 5559957
+[InitialPlace]  Iter: 5 conjugate gradient residual: 0.00000011 HPWL: 5557018
+[INFO GPL-0033] ---- Initialize Nesterov Region: Top-level
+[INFO GPL-0023] Placement target density:       0.9800
+[INFO GPL-0024] Movable insts average area:      1.367 um^2
+[INFO GPL-0025] Ideal bin area:                  1.395 um^2
+[INFO GPL-0026] Ideal bin count:                   571
+[INFO GPL-0027] Total bin area:                798.000 um^2
+[INFO GPL-0028] Bin count (X, Y):          16 ,     16
+[INFO GPL-0029] Bin size (W * H):       1.781 *  1.750 um
+[INFO GPL-0030] Number of bins:                    256
+[INFO GPL-0084] ---- Execute Nesterov Global Placement.
+[INFO GPL-0031] HPWL: Half-Perimeter Wirelength
+Iteration | Overflow |     HPWL (um) |  HPWL(%) |   Penalty | Group
+---------------------------------------------------------------
+        0 |   0.8622 |  1.410061e+03 |   +0.00% |  8.29e-14 |      
+       10 |   0.7611 |  1.512219e+03 |   +7.25% |  1.35e-13 |      
+       20 |   0.7440 |  1.533717e+03 |   +1.42% |  2.20e-13 |      
+       30 |   0.7420 |  1.536956e+03 |   +0.21% |  3.58e-13 |      
+       40 |   0.7432 |  1.534906e+03 |   -0.13% |  5.84e-13 |      
+       50 |   0.7398 |  1.540458e+03 |   +0.36% |  9.51e-13 |      
+       60 |   0.7393 |  1.541860e+03 |   +0.09% |  1.55e-12 |      
+       70 |   0.7407 |  1.538880e+03 |   -0.19% |  2.52e-12 |      
+       80 |   0.7408 |  1.538169e+03 |   -0.05% |  4.11e-12 |      
+       90 |   0.7402 |  1.539145e+03 |   +0.06% |  6.69e-12 |      
+      100 |   0.7394 |  1.540752e+03 |   +0.10% |  1.09e-11 |      
+      110 |   0.7372 |  1.544168e+03 |   +0.22% |  1.78e-11 |      
+      120 |   0.7349 |  1.549393e+03 |   +0.34% |  2.89e-11 |      
+      130 |   0.7321 |  1.556480e+03 |   +0.46% |  4.71e-11 |      
+      140 |   0.7274 |  1.566723e+03 |   +0.66% |  7.68e-11 |      
+      150 |   0.7199 |  1.581984e+03 |   +0.97% |  1.25e-10 |      
+      160 |   0.7098 |  1.604901e+03 |   +1.45% |  2.04e-10 |      
+      170 |   0.6963 |  1.636770e+03 |   +1.99% |  3.32e-10 |      
+      180 |   0.6793 |  1.678911e+03 |   +2.57% |  5.40e-10 |      
+      190 |   0.6541 |  1.728446e+03 |   +2.95% |  8.80e-10 |      
+[INFO GPL-0100] Timing-driven iteration 1/2, virtual: false.
+[INFO GPL-0101]    Iter: 199, overflow: 0.633, keep resizer changes at: 1, HPWL: 3545679
+Iteration |   Area    | Resized | Buffers | Nets repaired | Remaining
+---------------------------------------------------------------------
+        0 |     +0.0% |       0 |       0 |             0 |       628
+    final |     +0.0% |       0 |       0 |             0 |         0
+---------------------------------------------------------------------
+   Iter   |    Area   | Removed | Inserted |   Pins
+          |           | Buffers | Buffers  | Remaining
+-------------------------------------------------------
+        0 |     +0.0% |       0 |        0 |       592
+       59 |     +0.0% |       0 |        0 |       533
+      118 |     +0.3% |       0 |        1 |       474
+      177 |     +0.6% |       0 |        4 |       415
+      236 |     +0.7% |       0 |        5 |       356
+      295 |     +1.0% |       0 |        7 |       297
+      354 |     +1.1% |       0 |        8 |       238
+      413 |     +1.4% |       0 |       10 |       179
+      472 |     +1.8% |       0 |       13 |       120
+      531 |     +1.8% |       0 |       13 |        61
+      590 |     +1.9% |       0 |       14 |         2
+    final |     +1.9% |       0 |       14 |         0
+-------------------------------------------------------
+[INFO GPL-0106] Timing-driven: worst slack 2.0401653e-11
+[INFO GPL-0107] Timing-driven: repair_design delta area: 13.300 um^2 (+1.75%)
+[INFO GPL-0108] Timing-driven: repair_design, gpl delta gcells: 14 (+2.51%)
+[INFO GPL-0109] Timing-driven: repair_design, gcells created: 14, deleted: 0
+[INFO GPL-0110] Timing-driven: new target density: 0.99689186
+Iteration | Overflow |     HPWL (um) |  HPWL(%) |   Penalty | Group
+---------------------------------------------------------------
+      200 |   0.6274 |  1.840065e+03 |   +6.46% |  1.43e-09 |      
+[INFO GPL-0038] Routability snapshot saved at iter = 207
+      206 |   0.5955 |  1.928736e+03 |          |           |      
+      210 |   0.5809 |  1.936160e+03 |   +5.22% |  2.34e-09 |      
+      220 |   0.5496 |  1.943282e+03 |   +0.37% |  3.80e-09 |      
+      230 |   0.5012 |  1.999774e+03 |   +2.91% |  6.20e-09 |      
+      240 |   0.4526 |  2.062532e+03 |   +3.14% |  1.01e-08 |      
+      250 |   0.4163 |  2.098032e+03 |   +1.72% |  1.64e-08 |      
+      260 |   0.3702 |  2.146960e+03 |   +2.33% |  2.68e-08 |      
+      270 |   0.3232 |  2.198912e+03 |   +2.42% |  4.15e-08 |      
+[INFO GPL-0040] Routability iteration: 1
+[INFO GPL-0041] Total routing overflow: 0.0000
+[INFO GPL-0042] Number of overflowed tiles: 0 (0.00%)
+[INFO GPL-0043] Average top 0.5% routing congestion: 0.7915
+[INFO GPL-0044] Average top 1.0% routing congestion: 0.7915
+[INFO GPL-0045] Average top 2.0% routing congestion: 0.7445
+[INFO GPL-0046] Average top 5.0% routing congestion: 0.7128
+[INFO GPL-0047] Routability iteration weighted routing congestion: 0.7915
+[INFO GPL-0050] Weighted routing congestion is lower than target routing congestion(1.0100), end routability optimization.
+[INFO GPL-0090] Routability finished. Target routing congestion achieved succesfully.
+Iteration | Overflow |     HPWL (um) |  HPWL(%) |   Penalty | Group
+---------------------------------------------------------------
+      280 |   0.2882 |  2.249285e+03 |   +2.29% |  6.11e-08 |      
+      290 |   0.2548 |  2.281722e+03 |   +1.44% |  9.00e-08 |      
+      300 |   0.2313 |  2.314941e+03 |   +1.46% |  1.33e-07 |      
+      310 |   0.2126 |  2.341794e+03 |   +1.16% |  1.95e-07 |      
+[INFO GPL-0100] Timing-driven iteration 2/2, virtual: false.
+[INFO GPL-0101]    Iter: 316, overflow: 0.195, keep resizer changes at: 1, HPWL: 4701529
+Iteration |   Area    | Resized | Buffers | Nets repaired | Remaining
+---------------------------------------------------------------------
+        0 |     +0.0% |       0 |       0 |             0 |       642
+    final |     +0.0% |       0 |       0 |             0 |         0
+---------------------------------------------------------------------
+   Iter   |    Area   | Removed | Inserted |   Pins
+          |           | Buffers | Buffers  | Remaining
+-------------------------------------------------------
+        0 |     +0.0% |       0 |        0 |       592
+       59 |     +0.0% |       0 |        0 |       533
+      118 |     -0.3% |       1 |        0 |       474
+      177 |     +0.0% |       4 |        3 |       415
+      236 |     -0.1% |       5 |        3 |       356
+      295 |     -0.1% |       7 |        5 |       297
+      354 |     +0.0% |       8 |        7 |       238
+      413 |     -0.1% |      10 |        8 |       179
+      472 |     -0.4% |      13 |        9 |       120
+      531 |     -0.4% |      13 |        9 |        61
+      590 |     -0.4% |      14 |       10 |         2
+    final |     -0.4% |      14 |       10 |         0
+-------------------------------------------------------
+[INFO GPL-0106] Timing-driven: worst slack 1.6859791e-11
+[INFO GPL-0107] Timing-driven: repair_design delta area: -2.660 um^2 (-0.34%)
+[INFO GPL-0108] Timing-driven: repair_design, gpl delta gcells: -4 (-0.70%)
+[INFO GPL-0109] Timing-driven: repair_design, gcells created: 10, deleted: 14
+[INFO GPL-0110] Timing-driven: new target density: 0.9935135
+Iteration | Overflow |     HPWL (um) |  HPWL(%) |   Penalty | Group
+---------------------------------------------------------------
+      320 |   0.1821 |  2.360941e+03 |   +0.82% |  2.88e-07 |      
+      330 |   0.1586 |  2.369679e+03 |   +0.37% |  4.24e-07 |      
+      340 |   0.1377 |  2.379267e+03 |   +0.40% |  6.25e-07 |      
+      350 |   0.1126 |  2.382640e+03 |   +0.14% |  9.20e-07 |      
+      358 |   0.0993 |  2.376117e+03 |          |  1.30e-06 |      
+---------------------------------------------------------------
+[INFO GPL-1001] Global placement finished at iteration 358
+[INFO GPL-1017] Routability mode iteration count: 70
+[INFO GPL-1005] Routability final weighted congestion: 0.6868
+[INFO GPL-1002] Placed Cell Area              772.2628
+[INFO GPL-1003] Available Free Area           787.3600
+[INFO GPL-1004] Minimum Feasible Density        0.9700 (cell_area / free_area)
+[INFO GPL-1006]   Suggested Target Densities:
+[INFO GPL-1007]     - For 90% usage of free space: 1.0898
+[INFO GPL-1008]     - For 80% usage of free space: 1.2260
+[WARNING GPL-1015] High uniform density (>0.97) may cause congestion or legalization issues.
+[INFO GPL-1011] Original area (um^2): 761.62
+[INFO GPL-1012] Total routability artificial inflation: 0.00 (+0.00%)
+[INFO GPL-1013] Total timing-driven delta area: 10.64 (+1.40%)
+[INFO GPL-1014] Final placement area: 772.26 (+1.40%)
+estimate_parasitics -placement
+Report metrics stage 3, global place...
+
+==========================================================================
+global place report_design_area
+--------------------------------------------------------------------------
+Design area 697 um^2 87% utilization.
+write_db /work/results/nangate45/swerv/pipeline_80/3_3_place_gp.odb
+Elapsed time: 0:00.67[h:]min:sec. CPU time: user 3.52 sys 0.16 (548%). Peak memory: 286008KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+3_3_place_gp              .odb            0            279 5c549e8c0bb79c730df5
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 3_4_place_resized resize
+Running resize.tcl, stage 3_4_place_resized
+read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+read_db /work/results/nangate45/swerv/pipeline_80/3_3_place_gp.odb
+read_sdc /work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc
+source /OpenROAD-flow-scripts/flow/platforms/nangate45/setRC.tcl
+estimate_parasitics -placement
+Perform buffer insertion and gate resizing...
+repair_design -verbose
+Iteration |   Area    | Resized | Buffers | Nets repaired | Remaining
+---------------------------------------------------------------------
+        0 |     +0.0% |       0 |       0 |             0 |       638
+       10 |     +0.0% |       0 |       0 |             0 |       628
+       20 |     +0.0% |       0 |       0 |             0 |       618
+       30 |     +0.0% |       0 |       0 |             0 |       608
+       40 |     +0.0% |       0 |       0 |             0 |       598
+       50 |     +0.0% |       0 |       0 |             0 |       588
+       60 |     +0.0% |       0 |       0 |             0 |       578
+       70 |     +0.0% |       0 |       0 |             0 |       568
+       80 |     +0.0% |       0 |       0 |             0 |       558
+       90 |     +0.0% |       0 |       0 |             0 |       548
+      100 |     +0.0% |       0 |       0 |             0 |       538
+      110 |     +0.0% |       0 |       0 |             0 |       528
+      120 |     +0.0% |       0 |       0 |             0 |       518
+      130 |     +0.0% |       0 |       0 |             0 |       508
+      140 |     +0.0% |       0 |       0 |             0 |       498
+      150 |     +0.0% |       0 |       0 |             0 |       488
+      160 |     +0.0% |       0 |       0 |             0 |       478
+      170 |     +0.0% |       0 |       0 |             0 |       468
+      180 |     +0.0% |       0 |       0 |             0 |       458
+      190 |     +0.0% |       0 |       0 |             0 |       448
+      200 |     +0.0% |       0 |       0 |             0 |       438
+      210 |     +0.0% |       0 |       0 |             0 |       428
+      220 |     +0.0% |       0 |       0 |             0 |       418
+      230 |     +0.0% |       0 |       0 |             0 |       408
+      240 |     +0.0% |       0 |       0 |             0 |       398
+      250 |     +0.0% |       0 |       0 |             0 |       388
+      260 |     +0.0% |       0 |       0 |             0 |       378
+      270 |     +0.0% |       0 |       0 |             0 |       368
+      280 |     +0.0% |       0 |       0 |             0 |       358
+      290 |     +0.0% |       0 |       0 |             0 |       348
+      300 |     +0.0% |       0 |       0 |             0 |       338
+      310 |     +0.0% |       0 |       0 |             0 |       328
+      320 |     +0.0% |       0 |       0 |             0 |       318
+      330 |     +0.0% |       0 |       0 |             0 |       308
+      340 |     +0.0% |       0 |       0 |             0 |       298
+      350 |     +0.0% |       0 |       0 |             0 |       288
+      360 |     +0.0% |       0 |       0 |             0 |       278
+      370 |     +0.0% |       0 |       0 |             0 |       268
+      380 |     +0.0% |       0 |       0 |             0 |       258
+      390 |     +0.0% |       0 |       0 |             0 |       248
+      400 |     +0.0% |       0 |       0 |             0 |       238
+      410 |     +0.0% |       0 |       0 |             0 |       228
+      420 |     +0.0% |       0 |       0 |             0 |       218
+      430 |     +0.0% |       0 |       0 |             0 |       208
+      440 |     +0.0% |       0 |       0 |             0 |       198
+      450 |     +0.0% |       0 |       0 |             0 |       188
+      460 |     +0.0% |       0 |       0 |             0 |       178
+      470 |     +0.0% |       0 |       0 |             0 |       168
+      480 |     +0.0% |       0 |       0 |             0 |       158
+      490 |     +0.0% |       0 |       0 |             0 |       148
+      500 |     +0.0% |       0 |       0 |             0 |       138
+      510 |     +0.0% |       0 |       0 |             0 |       128
+      520 |     +0.0% |       0 |       0 |             0 |       118
+      530 |     +0.0% |       0 |       0 |             0 |       108
+      540 |     +0.0% |       0 |       0 |             0 |        98
+      550 |     +0.0% |       0 |       0 |             0 |        88
+      560 |     +0.0% |       0 |       0 |             0 |        78
+      570 |     +0.0% |       0 |       0 |             0 |        68
+      580 |     +0.0% |       0 |       0 |             0 |        58
+      590 |     +0.0% |       0 |       0 |             0 |        48
+      600 |     +0.0% |       0 |       0 |             0 |        38
+      610 |     +0.0% |       0 |       0 |             0 |        28
+      620 |     +0.0% |       0 |       0 |             0 |        18
+      630 |     +0.0% |       0 |       0 |             0 |         8
+    final |     +0.0% |       0 |       0 |             0 |         0
+---------------------------------------------------------------------
+Floating nets: 
+Report metrics stage 3, resizer...
+
+==========================================================================
+resizer report_design_area
+--------------------------------------------------------------------------
+Design area 697 um^2 87% utilization.
+Instance count before 607, after 607
+Pin count before 1736, after 1736
+write_db /work/results/nangate45/swerv/pipeline_80/3_4_place_resized.odb
+Elapsed time: 0:00.31[h:]min:sec. CPU time: user 0.29 sys 0.10 (125%). Peak memory: 131096KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+3_4_place_resized         .odb            0            128 5c549e8c0bb79c730df5
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 3_5_place_dp detail_place
+Running detail_place.tcl, stage 3_5_place_dp
+read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+read_db /work/results/nangate45/swerv/pipeline_80/3_4_place_resized.odb
+read_sdc /work/results/nangate45/swerv/pipeline_80/2_floorplan.sdc
+source /OpenROAD-flow-scripts/flow/platforms/nangate45/setRC.tcl
+detailed_placement
+[INFO DPL-0006] Core area: 798.00 um^2, Instances area: 696.92 um^2, Utilization: 87.3%
+[INFO DPL-0005] Diamond search max displacement: +/- 500 sites horizontally, +/- 100 rows vertically.
+[INFO DPL-1101] Legalizing using diamond search.
+Movements Summary
+---------------------------------------
+Total cells:                     567
+Diamond Move Success:            567 (100.00%)
+Diamond Move Failure:              0
+Rip-up and replace Success:        0 (  0.00% of diamond failures)
+Rip-up and replace Failure:        0
+Total Placement Failures:          0
+---------------------------------------
+Placement Analysis
+---------------------------------
+total displacement        711.4 u
+average displacement        1.2 u
+max displacement            8.2 u
+original HPWL            2398.8 u
+legalized HPWL           3091.2 u
+delta HPWL                   29 %
+
+improve_placement -max_displacement "5 1"
+Detailed placement improvement.
+[INFO DPL-0401] Setting random seed to 1.
+[INFO DPL-0402] Setting maximum displacement 5 1 to 14000 2800 units.
+[INFO DPL-0320] Collected 94 fixed cells.
+[INFO DPL-0318] Collected 567 single height cells.
+[INFO DPL-0321] Collected 0 wide cells.
+[INFO DPL-0322] Image (2280, 2800) - (59280, 58800)
+[INFO DPL-0310] Assigned 567 cells into segments.  Movement in X-direction is 0.000000, movement in Y-direction is 0.000000.
+[INFO DPL-0313] Found 0 cells in wrong regions.
+[INFO DPL-0315] Found 0 row alignment problems.
+[INFO DPL-0314] Found 0 site alignment problems.
+[INFO DPL-0311] Found 0 overlaps between adjacent cells.
+[INFO DPL-0312] Found 0 edge spacing violations and 0 padding violations.
+[INFO DPL-0303] Running algorithm for independent set matching.
+[INFO DPL-0300] Set matching objective is wirelength.
+[INFO DPL-0301] Pass   1 of matching; objective is 6.169885e+06.
+[INFO DPL-0301] Pass   2 of matching; objective is 6.094655e+06.
+[INFO DPL-0302] End of matching; objective is 6.094655e+06, improvement is 1.22 percent.
+[INFO DPL-0303] Running algorithm for global swaps.
+[INFO DPL-0306] Pass   1 of global swaps; hpwl is 5.951380e+06.
+[INFO DPL-0306] Pass   2 of global swaps; hpwl is 5.935100e+06.
+[INFO DPL-0307] End of global swaps; objective is 5.935100e+06, improvement is 2.62 percent.
+[INFO DPL-0303] Running algorithm for vertical swaps.
+[INFO DPL-0308] Pass   1 of vertical swaps; hpwl is 5.903785e+06.
+[INFO DPL-0309] End of vertical swaps; objective is 5.903785e+06, improvement is 0.53 percent.
+[INFO DPL-0303] Running algorithm for reordering.
+[INFO DPL-0304] Pass   1 of reordering; objective is 5.782580e+06.
+[INFO DPL-0304] Pass   2 of reordering; objective is 5.764720e+06.
+[INFO DPL-0305] End of reordering; objective is 5.764720e+06, improvement is 2.36 percent.
+[INFO DPL-0303] Running algorithm for random improvement.
+[INFO DPL-0324] Random improver is using random generator.
+[INFO DPL-0325] Random improver is using hpwl objective.
+[INFO DPL-0326] Random improver cost string is (a).
+[INFO DPL-0332] End of pass, Generator random called 11340 times.
+[INFO DPL-0335] Generator random, Cumulative attempts 11340, swaps 3492, moves   844 since last reset.
+[INFO DPL-0333] End of pass, Objective hpwl, Initial cost 5.764720e+06, Scratch cost 5.657285e+06, Incremental cost 5.657285e+06, Mismatch? N
+[INFO DPL-0338] End of pass, Total cost is 5.657285e+06.
+[INFO DPL-0327] Pass   1 of random improver; improvement in cost is 1.86 percent.
+[INFO DPL-0332] End of pass, Generator random called 11340 times.
+[INFO DPL-0335] Generator random, Cumulative attempts 22680, swaps 6829, moves  1819 since last reset.
+[INFO DPL-0333] End of pass, Objective hpwl, Initial cost 5.657285e+06, Scratch cost 5.631435e+06, Incremental cost 5.631435e+06, Mismatch? N
+[INFO DPL-0338] End of pass, Total cost is 5.631435e+06.
+[INFO DPL-0327] Pass   2 of random improver; improvement in cost is 0.46 percent.
+[INFO DPL-0328] End of random improver; improvement is 2.312081 percent.
+[INFO DPL-0380] Cell flipping.
+[INFO DPL-0382] Changed 0 cell orientations for row compatibility.
+[INFO DPL-0383] Performed 180 cell flips.
+[INFO DPL-0384] End of flipping; objective is 5.522610e+06, improvement is 1.93 percent.
+[INFO DPL-0313] Found 0 cells in wrong regions.
+[INFO DPL-0315] Found 0 row alignment problems.
+[INFO DPL-0314] Found 0 site alignment problems.
+[INFO DPL-0311] Found 0 overlaps between adjacent cells.
+[INFO DPL-0312] Found 0 edge spacing violations and 0 padding violations.
+Detailed Improvement Results
+------------------------------------------
+Original HPWL             3091.2 u (    1633.4,     1457.8)
+Final HPWL                2764.3 u (    1427.4,     1336.9)
+Delta HPWL                 -10.6 % (     -12.6,       -8.3)
+
+optimize_mirroring
+[INFO DPL-0020] Mirrored 36 instances
+[INFO DPL-0021] HPWL before            2764.3 u
+[INFO DPL-0022] HPWL after             2762.9 u
+[INFO DPL-0023] HPWL delta               -0.1 %
+[INFO FLW-0012] Placement violations .
+estimate_parasitics -placement
+Report metrics stage 3, detailed place...
+
+==========================================================================
+detailed place report_design_area
+--------------------------------------------------------------------------
+Design area 697 um^2 87% utilization.
+write_db /work/results/nangate45/swerv/pipeline_80/3_5_place_dp.odb
+Elapsed time: 0:00.35[h:]min:sec. CPU time: user 0.35 sys 0.07 (119%). Peak memory: 116732KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+3_5_place_dp              .odb            0            113 0e51f8709c4db3d1f8f7
+cp /work/results/nangate45/swerv/pipeline_80/3_5_place_dp.odb /work/results/nangate45/swerv/pipeline_80/3_place.odb
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 4_1_cts cts
+Running cts.tcl, stage 4_1_cts
+read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+read_db /work/results/nangate45/swerv/pipeline_80/3_place.odb
+read_sdc /work/results/nangate45/swerv/pipeline_80/3_place.sdc
+source /OpenROAD-flow-scripts/flow/platforms/nangate45/setRC.tcl
+clock_tree_synthesis -sink_clustering_enable -repair_clock_nets
+[INFO CTS-0050] Root buffer is CLKBUF_X3.
+[INFO CTS-0051] Sink buffer is CLKBUF_X3.
+[INFO CTS-0052] The following clock buffers will be used for CTS:
+                    CLKBUF_X3
+[INFO CTS-0049] Characterization buffer is CLKBUF_X3.
+[INFO CTS-0007] Net "clk" found for clock "core_clock".
+[INFO CTS-0010]  Clock net "clk" has 35 sinks.
+[INFO CTS-0008] TritonCTS found 1 clock nets.
+[INFO CTS-0097] Characterization used 1 buffer(s) types.
+[INFO CTS-0201] 0 blockages from hard placement blockages and placed macros will be used.
+[INFO CTS-0027] Generating H-Tree topology for net clk.
+[INFO CTS-0028]  Total number of sinks: 35.
+[INFO CTS-0090]  Sinks will be clustered based on buffer max cap.
+[INFO CTS-0030]  Number of static layers: 0.
+[INFO CTS-0020]  Wire segment unit: 14000  dbu (7 um).
+[INFO CTS-0023]  Original sink region: [(5890, 4030), (55670, 54430)].
+[INFO CTS-0024]  Normalized sink region: [(0.420714, 0.287857), (3.97643, 3.88786)].
+[INFO CTS-0025]     Width:  3.5557.
+[INFO CTS-0026]     Height: 3.6000.
+ Level 1
+    Direction: Vertical
+    Sinks per sub-region: 18
+    Sub-region size: 3.5557 X 1.8000
+[INFO CTS-0034]     Segment length (rounded): 1.
+ Level 2
+    Direction: Horizontal
+    Sinks per sub-region: 9
+    Sub-region size: 1.7779 X 1.8000
+[INFO CTS-0034]     Segment length (rounded): 1.
+[INFO CTS-0032]  Stop criterion found. Max number of sinks is 15.
+[INFO CTS-0035]  Number of sinks covered: 35.
+[INFO CTS-0018]     Created 5 clock buffers.
+[INFO CTS-0012]     Minimum number of buffers in the clock path: 2.
+[INFO CTS-0013]     Maximum number of buffers in the clock path: 2.
+[INFO CTS-0015]     Created 5 clock nets.
+[INFO CTS-0016]     Fanout distribution for the current clock = 7:1, 8:2, 12:1..
+[INFO CTS-0017]     Max level of the clock tree: 2.
+[INFO CTS-0098] Clock net "clk"
+[INFO CTS-0099]  Sinks 38
+[INFO CTS-0100]  Leaf buffers 0
+[INFO CTS-0101]  Average sink wire length 46.34 um
+[INFO CTS-0102]  Path depth 2 - 2
+[INFO CTS-0207]  Dummy loads inserted 3
+estimate_parasitics -placement
+detailed_placement
+[INFO DPL-0006] Core area: 798.00 um^2, Instances area: 705.96 um^2, Utilization: 88.5%
+[INFO DPL-0005] Diamond search max displacement: +/- 500 sites horizontally, +/- 100 rows vertically.
+[INFO DPL-1101] Legalizing using diamond search.
+Movements Summary
+---------------------------------------
+Total cells:                     575
+Diamond Move Success:            575 (100.00%)
+Diamond Move Failure:              0
+Rip-up and replace Success:        0 (  0.00% of diamond failures)
+Rip-up and replace Failure:        0
+Total Placement Failures:          0
+---------------------------------------
+Placement Analysis
+---------------------------------
+total displacement         63.6 u
+average displacement        0.1 u
+max displacement            3.6 u
+original HPWL            2842.9 u
+legalized HPWL           2962.2 u
+delta HPWL                    4 %
+
+estimate_parasitics -placement
+repair_timing -setup_margin 0 -hold_margin 0 -repair_tns 100 -verbose
+[INFO RSZ-0100] Repair move sequence: UnbufferMove SizeUpMove SwapPinsMove BufferMove CloneMove SplitLoadMove 
+[INFO RSZ-0094] Found 12 endpoints with setup violations.
+[INFO RSZ-0099] Repairing 12 out of 12 (100.00%) violating endpoints...
+   Iter   | Removed | Resized | Inserted | Cloned |  Pin  |   Area   |    WNS   |   StTNS    |   EnTNS    |  Viol  |  Worst  
+          | Buffers |  Gates  | Buffers  |  Gates | Swaps |          |          |            |            | Endpts | St/EnPt 
+------------------------------------------------------------------------------------------------------------------------------
+       0* |       0 |       0 |        0 |      0 |     0 |    +0.0% |   -0.064 |       -1.3 |       -0.5 |     12 | resp_msg[14]
+      10* |       0 |       8 |        1 |      0 |     0 |    +0.7% |   -0.052 |       -1.2 |       -0.5 |     12 | resp_msg[13]
+      20* |       0 |      15 |        3 |      0 |     1 |    +1.6% |   -0.049 |       -1.1 |       -0.4 |     12 | resp_msg[11]
+      30* |       0 |      25 |        3 |      0 |     1 |    +2.6% |   -0.044 |       -1.0 |       -0.4 |     12 | resp_msg[13]
+      40* |       0 |      31 |        6 |      0 |     3 |    +3.6% |   -0.043 |       -1.0 |       -0.4 |     12 | resp_msg[14]
+      50* |       0 |      39 |        8 |      0 |     3 |    +4.7% |   -0.043 |       -1.0 |       -0.4 |     12 | resp_msg[15]
+      60* |       0 |      46 |       10 |      0 |     4 |    +5.7% |   -0.041 |       -1.0 |       -0.4 |     12 | resp_msg[13]
+      70* |       0 |      53 |       12 |      0 |     5 |    +6.7% |   -0.040 |       -0.9 |       -0.3 |     12 | resp_msg[11]
+      80* |       0 |      60 |       13 |      0 |     7 |    +7.5% |   -0.037 |       -0.9 |       -0.3 |     12 | resp_msg[13]
+      90* |       0 |      67 |       14 |      0 |     9 |    +8.3% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[13]
+     100* |       0 |      75 |       15 |      0 |    10 |    +9.1% |   -0.045 |       -0.8 |       -0.3 |     12 | resp_msg[14]
+     110* |       0 |      82 |       16 |      0 |    12 |   +10.1% |   -0.044 |       -0.9 |       -0.3 |     12 | resp_msg[14]
+     111* |       0 |      74 |       15 |      0 |     9 |    +9.0% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     120* |       0 |      80 |       15 |      0 |    11 |    +9.5% |   -0.038 |       -0.8 |       -0.3 |     12 | resp_msg[9]
+     130* |       0 |      82 |       20 |      0 |    15 |   +10.3% |   -0.037 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     140* |       0 |      90 |       20 |      0 |    17 |   +11.1% |   -0.037 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     140* |       0 |      74 |       15 |      0 |     9 |    +9.0% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     150* |       0 |      80 |       16 |      0 |    11 |    +9.9% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[13]
+     160* |       0 |      84 |       18 |      0 |    15 |   +10.6% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[12]
+     170* |       0 |      92 |       19 |      0 |    16 |   +11.6% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[12]
+     179* |       0 |      74 |       15 |      0 |     9 |    +9.0% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     180* |       0 |      74 |       15 |      0 |     9 |    +9.0% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     190* |       0 |      81 |       18 |      0 |     9 |   +10.1% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     200* |       0 |      87 |       20 |      0 |    11 |   +11.1% |   -0.042 |       -0.9 |       -0.3 |     12 | resp_msg[13]
+     210* |       0 |      93 |       21 |      0 |    14 |   +12.1% |   -0.042 |       -0.9 |       -0.3 |     12 | resp_msg[13]
+     214* |       0 |      81 |       19 |      0 |     9 |   +10.2% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     220* |       0 |      85 |       19 |      0 |    10 |   +10.5% |   -0.040 |       -0.8 |       -0.3 |     12 | resp_msg[14]
+     230* |       0 |      95 |       19 |      0 |    10 |   +11.5% |   -0.040 |       -0.9 |       -0.3 |     12 | resp_msg[14]
+     240* |       0 |     101 |       21 |      0 |    12 |   +12.4% |   -0.040 |       -0.9 |       -0.3 |     12 | resp_msg[14]
+     240* |       0 |      81 |       19 |      0 |     9 |   +10.2% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     250* |       0 |      87 |       19 |      0 |    12 |   +10.8% |   -0.038 |       -0.8 |       -0.3 |     12 | resp_msg[14]
+     260* |       0 |      95 |       20 |      0 |    13 |   +12.0% |   -0.050 |       -1.0 |       -0.3 |     12 | resp_msg[14]
+     261* |       0 |      83 |       19 |      0 |    10 |   +10.4% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     270* |       0 |      89 |       20 |      0 |    11 |   +11.2% |   -0.037 |       -0.8 |       -0.3 |     12 | resp_msg[13]
+     280* |       0 |      96 |       22 |      0 |    12 |   +12.3% |   -0.037 |       -0.8 |       -0.3 |     12 | resp_msg[14]
+     287* |       0 |      84 |       20 |      0 |    11 |   +10.6% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     290* |       0 |      84 |       20 |      0 |    13 |   +10.6% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     300* |       0 |      90 |       22 |      0 |    15 |   +11.4% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     310* |       0 |      97 |       24 |      0 |    16 |   +12.6% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     312* |       0 |      90 |       23 |      0 |    15 |   +11.5% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     320* |       0 |      94 |       24 |      0 |    17 |   +12.0% |   -0.037 |       -0.8 |       -0.3 |     12 | resp_msg[12]
+     330* |       0 |     102 |       24 |      0 |    19 |   +13.1% |   -0.037 |       -0.8 |       -0.3 |     12 | resp_msg[12]
+     335* |       0 |      90 |       23 |      0 |    15 |   +11.5% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     340* |       0 |      94 |       23 |      0 |    15 |   +12.0% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     350* |       0 |      97 |       27 |      0 |    18 |   +12.8% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     350* |       0 |      97 |       27 |      0 |    18 |   +12.8% |   -0.036 |       -0.8 |       -0.3 |     12 | resp_msg[15]
+     360* |       0 |     103 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     360* |       0 |     103 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     361* |       0 |     103 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     361* |       0 |     103 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     362+ |       0 |     103 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     363+ |       0 |     103 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     365+ |       0 |     104 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     366+ |       0 |     104 |       30 |      0 |    19 |   +13.8% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     368+ |       0 |     105 |       30 |      0 |    19 |   +13.9% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     369+ |       0 |     105 |       30 |      0 |    19 |   +13.9% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     370+ |       0 |     105 |       30 |      0 |    19 |   +13.9% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     371+ |       0 |     106 |       30 |      0 |    19 |   +14.0% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     372+ |       0 |     106 |       30 |      0 |    19 |   +14.0% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     373+ |       0 |     106 |       30 |      0 |    19 |   +14.0% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     374+ |       0 |     106 |       30 |      0 |    19 |   +14.0% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     375+ |       0 |     106 |       30 |      0 |    19 |   +14.0% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+     376+ |       0 |     107 |       30 |      0 |    19 |   +14.1% |   -0.036 |       -0.8 |       -0.2 |     12 | resp_msg[15]
+    final |       0 |     107 |       30 |      0 |    19 |   +14.1% |   -0.036 |       -0.8 |       -0.2 |     10 | resp_msg[15]
+------------------------------------------------------------------------------------------------------------------------------
+[INFO RSZ-0040] Inserted 30 buffers.
+[INFO RSZ-0051] Resized 107 instances: 107 up, 0 up match, 0 down, 0 VT
+[INFO RSZ-0043] Swapped pins on 19 instances.
+[WARNING RSZ-0062] Unable to repair all setup violations.
+[INFO RSZ-0033] No hold violations found.
+Repair timing output passed lec test
+detailed_placement
+[INFO DPL-0006] Core area: 798.00 um^2, Instances area: 805.18 um^2, Utilization: 100.9%
+[ERROR DPL-0038] Utilization greater than 100%, impossible to legalize
+Run 'make gui_4_1_error.odb' to load progress snapshot
+write_db /work/results/nangate45/swerv/pipeline_80/4_1_error.odb
+write_sdc -no_timestamp /work/results/nangate45/swerv/pipeline_80/4_1_error.sdc
+Error: cts.tcl, 83 Detailed placement failed in CTS: DPL-0038
+Elapsed time: 0:01.52[h:]min:sec. CPU time: user 1.90 sys 0.35 (147%). Peak memory: 143096KB.
+make[1]: *** [Makefile:513: do-4_1_cts] Error 1
+make: *** [Makefile:513: /work/results/nangate45/swerv/pipeline_80/4_1_cts.odb] Error 2

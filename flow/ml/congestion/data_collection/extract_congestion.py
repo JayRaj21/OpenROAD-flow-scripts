@@ -18,15 +18,21 @@ import re
 import numpy as np
 
 LAYER_ORDER = [
-    "metal1", "metal2", "metal3", "metal4", "metal5",
-    "metal6", "metal7", "metal8", "metal9", "metal10",
+    "metal1",
+    "metal2",
+    "metal3",
+    "metal4",
+    "metal5",
+    "metal6",
+    "metal7",
+    "metal8",
+    "metal9",
+    "metal10",
 ]
 
 # Matches lines like:
 # metal2            1326            31            2.34%             0 /  0 /  0
-_ROW_RE = re.compile(
-    r"^(metal\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)%"
-)
+_ROW_RE = re.compile(r"^(metal\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)%")
 
 
 def parse_congestion_report(log_path: str) -> np.ndarray:
@@ -51,8 +57,10 @@ def parse_congestion_report(log_path: str) -> np.ndarray:
                 pct = float(m.group(4)) / 100.0
                 if layer in usage:
                     usage[layer] = pct
-            elif in_table and line.strip().startswith("---") and any(
-                v > 0 for v in usage.values()
+            elif (
+                in_table
+                and line.strip().startswith("---")
+                and any(v > 0 for v in usage.values())
             ):
                 break
 
@@ -60,7 +68,9 @@ def parse_congestion_report(log_path: str) -> np.ndarray:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract congestion vector from GRT log")
+    parser = argparse.ArgumentParser(
+        description="Extract congestion vector from GRT log"
+    )
     parser.add_argument("--log", required=True, help="Path to 5_1_grt.log")
     parser.add_argument("--out", required=True, help="Output .npy file path")
     args = parser.parse_args()

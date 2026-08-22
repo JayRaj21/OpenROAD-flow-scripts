@@ -1,0 +1,276 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 9 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.1, build e9452d6'
++ [[ Docker version 29.7.1, build e9452d6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 9 -gt 0 ]]
++ CMD_STR='make grt DESIGN_CONFIG=./designs/asap7/jpeg/config.mk CORE_UTILIZATION=85 RESULTS_DIR=/work/results/asap7/jpeg/pipeline_85 OBJECTS_DIR=/work/objects/asap7/jpeg/pipeline_85 PLACE_DENSITY_LB_ADDON=0.0 -j16 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;make grt DESIGN_CONFIG=./designs/asap7/jpeg/config.mk CORE_UTILIZATION=85 RESULTS_DIR=/work/results/asap7/jpeg/pipeline_85 OBJECTS_DIR=/work/objects/asap7/jpeg/pipeline_85 PLACE_DENSITY_LB_ADDON=0.0 -j16 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ make grt DESIGN_CONFIG=./designs/asap7/jpeg/config.mk CORE_UTILIZATION=85 RESULTS_DIR=/work/results/asap7/jpeg/pipeline_85 OBJECTS_DIR=/work/objects/asap7/jpeg/pipeline_85 PLACE_DENSITY_LB_ADDON=0.0 -j16 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl
+make: *** No rule to make target '/work/results/asap7/jpeg/pipeline_85/2_1_floorplan.sdc', needed by '/work/results/asap7/jpeg/pipeline_85/2_floorplan.sdc'.  Stop.
+make: *** Waiting for unfinished jobs....
+/OpenROAD-flow-scripts/flow/scripts/synth.sh /OpenROAD-flow-scripts/flow/scripts/synth_canonicalize.tcl /work/logs/asap7/jpeg/base/1_1_yosys_canonicalize.log
+Using ABC area script.
+Extracting clock period from SDC file: /work/results/asap7/jpeg/pipeline_85/clock_period.txt
+Setting clock period to 310
+1. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
+2. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
+3. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
+4. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_211120.lib.gz
+5. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
+6. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
+7. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
+8. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
+9. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_211120.lib.gz
+10. Executing Liberty frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
+11. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dct.v
+12. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dct_mac.v
+13. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dctu.v
+14. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/dctub.v
+15. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_su.v
+16. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v
+17. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/fdct.v
+18. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_encoder.v
+19. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_qnr.v
+20. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_rle.v
+21. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_rle1.v
+22. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/jpeg_rzs.v
+23. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/designs/src/jpeg/zigzag.v
+24. Executing Verilog-2005 frontend: /OpenROAD-flow-scripts/flow/platforms/asap7/yoSys/cells_clkgate_R.v
+25. Executing HIERARCHY pass (managing design hierarchy).
+26. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_encoder'.
+26.1. Analyzing design hierarchy..
+26.2. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_rle'.
+26.3. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_qnr'.
+26.4. Executing AST frontend in derive mode using pre-parsed AST for module `\fdct'.
+26.5. Analyzing design hierarchy..
+26.6. Executing AST frontend in derive mode using pre-parsed AST for module `\div_su'.
+26.7. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_rzs'.
+26.8. Executing AST frontend in derive mode using pre-parsed AST for module `\jpeg_rle1'.
+26.9. Executing AST frontend in derive mode using pre-parsed AST for module `\zigzag'.
+Warning: Replacing memory \sresult with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/zigzag.v:131
+26.10. Executing AST frontend in derive mode using pre-parsed AST for module `\dct'.
+26.11. Analyzing design hierarchy..
+26.12. Executing AST frontend in derive mode using pre-parsed AST for module `\div_uu'.
+Warning: Replacing memory \q_pipe with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v:160
+Warning: Replacing memory \s_pipe with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v:151
+Warning: Replacing memory \d_pipe with list of registers. See /OpenROAD-flow-scripts/flow/designs/src/jpeg/div_uu.v:142
+26.13. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.14. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.15. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.16. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.17. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.18. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.19. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.20. Executing AST frontend in derive mode using pre-parsed AST for module `\dctub'.
+26.21. Analyzing design hierarchy..
+26.22. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.23. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.24. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.25. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.26. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.27. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.28. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.29. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.30. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.31. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.32. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.33. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.34. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.35. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.36. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.37. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.38. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.39. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.40. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.41. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.42. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.43. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.44. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.45. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.46. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.47. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.48. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.49. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.50. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.51. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.52. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.53. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.54. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.55. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.56. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.57. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.58. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.59. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.60. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.61. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.62. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.63. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.64. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.65. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.66. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.67. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.68. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.69. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.70. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.71. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.72. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.73. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.74. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.75. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.76. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.77. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.78. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.79. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.80. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.81. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.82. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.83. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.84. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.85. Executing AST frontend in derive mode using pre-parsed AST for module `\dctu'.
+26.86. Analyzing design hierarchy..
+26.87. Executing AST frontend in derive mode using pre-parsed AST for module `\dct_mac'.
+26.88. Analyzing design hierarchy..
+26.89. Analyzing design hierarchy..
+27. Executing OPT_CLEAN pass (remove unused cells and wires).
+Warning: Ignoring module $paramod$e2471d3acfddfd8f107137e4952b02d9e7720f44\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9e8342fceac8003655f9e71995b4fdeb8565fbe5\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$0f96740a02eb44c944b68d6b495a8cce162f1249\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$e6bd937dcb54fb0697fee40c5f9824ba6fd53538\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$da3415da01ee30cd3fa431ef7b8104a7c6ed9a24\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$b53123087aafc52fe604e5dcf6b6b1b8d73b2231\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$4dc5718e86f31fe555f7d39cf5ab7078c09f577a\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$fa41e4d02884503da5d6c381e868b8c261424a31\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$826cb5d104d530340b1f58495d2410742b2c32fe\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$88a8287894fa5d106cca0ce24429339f4a2785a9\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$0c5a5bd6be4ed818deaac08b02afbddb6897ffee\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$141303f1e6ff0436e3fa44dd8e1d8f51afed9a78\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$16cad72ebc555f93621a2c70f423f14f85bbeb07\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a8d3b7b4edaf7d596a54a187c8ed4a9561fa625a\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$56b31b71c3bccc1fb1f134779b3bdd5ab1b461c7\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$141b5017b00a41bd6bcdd772ef8ad836aaf4019f\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$37cd075c9fa8b3a4872c05f999800e89bc604dc4\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$26ce9ce45d1136272d6a188b0b22329681d6199b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$ca051f171e86125a3bcf4bd090f5be774b98c04e\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$3b47752d19f391915a818678f43c9a51f524cc48\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$b266e2f77428397c53d4afd55bef1da32efe03d9\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f06914ec453560c29e1738d8a2be788b84af024b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a184ef4c0e9b8e48eac4b335f6b36fd82c0c32d3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$6be19b0824fdb8c44e931702b04949b1ae101a34\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$1b119bd029c81aaa2221a23d15ab3b6b02f6efee\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9fe6c97945bcc341eadabee9cbdea0f75515e5c3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$44a044575968c599376fc32b4d9ee49faea5711d\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f1b01728a98736f8d413a71bd9a7600c5a6961e3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$04fdc4f446e06e0744e44efd615d1158fec3aeb8\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a523c923d4f86f07f4e81f5d8b04b352dfcc17be\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$c4f8cc56c0ef9356356d2a98d35862f209dd307b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$adcdc49d3fc5249816d353bb65629f56cf0927d3\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bfc28a02cfebf191b4a982c9147f38f65a3f3469\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$7911a3968b23dded19efefb86cf26bb44e3a7781\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$785fe1ea8cdf428cbeb2f89081ee68c33feb7da2\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$2da196d8114b669d4bb3858ca0a91434452576e0\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$a5796bae454a3870edf919a9404bde7ca4192701\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$eb0441514cb1002bdcaf5201d3067d7bd1bbd3e9\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$e9d96eb14c78f030ece167996f154f4849a68288\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$2ce29d501700894abc3f54c094daafc2d8c2c211\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$11fa2caec0040cf5bdd9aac167c50c8009d1fe68\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bd585d540938973e77d9fdfafe68a3c54bf55cb8\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$94a1b10314722615b96d6c8f661cbb82ecebf320\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$d348381a5c8d7c369f0c055d305d608d67b77e86\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$29130e85acc43116076719ea36da8d59b7490cc4\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$32a02d514417e24bb09b7885b9c053483ac7784d\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9beaa443332981731011e314e41ebdfa5267d059\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$fa85f450a22557b2687ca86acb15721a7fddf8e7\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$5778094f610ca183dd46956f589e4ea513d2316c\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$cf6677181b8958913bf11288905dc7e6338a7bf5\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$4895890460618319d2e2de05b5a45e21ba9e3f8b\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$ee2aa8736952ca7eee7f4751cab786a479da4583\div_uu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$849c8591669cf197b80ef99050b300773b555aae\dct because it contains processes (run 'proc' command first).
+Warning: Ignoring module zigzag because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_rle1 because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_rzs because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod\div_su\z_width=s32'00000000000000000000000000011000 because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_qnr because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_rle because it contains processes (run 'proc' command first).
+Warning: Ignoring module jpeg_encoder because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$b5a8bcf0c5a3eb6704410e66fd72520afc96ea51\dct_mac because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$8cd9bf70556f3aa976ca66d64ee3b9c1b3a94e21\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$30e2d72cbb2d6c7d2f48769e891fec5593e1f756\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$022e4835c44d221125856d68f8603b7186431212\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f878842d6bc0ac80c3f795bb76ef86af701fb0a2\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bd5d8b7ea001bd9da1e8d07da4940a1f4c75e6b0\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$bb43d9c07810ea45f23a5f680ee116bafcd9334e\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$c50cce30a10e9eb82ea37b86647b55ab680286c8\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$9f831900faf0e9bfdbd9e0f8aa853df59256a109\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$53ab2e60687d01e7461fdffe1d34a14bacda6928\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$99c498a68fd2923ba65be259bfb6e7d8309d79f4\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$f5bb6813249a03e2893277297591ec050ac518dc\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$696f85e1ea63d2b5ad7171a625fd3b51a665057d\dctu because it contains processes (run 'proc' command first).
+Warning: Ignoring module $paramod$8f6708f3156f3d6d195809cddd67c9b8c08cd488\dctu because it contains processes (run 'proc' command first).
+28. Executing RTLIL backend.
+Warnings: 78 unique messages, 78 total
+End of script. Logfile hash: a44d3dca52, time: 1.71s, user: 1.49s, system: 0.20s, MEM: 586.43 MB peak
+Yosys 0.64+post (git sha1 UNKNOWN-dirty, g++ 11.4.0-1ubuntu1~22.04.3 -fPIC -O3)
+Time spent: 65% 1x hierarchy (1 sec), 30% 12x read_liberty (0 sec), ...
+Elapsed time: 0:01.87[h:]min:sec. CPU time: user 1.63 sys 0.24 (99%). Peak memory: 600508KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+1_1_yosys_canonicalize                    1            586                  N/A

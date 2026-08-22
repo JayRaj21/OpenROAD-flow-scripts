@@ -1,0 +1,9 @@
+============================================================
+PIPELINE SUMMARY
+============================================================
+  asap7/jpeg: SUCCESS @ 85%  (data collected)
+  sky130hd/riscv32i: SUCCESS @ 65%  (data collected)
+  nangate45/swerv: FAILED_GRT_80
+  nangate45/ibex: SUCCESS @ 85%  (data collected)
+  nangate45/jpeg: FAILED_SYNTH
+============================================================

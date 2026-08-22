@@ -19,23 +19,34 @@ import subprocess
 import sys
 import numpy as np
 
-ML_ROOT     = os.environ.get("ML_ROOT", os.path.normpath(
-                  os.path.join(os.path.dirname(__file__), "../..")))
+ML_ROOT = os.environ.get(
+    "ML_ROOT", os.path.normpath(os.path.join(os.path.dirname(__file__), "../.."))
+)
 RESULTS_DIR = os.environ.get("RESULTS_DIR", ".")
-GRID_SIZE   = int(os.environ.get("GRID_SIZE", "64"))
-THRESHOLD   = float(os.environ.get("CONGESTION_THRESHOLD", "0.5"))
-CHECKPOINT  = os.path.join(ML_ROOT, "congestion", "model", "checkpoints", "best.pt")
-ODB_PATH    = os.path.join(RESULTS_DIR, "3_5_place_dp.odb")
-PLACEMENT_NPY  = os.path.join(RESULTS_DIR, "placement_grid.npy")
+GRID_SIZE = int(os.environ.get("GRID_SIZE", "64"))
+THRESHOLD = float(os.environ.get("CONGESTION_THRESHOLD", "0.5"))
+CHECKPOINT = os.path.join(ML_ROOT, "congestion", "model", "checkpoints", "best.pt")
+ODB_PATH = os.path.join(RESULTS_DIR, "3_5_place_dp.odb")
+PLACEMENT_NPY = os.path.join(RESULTS_DIR, "placement_grid.npy")
 CONGESTION_NPY = os.path.join(RESULTS_DIR, "predicted_congestion.npy")
 CONGESTION_IMG = os.path.join(RESULTS_DIR, "predicted_congestion.png")
 
 LAYER_NAMES = [
-    "metal1", "metal2", "metal3", "metal4", "metal5",
-    "metal6", "metal7", "metal8", "metal9", "metal10",
+    "metal1",
+    "metal2",
+    "metal3",
+    "metal4",
+    "metal5",
+    "metal6",
+    "metal7",
+    "metal8",
+    "metal9",
+    "metal10",
 ]
 
-EXTRACT_SCRIPT = os.path.join(ML_ROOT, "congestion", "data_collection", "extract_placement.py")
+EXTRACT_SCRIPT = os.path.join(
+    ML_ROOT, "congestion", "data_collection", "extract_placement.py"
+)
 
 
 def run():
@@ -46,8 +57,17 @@ def run():
     # Step 1: extract placement grid via openroad -python (needs OpenROAD Python API)
     print(f"[ML] Extracting placement grid from {ODB_PATH}")
     result = subprocess.run(
-        ["openroad", "-python", EXTRACT_SCRIPT,
-         "--odb", ODB_PATH, "--out", PLACEMENT_NPY, "--grid", str(GRID_SIZE)],
+        [
+            "openroad",
+            "-python",
+            EXTRACT_SCRIPT,
+            "--odb",
+            ODB_PATH,
+            "--out",
+            PLACEMENT_NPY,
+            "--grid",
+            str(GRID_SIZE),
+        ],
         capture_output=False,
     )
     if result.returncode != 0:
@@ -61,6 +81,7 @@ def run():
         return
 
     import torch
+
     sys.path.insert(0, os.path.join(ML_ROOT, "congestion", "model"))
     from unet import CongestionUNet
 
@@ -83,7 +104,7 @@ def run():
     worst_layer = ""
     for i, name in enumerate(LAYER_NAMES):
         mean_val = congestion[i].mean()
-        max_val  = congestion[i].max()
+        max_val = congestion[i].max()
         if max_val > max_congestion:
             max_congestion = max_val
             worst_layer = name
@@ -101,9 +122,11 @@ def run():
     # Step 4: save image
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.gridspec as gridspec
+
         fig = plt.figure(figsize=(20, 4))
         gs = gridspec.GridSpec(2, 5, figure=fig)
         for i, name in enumerate(LAYER_NAMES):

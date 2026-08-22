@@ -18,6 +18,7 @@ import numpy as np
 try:
     import openroad
     from openroad import Tech, Design
+
     HAS_OPENROAD = True
 except ImportError:
     HAS_OPENROAD = False
@@ -63,10 +64,14 @@ def extract_placement_grid(odb_path: str, grid_size: int = 64) -> np.ndarray:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract placement density grid from ODB")
+    parser = argparse.ArgumentParser(
+        description="Extract placement density grid from ODB"
+    )
     parser.add_argument("--odb", required=True, help="Path to post-placement ODB file")
     parser.add_argument("--out", required=True, help="Output .npy file path")
-    parser.add_argument("--grid", type=int, default=64, help="Grid resolution (default: 64)")
+    parser.add_argument(
+        "--grid", type=int, default=64, help="Grid resolution (default: 64)"
+    )
     args = parser.parse_args()
 
     grid = extract_placement_grid(args.odb, args.grid)

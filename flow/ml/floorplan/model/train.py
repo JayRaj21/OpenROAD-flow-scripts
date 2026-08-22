@@ -23,6 +23,7 @@ from tqdm import tqdm
 
 try:
     from torch_geometric.data import Data, DataLoader
+
     HAS_PYG = True
 except ImportError:
     HAS_PYG = False
@@ -56,7 +57,9 @@ class FloorplanDataset(Dataset):
         edge_weight = torch.tensor(g["edge_weight"], dtype=torch.float32)
         node_names = g["node_names"]
 
-        macro_positions = torch.tensor(fp["macro_positions"][:, :2], dtype=torch.float32)  # (M, 2) x,y only
+        macro_positions = torch.tensor(
+            fp["macro_positions"][:, :2], dtype=torch.float32
+        )  # (M, 2) x,y only
         macro_names = fp["macro_names"]
 
         # Build macro mask: True for nodes that appear in macro_names
@@ -121,7 +124,9 @@ def train(args):
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_loss = 0.0
-        for batch in tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}", leave=False):
+        for batch in tqdm(
+            train_loader, desc=f"Epoch {epoch}/{args.epochs}", leave=False
+        ):
             batch = batch.to(device)
             optimizer.zero_grad()
             pred = model(batch.x, batch.edge_index, batch.batch, batch.macro_mask)
@@ -143,7 +148,9 @@ def train(args):
         val_loss /= max(len(val_loader), 1)
 
         scheduler.step()
-        print(f"Epoch {epoch:4d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}")
+        print(
+            f"Epoch {epoch:4d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}"
+        )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -160,8 +167,9 @@ def main():
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--hpwl-weight", type=float, default=0.1,
-                        help="Weight for HPWL auxiliary loss")
+    parser.add_argument(
+        "--hpwl-weight", type=float, default=0.1, help="Weight for HPWL auxiliary loss"
+    )
     parser.add_argument("--out", default="ml/floorplan/model/checkpoints")
     args = parser.parse_args()
     train(args)

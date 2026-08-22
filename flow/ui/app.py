@@ -20,8 +20,12 @@ import torch
 
 from flask import Flask, Response, jsonify, render_template, request, send_file
 from layout_parser import (
-    find_lef_files, parse_lef_macros, get_available_stages,
-    get_design_nickname, parse_def, parse_timing_reports,
+    find_lef_files,
+    parse_lef_macros,
+    get_available_stages,
+    get_design_nickname,
+    parse_def,
+    parse_timing_reports,
 )
 
 app = Flask(__name__)
@@ -152,13 +156,20 @@ def run_flow(platform, design):
     config = f"/work/designs/{platform}/{design}/config.mk"
     from_stage = request.args.get("from_stage", "")
     _stage_targets = {
-        'floorplan': 'floorplan', 'place': 'place', 'cts': 'cts',
-        'grt': 'grt', 'route': 'route', 'finish': 'finish',
+        "floorplan": "floorplan",
+        "place": "place",
+        "cts": "cts",
+        "grt": "grt",
+        "route": "route",
+        "finish": "finish",
     }
     target = _stage_targets.get(from_stage, "")
     cmd = f"util/docker_shell make DESIGN_CONFIG={config} DESIGN_HOME=/work/designs {target}".strip()
-    return Response(stream_command(cmd), mimetype="text/event-stream",
-                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+    return Response(
+        stream_command(cmd),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 @app.route("/api/timing/<platform>/<design>")
@@ -173,32 +184,44 @@ def compare_designs():
     da = request.args.get("designA", "")
     pb = request.args.get("platformB", "")
     db = request.args.get("designB", "")
-    return jsonify({
-        'a': parse_timing_reports(pa, da, FLOW_DIR) if pa and da else None,
-        'b': parse_timing_reports(pb, db, FLOW_DIR) if pb and db else None,
-    })
+    return jsonify(
+        {
+            "a": parse_timing_reports(pa, da, FLOW_DIR) if pa and da else None,
+            "b": parse_timing_reports(pb, db, FLOW_DIR) if pb and db else None,
+        }
+    )
 
 
 _DRC_CACHE: dict = {}
 
+
 @app.route("/api/drc/violations/<platform>/<design>")
 def drc_violations(platform, design):
     from layout_parser import get_design_nickname
+
     key = f"{platform}/{design}"
     if key in _DRC_CACHE:
         return jsonify(_DRC_CACHE[key])
     nickname = get_design_nickname(platform, design, FLOW_DIR)
     lyrdb = os.path.join(FLOW_DIR, "reports", platform, nickname, "base", "6_drc.lyrdb")
     if not os.path.exists(lyrdb):
-        return jsonify({"violations": [], "error": "6_drc.lyrdb not found — run through finish first"})
+        return jsonify(
+            {
+                "violations": [],
+                "error": "6_drc.lyrdb not found — run through finish first",
+            }
+        )
     convert_script = os.path.join(FLOW_DIR, "util", "convertDrc.py")
     result = subprocess.run(
         ["python3", convert_script, lyrdb],
-        capture_output=True, text=True, cwd=FLOW_DIR,
+        capture_output=True,
+        text=True,
+        cwd=FLOW_DIR,
     )
     if result.returncode != 0:
         return jsonify({"violations": [], "error": result.stderr[:500]})
     import json as _json
+
     try:
         violations = _json.loads(result.stdout)
     except Exception:
@@ -212,13 +235,17 @@ def drc_violations(platform, design):
 def run_drc(platform, design):
     config = f"/work/designs/{platform}/{design}/config.mk"
     cmd = f"util/docker_shell make DESIGN_CONFIG={config} DESIGN_HOME=/work/designs drc"
-    return Response(stream_command(cmd), mimetype="text/event-stream",
-                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+    return Response(
+        stream_command(cmd),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 def _run_congestion_inference(placement_abs, checkpoint_abs, out_npy_abs, out_img_abs):
     """Run U-Net inference in-process using the cached GPU model. Returns (lines, exit_code)."""
     import numpy as np
+
     sys.path.insert(0, os.path.join(FLOW_DIR, "ml", "congestion", "model"))
     from unet import CongestionUNet
 
@@ -234,18 +261,31 @@ def _run_congestion_inference(placement_abs, checkpoint_abs, out_npy_abs, out_im
 
     np.save(out_npy_abs, congestion)
 
-    layer_names = ["metal1","metal2","metal3","metal4","metal5",
-                   "metal6","metal7","metal8","metal9","metal10"]
-    lines = [f"Saved predicted congestion {congestion.shape}",
-             f"Device: {_DEVICE}"]
+    layer_names = [
+        "metal1",
+        "metal2",
+        "metal3",
+        "metal4",
+        "metal5",
+        "metal6",
+        "metal7",
+        "metal8",
+        "metal9",
+        "metal10",
+    ]
+    lines = [f"Saved predicted congestion {congestion.shape}", f"Device: {_DEVICE}"]
     for i, name in enumerate(layer_names):
-        lines.append(f"  {name:8s}: mean={congestion[i].mean()*100:.1f}%  max={congestion[i].max()*100:.1f}%")
+        lines.append(
+            f"  {name:8s}: mean={congestion[i].mean()*100:.1f}%  max={congestion[i].max()*100:.1f}%"
+        )
 
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.gridspec as gridspec
+
         fig = plt.figure(figsize=(20, 4))
         gs = gridspec.GridSpec(2, 5, figure=fig)
         for i, name in enumerate(layer_names):
@@ -269,14 +309,19 @@ def _run_congestion_inference(placement_abs, checkpoint_abs, out_npy_abs, out_im
 def predict_congestion(platform, design):
     placement_rel = f"ml/data/{platform}_{design}_placement.npy"
     checkpoint_abs = os.path.join(FLOW_DIR, "ml/congestion/model/checkpoints/best.pt")
-    out_npy_abs = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.npy")
-    out_img_abs = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.png")
+    out_npy_abs = os.path.join(
+        FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.npy"
+    )
+    out_img_abs = os.path.join(
+        FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.png"
+    )
     placement_abs = os.path.join(FLOW_DIR, placement_rel)
 
     def _infer():
         try:
             lines, code = _run_congestion_inference(
-                placement_abs, checkpoint_abs, out_npy_abs, out_img_abs)
+                placement_abs, checkpoint_abs, out_npy_abs, out_img_abs
+            )
             for l in lines:
                 yield f"data: {l}\n\n"
             yield f"data: \n\n"
@@ -297,8 +342,12 @@ def predict_congestion(platform, design):
         )
         yield f"data: Extracting placement grid from {odb}...\n\n"
         proc = subprocess.Popen(
-            extract_cmd, shell=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, cwd=FLOW_DIR,
+            extract_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=FLOW_DIR,
         )
         for line in iter(proc.stdout.readline, ""):
             yield f"data: {line.rstrip()}\n\n"
@@ -311,13 +360,18 @@ def predict_congestion(platform, design):
         yield from _infer()
 
     gen = _infer() if os.path.exists(placement_abs) else _extract_then_infer()
-    return Response(gen, mimetype="text/event-stream",
-                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+    return Response(
+        gen,
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 @app.route("/api/congestion/image/<platform>/<design>")
 def congestion_image(platform, design):
-    img_path = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.png")
+    img_path = os.path.join(
+        FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.png"
+    )
     if os.path.exists(img_path):
         return send_file(img_path, mimetype="image/png")
     return "Image not found — run Predict Congestion first.", 404
@@ -334,23 +388,33 @@ def congestion_overlay(platform, design):
     import numpy as np
     from io import BytesIO
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    npy_path = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.npy")
+    npy_path = os.path.join(
+        FLOW_DIR, f"ml/data/{platform}_{design}_predicted_congestion.npy"
+    )
     if not os.path.exists(npy_path):
         return "Run Predict Congestion first.", 404
 
     layer = max(0, min(9, int(request.args.get("layer", "0"))))
-    cmap  = request.args.get("cmap", "hot")
+    cmap = request.args.get("cmap", "hot")
 
-    data = np.load(npy_path)[layer]          # (64, 64) float32 in [0, 1]
+    data = np.load(npy_path)[layer]  # (64, 64) float32 in [0, 1]
 
     h, w = data.shape
     fig = plt.figure(figsize=(w / 64, h / 64), dpi=64)
-    ax  = fig.add_axes([0, 0, 1, 1])        # fill entire figure
-    ax.imshow(data, vmin=0, vmax=1, cmap=cmap, origin="lower", aspect="auto",
-              interpolation="bilinear")
+    ax = fig.add_axes([0, 0, 1, 1])  # fill entire figure
+    ax.imshow(
+        data,
+        vmin=0,
+        vmax=1,
+        cmap=cmap,
+        origin="lower",
+        aspect="auto",
+        interpolation="bilinear",
+    )
     ax.set_axis_off()
 
     buf = BytesIO()
@@ -370,6 +434,7 @@ def suggest_floorplan(platform, design):
 
     def _run_suggest():
         import numpy as np
+
         graph_abs = os.path.join(FLOW_DIR, graph)
         g = np.load(graph_abs, allow_pickle=True)
         num_macros = int(g["num_macros"][0])
@@ -382,10 +447,13 @@ def suggest_floorplan(platform, design):
         try:
             sys.path.insert(0, os.path.join(FLOW_DIR, "ml", "floorplan", "model"))
             from gnn import FloorplanGNN
+
             checkpoint_abs = os.path.join(FLOW_DIR, checkpoint)
             model = _load_model(FloorplanGNN, checkpoint_abs)
 
-            node_feat = torch.tensor(g["node_features"], dtype=torch.float32).to(_DEVICE)
+            node_feat = torch.tensor(g["node_features"], dtype=torch.float32).to(
+                _DEVICE
+            )
             edge_index = torch.tensor(g["edge_index"], dtype=torch.long).to(_DEVICE)
             node_names = g["node_names"]
             macro_mask = node_feat[:, 1] > 0.5
@@ -431,8 +499,12 @@ def suggest_floorplan(platform, design):
         )
         yield f"data: Extracting netlist graph from {odb}...\n\n"
         proc = subprocess.Popen(
-            extract_cmd, shell=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, cwd=FLOW_DIR,
+            extract_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=FLOW_DIR,
         )
         for line in iter(proc.stdout.readline, ""):
             yield f"data: {line.rstrip()}\n\n"
@@ -446,8 +518,11 @@ def suggest_floorplan(platform, design):
 
     graph_exists = os.path.exists(os.path.join(FLOW_DIR, graph))
     generator = _run_suggest() if graph_exists else _extract_then_suggest()
-    return Response(generator, mimetype="text/event-stream",
-                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+    return Response(
+        generator,
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 @app.route("/api/floorplan/overlay/<platform>/<design>")
@@ -455,19 +530,23 @@ def floorplan_overlay_data(platform, design):
     """Parse the suggested Tcl and return macro positions as JSON for canvas overlay."""
     tcl_path = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_suggested.tcl")
     if not os.path.exists(tcl_path):
-        return jsonify({'macros': []})
+        return jsonify({"macros": []})
     macros = []
     with open(tcl_path) as f:
         for line in f:
-            m = re.match(r'place_inst\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+(\S+)', line.strip())
+            m = re.match(
+                r"place_inst\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+(\S+)", line.strip()
+            )
             if m:
-                macros.append({
-                    'name':   m.group(1),
-                    'x_um':   float(m.group(2)),
-                    'y_um':   float(m.group(3)),
-                    'orient': m.group(4),
-                })
-    return jsonify({'macros': macros})
+                macros.append(
+                    {
+                        "name": m.group(1),
+                        "x_um": float(m.group(2)),
+                        "y_um": float(m.group(3)),
+                        "orient": m.group(4),
+                    }
+                )
+    return jsonify({"macros": macros})
 
 
 @app.route("/api/congestion/predict_positions", methods=["POST"])
@@ -476,18 +555,19 @@ def predict_congestion_positions():
     import numpy as np
     from io import BytesIO
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    body     = request.get_json(force=True)
+    body = request.get_json(force=True)
     platform = body.get("platform", "")
-    design   = body.get("design", "")
+    design = body.get("design", "")
     die_w_um = float(body.get("die_w_um", 1))
     die_h_um = float(body.get("die_h_um", 1))
-    layer    = max(0, min(9, int(body.get("layer", 0))))
-    macros   = body.get("macros", [])
+    layer = max(0, min(9, int(body.get("layer", 0))))
+    macros = body.get("macros", [])
 
-    placement_abs  = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_placement.npy")
+    placement_abs = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_placement.npy")
     checkpoint_abs = os.path.join(FLOW_DIR, "ml/congestion/model/checkpoints/best.pt")
 
     if not os.path.exists(placement_abs):
@@ -502,25 +582,27 @@ def predict_congestion_positions():
         w_c = max(1, int(m.get("w_um", 0) / die_w_um * G))
         h_c = max(1, int(m.get("h_um", 0) / die_h_um * G))
         # Remove from old position
-        oc  = int(m["old_x_um"] / die_w_um * G)
+        oc = int(m["old_x_um"] / die_w_um * G)
         or_ = int(m["old_y_um"] / die_h_um * G)
         oc1, oc2 = max(0, oc), min(G, oc + w_c)
         or1, or2 = max(0, or_), min(G, or_ + h_c)
         saved = grid[or1:or2, oc1:oc2].copy()
         grid[or1:or2, oc1:oc2] = 0.0
         # Add at new position
-        nc  = int(m["new_x_um"] / die_w_um * G)
-        nr  = int(m["new_y_um"] / die_h_um * G)
+        nc = int(m["new_x_um"] / die_w_um * G)
+        nr = int(m["new_y_um"] / die_h_um * G)
         nc1, nc2 = max(0, nc), min(G, nc + w_c)
         nr1, nr2 = max(0, nr), min(G, nr + h_c)
         ch = min(saved.shape[0], nr2 - nr1)
         cw = min(saved.shape[1], nc2 - nc1)
         if ch > 0 and cw > 0:
-            grid[nr1:nr1+ch, nc1:nc1+cw] = np.maximum(
-                grid[nr1:nr1+ch, nc1:nc1+cw], saved[:ch, :cw])
+            grid[nr1 : nr1 + ch, nc1 : nc1 + cw] = np.maximum(
+                grid[nr1 : nr1 + ch, nc1 : nc1 + cw], saved[:ch, :cw]
+            )
 
     sys.path.insert(0, os.path.join(FLOW_DIR, "ml", "congestion", "model"))
     from unet import CongestionUNet
+
     model = _load_model(CongestionUNet, checkpoint_abs, in_channels=1, out_channels=10)
 
     x = torch.tensor(grid).unsqueeze(0).unsqueeze(0).to(_DEVICE)
@@ -531,9 +613,16 @@ def predict_congestion_positions():
     data = pred.squeeze(0).float().cpu().numpy()[layer]  # (64, 64)
 
     fig = plt.figure(figsize=(1, 1), dpi=64)
-    ax  = fig.add_axes([0, 0, 1, 1])
-    ax.imshow(data, vmin=0, vmax=1, cmap="hot", origin="lower",
-              aspect="auto", interpolation="bilinear")
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.imshow(
+        data,
+        vmin=0,
+        vmax=1,
+        cmap="hot",
+        origin="lower",
+        aspect="auto",
+        interpolation="bilinear",
+    )
     ax.set_axis_off()
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=64, bbox_inches=None, pad_inches=0)
@@ -545,10 +634,10 @@ def predict_congestion_positions():
 @app.route("/api/floorplan/export", methods=["POST"])
 def floorplan_export():
     """Save edited macro positions as a Tcl place_inst script and return it."""
-    body     = request.get_json(force=True)
+    body = request.get_json(force=True)
     platform = body.get("platform", "")
-    design   = body.get("design", "")
-    macros   = body.get("macros", [])  # [{name, x_um, y_um, orient}]
+    design = body.get("design", "")
+    macros = body.get("macros", [])  # [{name, x_um, y_um, orient}]
 
     lines = [
         "# Edited macro placement — generated by OpenROAD Flow UI",
@@ -557,7 +646,9 @@ def floorplan_export():
     ]
     for m in macros:
         orient = m.get("orient", "R0")
-        lines.append(f"place_inst {m['name']} {float(m['x_um']):.3f} {float(m['y_um']):.3f} {orient}")
+        lines.append(
+            f"place_inst {m['name']} {float(m['x_um']):.3f} {float(m['y_um']):.3f} {orient}"
+        )
 
     tcl_path = os.path.join(FLOW_DIR, f"ml/data/{platform}_{design}_suggested.tcl")
     os.makedirs(os.path.dirname(tcl_path), exist_ok=True)
@@ -596,51 +687,63 @@ def autofix_timing(platform, design):
 
     def _current_wns(last_make_target=None):
         data = parse_timing_reports(platform, design, FLOW_DIR)
-        stages = data.get('stages', {})
+        stages = data.get("stages", {})
         # After re-running GRT the 5_global_route.rpt is fresh but 6_finish.rpt is
         # stale (from the previous full flow).  Prioritise the freshest source.
-        if last_make_target == 'grt':
-            priority = ('Global Route', 'Final', 'CTS', 'Detailed Place')
+        if last_make_target == "grt":
+            priority = ("Global Route", "Final", "CTS", "Detailed Place")
         else:
-            priority = ('Final', 'Global Route', 'CTS', 'Detailed Place')
+            priority = ("Final", "Global Route", "CTS", "Detailed Place")
         for label in priority:
-            if label in stages and stages[label].get('wns') is not None:
-                return stages[label]['wns']
+            if label in stages and stages[label].get("wns") is not None:
+                return stages[label]["wns"]
         return None
 
     def _read_config_utilization():
         """Return CORE_UTILIZATION from config.mk, or the measured utilization
         from the timing reports as a fallback when config.mk doesn't set it."""
-        cfg = os.path.join(FLOW_DIR, 'designs', platform, design, 'config.mk')
+        cfg = os.path.join(FLOW_DIR, "designs", platform, design, "config.mk")
         if os.path.exists(cfg):
             with open(cfg) as f:
                 for line in f:
-                    m = re.match(r'^\s*CORE_UTILIZATION\s*[?:]?=\s*([\d.]+)', line)
+                    m = re.match(r"^\s*CORE_UTILIZATION\s*[?:]?=\s*([\d.]+)", line)
                     if m:
                         return float(m.group(1))
         # config.mk doesn't set CORE_UTILIZATION — read the measured value from
         # the timing reports (the ODB design_area reports actual utilization %).
         data = parse_timing_reports(platform, design, FLOW_DIR)
-        for label in ('Final', 'Global Route', 'CTS'):
-            s = data.get('stages', {}).get(label, {})
-            if s.get('utilization') is not None:
-                return round(s['utilization'] * 100)
+        for label in ("Final", "Global Route", "CTS"):
+            s = data.get("stages", {}).get(label, {})
+            if s.get("utilization") is not None:
+                return round(s["utilization"] * 100)
         return None
 
     def _run(extra_vars, clear_stage, make_target):
-        vars_str = ' '.join(f'{k}={v}' for k, v in extra_vars.items())
+        vars_str = " ".join(f"{k}={v}" for k, v in extra_vars.items())
         # Delete outputs of clear_stage (and downstream) so make re-runs from
         # that stage forward.  make_target controls where make stops.
         # We never use -B because that rebuilds every dependency including synth.
         nickname = get_design_nickname(platform, design, FLOW_DIR)
-        results_dir = os.path.join(FLOW_DIR, 'results', platform, nickname, 'base')
+        results_dir = os.path.join(FLOW_DIR, "results", platform, nickname, "base")
         _stage_outputs = {
-            'grt':   ['5_1_grt.odb', '5_1_grt.sdc'],
-            'cts':   ['4_1_cts.odb', '4_cts.odb', '4_cts.sdc',
-                      '5_1_grt.odb', '5_1_grt.sdc'],
-            'place': ['3_place.odb', '3_5_place_dp.odb', '3_place.sdc',
-                      '4_1_cts.odb', '4_cts.odb', '4_cts.sdc',
-                      '5_1_grt.odb', '5_1_grt.sdc'],
+            "grt": ["5_1_grt.odb", "5_1_grt.sdc"],
+            "cts": [
+                "4_1_cts.odb",
+                "4_cts.odb",
+                "4_cts.sdc",
+                "5_1_grt.odb",
+                "5_1_grt.sdc",
+            ],
+            "place": [
+                "3_place.odb",
+                "3_5_place_dp.odb",
+                "3_place.sdc",
+                "4_1_cts.odb",
+                "4_cts.odb",
+                "4_cts.sdc",
+                "5_1_grt.odb",
+                "5_1_grt.sdc",
+            ],
         }
         for fname in _stage_outputs.get(clear_stage, []):
             fpath = os.path.join(results_dir, fname)
@@ -674,9 +777,24 @@ def autofix_timing(platform, design):
         # Running 'make grt' after clearing 'place' outputs causes make to
         # re-run place→cts→grt in one shot and refreshes 5_global_route.rpt.
         schedule = [
-            ({'TNS_END_PERCENT': '25'},  'grt', 'grt', 'TNS_END_PERCENT=25 (re-run GRT)'),
-            ({'TNS_END_PERCENT': '50'},  'grt', 'grt', 'TNS_END_PERCENT=50 (re-run GRT)'),
-            ({'TNS_END_PERCENT': '100'}, 'grt', 'grt', 'TNS_END_PERCENT=100 (re-run GRT)'),
+            (
+                {"TNS_END_PERCENT": "25"},
+                "grt",
+                "grt",
+                "TNS_END_PERCENT=25 (re-run GRT)",
+            ),
+            (
+                {"TNS_END_PERCENT": "50"},
+                "grt",
+                "grt",
+                "TNS_END_PERCENT=50 (re-run GRT)",
+            ),
+            (
+                {"TNS_END_PERCENT": "100"},
+                "grt",
+                "grt",
+                "TNS_END_PERCENT=100 (re-run GRT)",
+            ),
         ]
 
         # Add utilization-reduction attempt if we can read the current value.
@@ -686,22 +804,27 @@ def autofix_timing(platform, design):
         if base_util is not None:
             new_util = max(20, int(base_util) - 5)
             schedule.append(
-                ({'TNS_END_PERCENT': '100', 'CORE_UTILIZATION': str(new_util)},
-                 'place', 'grt',
-                 f'CORE_UTILIZATION {int(base_util)}→{new_util}% (re-run place→cts→grt)')
+                (
+                    {"TNS_END_PERCENT": "100", "CORE_UTILIZATION": str(new_util)},
+                    "place",
+                    "grt",
+                    f"CORE_UTILIZATION {int(base_util)}→{new_util}% (re-run place→cts→grt)",
+                )
             )
 
         last_make_target = None
-        for attempt, (extra_vars, clear_stage, make_target, desc) in enumerate(schedule, 1):
+        for attempt, (extra_vars, clear_stage, make_target, desc) in enumerate(
+            schedule, 1
+        ):
             yield f"data: \n\n"
             yield f"data: --- Attempt {attempt}/{len(schedule)}: {desc} ---\n\n"
 
             exit_code = None
             for msg in _run(extra_vars, clear_stage, make_target):
                 yield msg
-                if '[EXIT ' in msg:
+                if "[EXIT " in msg:
                     try:
-                        exit_code = int(msg.split('[EXIT ')[1].split(']')[0])
+                        exit_code = int(msg.split("[EXIT ")[1].split("]")[0])
                     except Exception:
                         exit_code = 1
 
@@ -716,7 +839,7 @@ def autofix_timing(platform, design):
                 yield "data: Could not read updated WNS after run.\n\n"
                 continue
 
-            source = 'GRT estimate' if last_make_target == 'grt' else 'post-route STA'
+            source = "GRT estimate" if last_make_target == "grt" else "post-route STA"
             yield f"data: \n\n"
             yield f"data: Updated WNS: {wns:+.3f} ns ({source})\n\n"
 
@@ -730,25 +853,33 @@ def autofix_timing(platform, design):
         yield f"data: Consider manually lowering CORE_UTILIZATION further or adjusting placement.\n\n"
         yield f"data: [EXIT 1]\n\n"
 
-    return Response(_generate(), mimetype="text/event-stream",
-                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+    return Response(
+        _generate(),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 def _preconvert_stages(stages):
     """Background: convert any ODB stages that don't have a cached DEF yet."""
     for s in stages:
-        if s.get('odb_path') and not os.path.exists(s['def_path']):
-            odb_in  = s['odb_path'].replace(FLOW_DIR + '/', '/work/')
-            def_out = s['def_path'].replace(FLOW_DIR + '/', '/work/')
+        if s.get("odb_path") and not os.path.exists(s["def_path"]):
+            odb_in = s["odb_path"].replace(FLOW_DIR + "/", "/work/")
+            def_out = s["def_path"].replace(FLOW_DIR + "/", "/work/")
             cmd = (
                 f"util/docker_shell openroad -python /work/ui/odb_to_def.py"
                 f" --odb {odb_in} --out {def_out}"
             )
             try:
-                subprocess.run(cmd, shell=True, cwd=FLOW_DIR,
-                               stdin=subprocess.DEVNULL,
-                               capture_output=True, text=True,
-                               timeout=120)
+                subprocess.run(
+                    cmd,
+                    shell=True,
+                    cwd=FLOW_DIR,
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
             except Exception:
                 pass  # best-effort; layout_data will retry on demand
 
@@ -764,38 +895,43 @@ def layout_stages(platform, design):
 @app.route("/api/layout/<platform>/<design>/<stage>")
 def layout_data(platform, design, stage):
     stages = get_available_stages(platform, design, FLOW_DIR)
-    match = next((s for s in stages if s['id'] == stage), None)
+    match = next((s for s in stages if s["id"] == stage), None)
     if not match:
-        return jsonify({'error': f'Stage {stage} not found'}), 404
+        return jsonify({"error": f"Stage {stage} not found"}), 404
 
-    def_path = match['def_path']
+    def_path = match["def_path"]
 
     # If no DEF exists yet, export it from the ODB via OpenROAD inside Docker.
     # Pass stdin=DEVNULL so docker_shell's "test -t 0" check returns false and
     # it omits the -ti flags — otherwise Flask's inherited TTY causes Docker to
     # hang waiting for terminal input that never comes.
-    if not os.path.exists(def_path) and match.get('odb_path'):
-        odb_in  = match['odb_path'].replace(FLOW_DIR + '/', '/work/')
-        def_out = def_path.replace(FLOW_DIR + '/', '/work/')
+    if not os.path.exists(def_path) and match.get("odb_path"):
+        odb_in = match["odb_path"].replace(FLOW_DIR + "/", "/work/")
+        def_out = def_path.replace(FLOW_DIR + "/", "/work/")
         cmd = (
             f"util/docker_shell openroad -python /work/ui/odb_to_def.py"
             f" --odb {odb_in} --out {def_out}"
         )
         try:
-            result = subprocess.run(cmd, shell=True, cwd=FLOW_DIR,
-                                    stdin=subprocess.DEVNULL,
-                                    capture_output=True, text=True,
-                                    timeout=120)
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=FLOW_DIR,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
         except subprocess.TimeoutExpired:
-            return jsonify({'error': 'DEF export timed out after 120 s'}), 500
+            return jsonify({"error": "DEF export timed out after 120 s"}), 500
         if result.returncode != 0 or not os.path.exists(def_path):
-            return jsonify({'error': f'DEF export failed: {result.stderr}'}), 500
+            return jsonify({"error": f"DEF export failed: {result.stderr}"}), 500
 
     lef_files = find_lef_files(platform, FLOW_DIR)
     macro_sizes = parse_lef_macros(lef_files)
     data = parse_def(def_path, macro_sizes)
     if data is None:
-        return jsonify({'error': 'Failed to parse DEF file'}), 500
+        return jsonify({"error": "Failed to parse DEF file"}), 500
     return jsonify(data)
 
 

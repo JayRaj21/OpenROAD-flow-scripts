@@ -56,7 +56,9 @@ class CongestionDataset(Dataset):
                     size=(self.grid_size, self.grid_size),
                     mode="bilinear",
                     align_corners=False,
-                ).squeeze().numpy()
+                )
+                .squeeze()
+                .numpy()
             )
 
         # Broadcast congestion vector to 2D target: (10, H, W)
@@ -65,7 +67,7 @@ class CongestionDataset(Dataset):
         )
 
         x = torch.tensor(placement).unsqueeze(0)  # (1, H, W)
-        y = torch.tensor(target)                   # (10, H, W)
+        y = torch.tensor(target)  # (10, H, W)
         return x, y
 
 
@@ -100,7 +102,9 @@ def train(args):
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_loss = 0.0
-        for x, y in tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}", leave=False):
+        for x, y in tqdm(
+            train_loader, desc=f"Epoch {epoch}/{args.epochs}", leave=False
+        ):
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
             pred = model(x)
@@ -121,7 +125,9 @@ def train(args):
 
         scheduler.step()
 
-        print(f"Epoch {epoch:4d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}")
+        print(
+            f"Epoch {epoch:4d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}"
+        )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -134,7 +140,9 @@ def train(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Train CongestionUNet")
-    parser.add_argument("--data", default="ml/data", help="Directory with .npy training pairs")
+    parser.add_argument(
+        "--data", default="ml/data", help="Directory with .npy training pairs"
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-3)

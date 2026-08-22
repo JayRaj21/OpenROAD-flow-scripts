@@ -1,0 +1,241 @@
++ DEFAULT_IMAGE=openroad/orfs:latest
++ FLOW_DIR=/OpenROAD-flow-scripts/flow
++ USE_USER=false
++ DRY_RUN=false
++ PORTS=()
++ IMAGE=
++ CMD_ARGS=()
++ [[ 8 -gt 0 ]]
++ case "$1" in
++ CMD_ARGS=("$@")
++ break
++ IMAGE=openroad/orfs:latest
++ get_container_engine
+++ docker --version
++ local 'DOCKER_VERSION_STRING=Docker version 29.7.1, build e9452d6'
++ [[ Docker version 29.7.1, build e9452d6 == *Docker* ]]
++ container_engine=docker
+++ pwd
++ WORKSPACE=/home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow
++ YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
++ OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
++ KLAYOUT_CMD=/usr/bin/klayout
++ XSOCK=/tmp/.X11-unix
++ XAUTH=/tmp/.docker.xauth
++ false
++ xauth nlist :0
++ sed -e 's/^..../ffff/'
++ xauth -f /tmp/.docker.xauth nmerge -
++ test -t 0
++ DOCKER_INTERACTIVE=
++ false
++ [[ docker == podman ]]
+++ id -u mispronounced
+++ id -g mispronounced
++ user_args='-u 1000:1000'
++ user_env=
++ PORT_ARGS=()
++ CMD_STR=
++ [[ 8 -gt 0 ]]
++ CMD_STR='make floorplan DESIGN_CONFIG=./designs/asap7/jpeg/config.mk CORE_UTILIZATION=85 RESULTS_DIR=/work/results/asap7/jpeg/pipeline_85 OBJECTS_DIR=/work/objects/asap7/jpeg/pipeline_85 -j16 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl'
++ ENV_SH_CMD='if [ -f ../env.sh ]; then . ../env.sh; fi;'
++ DOCKER_CMD=("$container_engine" run --rm -i $DOCKER_INTERACTIVE $user_env $user_args -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e "DISPLAY=${DISPLAY:-:0}" -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v "$XSOCK:$XSOCK" -v "$XAUTH:$XAUTH" -e "XAUTHORITY=$XAUTH" -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e "YOSYS_EXE=$YOSYS_EXE" -e "OPENROAD_EXE=$OPENROAD_EXE" -e "KLAYOUT_CMD=$KLAYOUT_CMD" -v "$WORKSPACE:/work:Z" --network host "${PORT_ARGS[@]}" "$IMAGE" bash -c "set -ex; mkdir /tmp/xdg-run; cd ${FLOW_DIR}; ${ENV_SH_CMD}$CMD_STR")
++ false
++ exec docker run --rm -i -u 1000:1000 -e LIBGL_ALWAYS_SOFTWARE=1 -e QT_X11_NO_MITSHM=1 -e XDG_RUNTIME_DIR=/tmp/xdg-run -e DISPLAY=:0 -e QT_XKB_CONFIG_ROOT=/usr/share/X11/xkb -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp/.docker.xauth:/tmp/.docker.xauth -e XAUTHORITY=/tmp/.docker.xauth -e FLOW_HOME=/OpenROAD-flow-scripts/flow/ -e WORK_HOME=/work -e YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys -e OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -e KLAYOUT_CMD=/usr/bin/klayout -v /home/mispronounced/Code/JayRaj21/OpenROAD-flow-scripts/flow:/work:Z --network host openroad/orfs:latest bash -c 'set -ex; mkdir /tmp/xdg-run; cd /OpenROAD-flow-scripts/flow; if [ -f ../env.sh ]; then . ../env.sh; fi;make floorplan DESIGN_CONFIG=./designs/asap7/jpeg/config.mk CORE_UTILIZATION=85 RESULTS_DIR=/work/results/asap7/jpeg/pipeline_85 OBJECTS_DIR=/work/objects/asap7/jpeg/pipeline_85 -j16 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl'
++ mkdir /tmp/xdg-run
++ cd /OpenROAD-flow-scripts/flow
++ '[' -f ../env.sh ']'
++ . ../env.sh
+++ __setpaths
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++++ readlink -f ../env.sh
++++ dirname /OpenROAD-flow-scripts/env.sh
+++ DIR=/OpenROAD-flow-scripts
+++ export OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ OPENROAD=/OpenROAD-flow-scripts/tools/OpenROAD
+++ echo 'OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD'
+++ export PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ export PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+++ PATH=/OpenROAD-flow-scripts/tools/install/kepler-formal/bin:/OpenROAD-flow-scripts/tools/install/yosys/bin:/OpenROAD-flow-scripts/tools/install/OpenROAD/bin:/usr/local/bin/wrapped-cc:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+OPENROAD: /OpenROAD-flow-scripts/tools/OpenROAD
+++ [[ linux-gnu == \d\a\r\w\i\n* ]]
+++ export FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ FLOW_HOME=/OpenROAD-flow-scripts/flow
+++ unset -f __setpaths
++ make floorplan DESIGN_CONFIG=./designs/asap7/jpeg/config.mk CORE_UTILIZATION=85 RESULTS_DIR=/work/results/asap7/jpeg/pipeline_85 OBJECTS_DIR=/work/objects/asap7/jpeg/pipeline_85 -j16 PDN_TCL=/OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl
+make: *** No rule to make target '/work/results/asap7/jpeg/pipeline_85/2_1_floorplan.sdc', needed by '/work/results/asap7/jpeg/pipeline_85/2_floorplan.sdc'.  Stop.
+make: *** Waiting for unfinished jobs....
+/OpenROAD-flow-scripts/flow/scripts/flow.sh 2_1_floorplan floorplan
+Running floorplan.tcl, stage 2_1_floorplan
+source /OpenROAD-flow-scripts/flow/platforms/asap7/liberty_suppressions.tcl
+read_liberty /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
+read_liberty /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
+read_liberty /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
+read_liberty /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_211120.lib.gz
+read_liberty /OpenROAD-flow-scripts/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
+read_db /work/results/asap7/jpeg/pipeline_85/1_synth.odb
+read_sdc /work/results/asap7/jpeg/pipeline_85/1_synth.sdc
+source /OpenROAD-flow-scripts/flow/platforms/asap7/setRC.tcl
+
+==========================================================================
+Floorplan check_setup
+--------------------------------------------------------------------------
+Warning: There are 19 input ports missing set_input_delay.
+Warning: There are 26 output ports missing set_output_delay.
+number instances in verilog is 59897
+[INFO IFP-0107] Defining die area using utilization: 85.00% and aspect ratio: 1.
+[WARNING IFP-0028] Core area lower left (2.000, 2.000) snapped to (2.052, 2.160).
+[INFO IFP-0001] Added 320 rows of 1605 site asap7sc7p5t.
+[INFO IFP-0100] Die BBox:  (  0.000  0.000 ) ( 90.740 90.740 ) um
+[INFO IFP-0101] Core BBox: (  2.052  2.160 ) ( 88.722 88.560 ) um
+[INFO IFP-0102] Core area:                         7488.288 um^2
+[INFO IFP-0103] Total instances area:              6395.371 um^2
+[INFO IFP-0104] Effective utilization:                0.854
+[INFO IFP-0105] Number of instances:                  59897
+source /OpenROAD-flow-scripts/flow/platforms/asap7/openRoad/make_tracks.tcl
+source /OpenROAD-flow-scripts/flow/platforms/asap7/fastroute.tcl
+Repair tie lo fanout...
+[INFO RSZ-0042] Inserted 1 tie TIELOx1_ASAP7_75t_R instances.
+Repair tie hi fanout...
+[INFO RSZ-0042] Inserted 66 tie TIEHIx1_ASAP7_75t_R instances.
+repair_timing -setup_margin 0 -hold_margin 0 -repair_tns 100 -setup -skip_last_gasp -sequence unbuffer,sizeup,swap,vt_swap -verbose
+[WARNING EST-0027] no estimated parasitics. Using wire load models.
+[INFO RSZ-0100] Repair move sequence: UnbufferMove SizeUpMove SwapPinsMove 
+[INFO RSZ-0094] Found 71 endpoints with setup violations.
+[INFO RSZ-0099] Repairing 71 out of 71 (100.00%) violating endpoints...
+   Iter   | Removed | Resized | Inserted | Cloned |  Pin  |   Area   |    WNS   |   StTNS    |   EnTNS    |  Viol  |  Worst  
+          | Buffers |  Gates  | Buffers  |  Gates | Swaps |          |          |            |            | Endpts | St/EnPt 
+------------------------------------------------------------------------------------------------------------------------------
+       0* |       0 |       0 |        0 |      0 |     0 |    +0.0% |  -48.498 |      -48.5 |     -588.4 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       2* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       3* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       4* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       5* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       6* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       7* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       8* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+       9* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      10* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      10* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      11* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      12* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      13* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      14* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      15* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      16* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      17* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      18* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      19* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      20* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      20* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      21* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      22* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      23* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      24* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      25* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      26* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      27* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      28* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      29* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      30* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      30* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      31* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      32* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      33* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      34* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      35* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      36* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      37* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      38* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      39* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      40* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      40* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      41* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      42* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      43* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      44* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      45* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      46* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      47* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      48* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      49* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      50* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      50* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      51* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      52* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      53* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      54* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      55* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      56* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      57* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      58* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      59* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      60* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      60* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      61* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      62* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      63* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      64* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      65* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      66* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      67* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      68* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      69* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      70* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      70* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      71* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      72* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+      72* |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |     71 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+    final |       0 |       1 |        0 |      0 |     0 |    +0.0% |   15.499 |        0.0 |        0.0 |      0 | fdct_zigzag.dct_mod.dct_block_6.dct_unit_6.macu.mult_res\[16\]$_DFFE_PP_/D
+------------------------------------------------------------------------------------------------------------------------------
+[INFO RSZ-0051] Resized 1 instances: 1 up, 0 up match, 0 down, 0 VT
+Default units for flow
+ time 1ps
+ capacitance 1fF
+ resistance 1kohm
+ voltage 1v
+ current 1mA
+ power 1pW
+ distance 1um
+   Layer   | Unit Resistance | Unit Capacitance 
+           |       (kohm/um) |          (fF/um)
+------------------------------------------------
+        M1 |        7.04e-02 |         1.00e-10
+        M2 |        2.97e-02 |         1.85e-01
+        M3 |        3.13e-02 |         1.54e-01
+        M4 |        1.80e-02 |         1.89e-01
+        M5 |        1.90e-02 |         1.72e-01
+        M6 |        1.19e-02 |         1.76e-01
+        M7 |        1.25e-02 |         1.47e-01
+        M8 |        0.00e+00 |         0.00e+00
+        M9 |        0.00e+00 |         0.00e+00
+       Pad |        0.00e+00 |         0.00e+00
+------------------------------------------------
+
+   Layer   | Via Resistance 
+           |         (kohm) 
+----------------------------
+        V1 |       1.72e-02 
+        V2 |       1.72e-02 
+        V3 |       1.72e-02 
+        V4 |       1.18e-02 
+        V5 |       1.18e-02 
+        V6 |       8.20e-03 
+        V7 |       8.20e-03 
+        V8 |       6.30e-03 
+        V9 |       0.00e+00 
+----------------------------
+Report metrics stage 2, floorplan final...
+
+==========================================================================
+floorplan final report_design_area
+--------------------------------------------------------------------------
+Design area 6398 um^2 85% utilization.
+write_db /work/results/asap7/jpeg/pipeline_85/2_1_floorplan.odb
+write_sdc -no_timestamp /work/results/asap7/jpeg/pipeline_85/2_1_floorplan.sdc
+Elapsed time: 0:09.02[h:]min:sec. CPU time: user 11.86 sys 0.96 (142%). Peak memory: 441100KB.
+Log                       Ext     Elapsed/s Peak Memory/MB sha1sum result [0:20)
+2_1_floorplan                             9            430                  N/A

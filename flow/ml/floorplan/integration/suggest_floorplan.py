@@ -68,7 +68,7 @@ def write_tcl(macro_names, coords, die_w_um: float, die_h_um: float, out_path: s
     for name, (x_norm, y_norm) in zip(macro_names, coords):
         x_um = x_norm * die_w_um
         y_um = y_norm * die_h_um
-        lines.append(f'place_inst {name} {x_um:.3f} {y_um:.3f} R0')
+        lines.append(f"place_inst {name} {x_um:.3f} {y_um:.3f} R0")
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, "w") as f:
@@ -77,13 +77,23 @@ def write_tcl(macro_names, coords, die_w_um: float, die_h_um: float, out_path: s
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Suggest macro placement using FloorplanGNN")
+    parser = argparse.ArgumentParser(
+        description="Suggest macro placement using FloorplanGNN"
+    )
     parser.add_argument("--graph", required=True, help="Path to *_graph.npz file")
     parser.add_argument("--checkpoint", required=True, help="Model checkpoint .pt file")
-    parser.add_argument("--die-w", type=float, default=1000.0,
-                        help="Die width in microns (default 1000)")
-    parser.add_argument("--die-h", type=float, default=1000.0,
-                        help="Die height in microns (default 1000)")
+    parser.add_argument(
+        "--die-w",
+        type=float,
+        default=1000.0,
+        help="Die width in microns (default 1000)",
+    )
+    parser.add_argument(
+        "--die-h",
+        type=float,
+        default=1000.0,
+        help="Die height in microns (default 1000)",
+    )
     parser.add_argument("--out", required=True, help="Output Tcl file path")
     args = parser.parse_args()
 
@@ -93,7 +103,9 @@ def main():
     if len(macro_names) == 0:
         return
 
-    print(f"\nSuggested placement for {len(macro_names)} macros (die: {args.die_w}x{args.die_h} um):")
+    print(
+        f"\nSuggested placement for {len(macro_names)} macros (die: {args.die_w}x{args.die_h} um):"
+    )
     for name, (x, y) in zip(macro_names, coords):
         print(f"  {name}: x={x*args.die_w:.1f} um, y={y*args.die_h:.1f} um")
 

@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 try:
     from torch_geometric.nn import SAGEConv, global_mean_pool
+
     HAS_PYG = True
 except ImportError:
     HAS_PYG = False
@@ -28,7 +29,9 @@ class FloorplanGNN(nn.Module):
         num_layers:     Number of GraphSAGE layers
     """
 
-    def __init__(self, node_feat_dim: int = 6, hidden_dim: int = 128, num_layers: int = 3):
+    def __init__(
+        self, node_feat_dim: int = 6, hidden_dim: int = 128, num_layers: int = 3
+    ):
         super().__init__()
         if not HAS_PYG:
             raise ImportError(
@@ -38,12 +41,12 @@ class FloorplanGNN(nn.Module):
 
         self.input_proj = nn.Linear(node_feat_dim, hidden_dim)
 
-        self.convs = nn.ModuleList([
-            SAGEConv(hidden_dim, hidden_dim) for _ in range(num_layers)
-        ])
-        self.norms = nn.ModuleList([
-            nn.LayerNorm(hidden_dim) for _ in range(num_layers)
-        ])
+        self.convs = nn.ModuleList(
+            [SAGEConv(hidden_dim, hidden_dim) for _ in range(num_layers)]
+        )
+        self.norms = nn.ModuleList(
+            [nn.LayerNorm(hidden_dim) for _ in range(num_layers)]
+        )
 
         # Global context: graph-level embedding added to each macro node
         self.global_proj = nn.Linear(hidden_dim, hidden_dim)
@@ -76,16 +79,16 @@ class FloorplanGNN(nn.Module):
             h = F.relu(norm(conv(h, edge_index)))
 
         # Graph-level context embedding
-        g = global_mean_pool(h, batch)                    # (B, hidden)
-        g_expanded = g[batch]                              # (N, hidden)
+        g = global_mean_pool(h, batch)  # (B, hidden)
+        g_expanded = g[batch]  # (N, hidden)
         g_proj = F.relu(self.global_proj(g_expanded))
 
         # Only predict positions for macro nodes
-        h_macro = h[macro_mask]                           # (M, hidden)
-        g_macro = g_proj[macro_mask]                      # (M, hidden)
+        h_macro = h[macro_mask]  # (M, hidden)
+        g_macro = g_proj[macro_mask]  # (M, hidden)
 
         macro_input = torch.cat([h_macro, g_macro], dim=1)  # (M, hidden*2)
-        coords = self.head(macro_input)                   # (M, 2)
+        coords = self.head(macro_input)  # (M, 2)
         return coords
 
 
@@ -94,6 +97,7 @@ if __name__ == "__main__":
         print("torch_geometric not installed — skipping test")
     else:
         from torch_geometric.data import Data
+
         model = FloorplanGNN()
         x = torch.randn(50, 6)
         edge_index = torch.randint(0, 50, (2, 200))

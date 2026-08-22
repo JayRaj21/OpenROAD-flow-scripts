@@ -19,6 +19,7 @@ import numpy as np
 try:
     import openroad
     from openroad import Tech, Design
+
     HAS_OPENROAD = True
 except ImportError:
     HAS_OPENROAD = False
@@ -65,13 +66,17 @@ def extract_floorplan(odb_path: str):
     if len(macro_positions) == 0:
         macro_positions = np.zeros((0, 4), dtype=np.float32)
 
-    die_area = np.array([die_x0, die_y0, die_x0 + die_w, die_y0 + die_h], dtype=np.float32)
+    die_area = np.array(
+        [die_x0, die_y0, die_x0 + die_w, die_y0 + die_h], dtype=np.float32
+    )
 
     return np.array(macro_names), macro_positions, die_area
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract macro placement from floorplan ODB")
+    parser = argparse.ArgumentParser(
+        description="Extract macro placement from floorplan ODB"
+    )
     parser.add_argument("--odb", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
@@ -81,7 +86,9 @@ def main():
     print(f"Saved floorplan -> {args.out}")
     print(f"  Macros: {len(names)}")
     for name, pos in zip(names, positions):
-        print(f"    {name}: x={pos[0]:.3f} y={pos[1]:.3f} w={pos[2]:.3f} h={pos[3]:.3f}")
+        print(
+            f"    {name}: x={pos[0]:.3f} y={pos[1]:.3f} w={pos[2]:.3f} h={pos[3]:.3f}"
+        )
 
 
 if __name__ == "__main__":
