@@ -456,11 +456,61 @@ that explains *why* the post-CTS hook is the right intervention point.
 
 ---
 
+---
+
+### 2026-08-22 — Phase 3: triage agent
+
+**New file: `flow/util/triage_agent.py`**
+
+LLM-powered diagnostic layer that sits on top of the existing toolchain:
+
+```
+pr_metrics.py  →  collect()  →  triage_agent.py  →  Claude  →  diagnosis
+```
+
+**What it does:**
+1. Calls `pr_metrics.collect()` to read the stage-by-stage quality trajectory.
+2. Computes notable stage-to-stage WNS deltas (threshold: ≥5 ps change).
+3. Builds a structured prompt with the trajectory table, deltas, and final metrics.
+4. Calls `claude-opus-5` with adaptive thinking and a system prompt encoding
+   P&R domain knowledge — known failure patterns, what each stage does, and
+   the ORFS parameters and hooks available on this branch.
+5. Prints a structured diagnosis: root cause, evidence, recommended actions,
+   expected outcome.
+
+**Model:** `claude-opus-5` with `thinking: {type: "adaptive"}`.
+
+**Usage:**
+```bash
+export ANTHROPIC_API_KEY=<key>   # or: ant auth login
+
+python3 flow/util/triage_agent.py --platform nangate45 --design ibex --tag base
+python3 flow/util/triage_agent.py --platform nangate45 --design aes  --tag base
+```
+
+**Why this is distinct from ORFS-Agent (ABKGroup):**
+ORFS-Agent tunes top-level flow parameters (utilisation, density) across
+multiple parallel runs. This triage agent reads the *inside* of a completed
+run — the per-stage quality trajectory — and diagnoses which specific stage
+caused the failure and why. It operates on a single run and produces a
+targeted intervention recommendation rather than a search over parameter space.
+
+**Branch story (complete):**
+```
+observe  →  pr_metrics.py       (what happened at each stage?)
+intervene →  post_cts_*_tcl     (fix it inside the live OpenROAD session)
+decide   →  triage_agent.py     (diagnose why, recommend what to try next)
+```
+
+---
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓ done
 2. ~~Implement `post_cts_timing_repair.tcl` — single-pass~~ ✓ done
 3. ~~Controlled before/after comparison on ibex~~ ✓ done
 4. ~~Make hook iterative~~ ✓ done
-5. ~~Add post-GRT hook — tested, found redundant with built-in repair~~ ✓ done (documented)
-6. (Blocked on ML data) Congestion-feedback parameter tuner.
+5. ~~Add post-GRT hook — tested, found redundant with built-in repair~~ ✓ done
+6. ~~Triage agent — LLM diagnosis of per-stage quality trajectory~~ ✓ done
+7. Run triage agent on ibex and aes baseline runs to validate diagnoses.
+8. (Blocked on ML data) Congestion-feedback parameter tuner.
