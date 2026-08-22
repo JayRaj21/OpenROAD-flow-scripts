@@ -171,7 +171,7 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
         puts "INFO \[pgtr\] WNS [format %+.3f $wns_before] ns — no setup violations, skipping."
         return
     }
-    puts "INFO \[pgtr\] WNS [format %+.3f $wns_before] ns — starting iterative cell upsizing (post-GRT)."
+    puts "INFO \[pgtr\] WNS [format %+.3f $wns_before] ns — starting iterative upsizing (post-GRT)."
 
     array set upsize [build_upsize_map]
     puts "INFO \[pgtr\] Upsize map: [array size upsize] candidate transitions loaded."
@@ -192,7 +192,7 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
         set candidates [collect_candidates upsize $path_count seen]
 
         if {[llength $candidates] == 0} {
-            puts "INFO \[pgtr\] Iter $iter: no new swappable instances on critical paths — stopping."
+            puts "INFO \[pgtr\] Iter $iter: no new candidates on critical paths — stopping."
             break
         }
 
@@ -218,7 +218,8 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
 
         set wns_new [sta::worst_slack -max]
         set delta   [format %+.3f [expr {$wns_new - $wns_current}]]
-        puts "INFO \[pgtr\] Iter $iter: WNS [format %+.3f $wns_current] -> [format %+.3f $wns_new] ns  (delta $delta ns)"
+        set wns_msg "WNS [format %+.3f $wns_current] -> [format %+.3f $wns_new] ns"
+        puts "INFO \[pgtr\] Iter $iter: $wns_msg  (delta $delta ns)"
 
         set wns_current $wns_new
 
@@ -229,7 +230,8 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
     }
 
     set total_delta [format %+.3f [expr {$wns_current - $wns_before}]]
-    puts "INFO \[pgtr\] Done: $total_swaps total swap(s), WNS [format %+.3f $wns_before] -> [format %+.3f $wns_current] ns  (total $total_delta ns)"
+    set done_msg "WNS [format %+.3f $wns_before] -> [format %+.3f $wns_current] ns"
+    puts "INFO \[pgtr\] Done: $total_swaps swap(s), $done_msg  (total $total_delta ns)"
 }
 
 } ;# namespace pgtr

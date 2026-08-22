@@ -219,7 +219,7 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
         set candidates [collect_candidates upsize $path_count seen]
 
         if {[llength $candidates] == 0} {
-            puts "INFO \[pctr\] Iter $iter: no new swappable instances on critical paths — stopping."
+            puts "INFO \[pctr\] Iter $iter: no new candidates on critical paths — stopping."
             break
         }
 
@@ -246,7 +246,8 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
 
         set wns_new [sta::worst_slack -max]
         set delta   [format %+.3f [expr {$wns_new - $wns_current}]]
-        puts "INFO \[pctr\] Iter $iter: WNS [format %+.3f $wns_current] -> [format %+.3f $wns_new] ns  (delta $delta ns)"
+        set wns_msg "WNS [format %+.3f $wns_current] -> [format %+.3f $wns_new] ns"
+        puts "INFO \[pctr\] Iter $iter: $wns_msg  (delta $delta ns)"
 
         set wns_current $wns_new
 
@@ -257,7 +258,8 @@ proc run {{path_count 10} {max_swaps 30} {max_iters 5}} {
     }
 
     set total_delta [format %+.3f [expr {$wns_current - $wns_before}]]
-    puts "INFO \[pctr\] Done: $total_swaps total swap(s), WNS [format %+.3f $wns_before] -> [format %+.3f $wns_current] ns  (total $total_delta ns)"
+    set done_msg "WNS [format %+.3f $wns_before] -> [format %+.3f $wns_current] ns"
+    puts "INFO \[pctr\] Done: $total_swaps swap(s), $done_msg  (total $total_delta ns)"
 }
 
 } ;# namespace pctr
