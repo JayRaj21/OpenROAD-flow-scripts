@@ -48,6 +48,7 @@ PARAM_ALLOWLIST = {
     "SETUP_SLACK_MARGIN",
     "TNS_END_PERCENT",
     "OPT_POST_GRT_WNS",
+    "PLACE_DENSITY_LB_ADDON",
     "POST_CTS_TCL",
     "POST_GLOBAL_ROUTE_TCL",
 }
@@ -58,8 +59,21 @@ HOOK_PATHS = {
     "POST_GLOBAL_ROUTE_TCL": "/work/scripts/post_grt_timing_repair.tcl",
 }
 
+# Canonical paths for config.mk write-back (ORFS make-variable style)
+CONFIG_HOOK_PATHS = {
+    "POST_CTS_TCL": "$(SCRIPTS_DIR)/post_cts_timing_repair.tcl",
+    "POST_GLOBAL_ROUTE_TCL": "$(SCRIPTS_DIR)/post_grt_timing_repair.tcl",
+}
+
 # Stale ODB files to delete when forcing a stage re-run
 STAGE_STALE_FILES = {
+    "place": [
+        "results/{p}/{d}/{t}/3_3_place_gp.odb",
+        "results/{p}/{d}/{t}/3_4_place_resized.odb",
+        "results/{p}/{d}/{t}/3_5_place_dp.odb",
+        "results/{p}/{d}/{t}/3_place.odb",
+        "results/{p}/{d}/{t}/3_place.sdc",
+    ],
     "cts": ["results/{p}/{d}/{t}/4_1_cts.odb", "results/{p}/{d}/{t}/4_cts.odb"],
     "grt": ["results/{p}/{d}/{t}/5_1_grt.odb", "results/{p}/{d}/{t}/5_1_grt.sdc"],
     "finish": [
@@ -102,25 +116,41 @@ violations visible in the GRT row survived built-in repair.
 Set POST_CTS_TCL = "enabled" when violations will be visible at CTS after \
 applying SETUP_SLACK_MARGIN.
 
+## Failure patterns and fixes
+
+**CTS→GRT timing cliff** (CTS WNS ≈ 0, GRT WNS < -0.010):
+Parasitic underestimation at CTS. Fix: SETUP_SLACK_MARGIN=0.03, \
+TNS_END_PERCENT=100, POST_CTS_TCL=enabled. Re-run: cts, finish.
+
+**Routing congestion** (GRT overflow > 0.40 at global place row, or overflow \
+persisting across runs):
+Placement too dense. Fix: increase PLACE_DENSITY_LB_ADDON by 0.05 (max 0.50). \
+Re-run: place, cts, finish. This is expensive — only apply if overflow > 0.40.
+
+**Residual GRT violations after timing fix** (GRT WNS still < -0.005 after \
+cts re-run):
+Add OPT_POST_GRT_WNS=1 for a VT-swap pass. Re-run: grt, finish.
+
 ## Allowlisted parameters
 
 - SETUP_SLACK_MARGIN (float, 0.0–0.10 ns): extra setup margin during repair. \
-Typical: 0.03. Forces CTS to see endpoints that only violate after real RC.
-- TNS_END_PERCENT (int, 0–100): % of endpoints repaired. Set to 100 if any \
-TNS exists.
-- OPT_POST_GRT_WNS (0 or 1): enables a VT-swap pass after GRT.
+Typical: 0.03.
+- TNS_END_PERCENT (int, 0–100): % of violating endpoints to repair. Set to 100 \
+whenever TNS > 0.
+- OPT_POST_GRT_WNS (0 or 1): VT-swap repair pass after GRT.
+- PLACE_DENSITY_LB_ADDON (float, 0.0–0.50): extra placement density margin. \
+Only increase if GRT overflow > 0.40. Each 0.05 step increases HPWL ~2–4%.
 - POST_CTS_TCL: set to "enabled" to arm the post-CTS upsizing hook.
-- POST_GLOBAL_ROUTE_TCL: set to "enabled" to arm the post-GRT hook (rarely \
-needed — built-in repair already runs before the GRT report).
+- POST_GLOBAL_ROUTE_TCL: set to "enabled" to arm the post-GRT hook.
 
-## Stage re-run rules
+## Stage re-run rules (least expensive first)
 
-- Changed SETUP_SLACK_MARGIN, TNS_END_PERCENT, or POST_CTS_TCL → run cts, \
-then finish.
-- Changed OPT_POST_GRT_WNS or POST_GLOBAL_ROUTE_TCL → run grt, then finish.
+- Changed SETUP_SLACK_MARGIN, TNS_END_PERCENT, OPT_POST_GRT_WNS, \
+POST_CTS_TCL, or POST_GLOBAL_ROUTE_TCL → run cts, then finish.
+- Changed PLACE_DENSITY_LB_ADDON → run place, then cts, then finish \
+(expensive — placement re-runs global place + resize + detail place).
 
-Budget: max 3 iterations. Each iteration may change up to 3 parameters and \
-re-run 2 stages. Call finish when done regardless of outcome.
+Budget: max 3 iterations. Call finish when done regardless of outcome.
 """
 
 # ---------------------------------------------------------------------------
@@ -178,8 +208,12 @@ TOOLS = [
             "properties": {
                 "stage": {
                     "type": "string",
-                    "enum": ["cts", "grt", "finish"],
-                    "description": "Flow stage to re-run.",
+                    "enum": ["place", "cts", "grt", "finish"],
+                    "description": (
+                        "Flow stage to re-run. 'place' re-runs global place "
+                        "+ resize + detail place (expensive, only when "
+                        "PLACE_DENSITY_LB_ADDON changed)."
+                    ),
                 },
             },
             "required": ["stage"],
@@ -296,6 +330,66 @@ def impl_run_stage(stage, platform, design, tag, pending_params, flow_dir, chang
 
 
 # ---------------------------------------------------------------------------
+# Config write-back
+# ---------------------------------------------------------------------------
+
+
+def write_config_params(params, platform, design, flow_dir):
+    """Write successfully applied params back to the design's config.mk.
+
+    Existing 'export PARAM = ...' lines are updated in-place; new params are
+    appended with a loop-agent comment. Docker-specific hook paths are
+    translated back to the portable $(SCRIPTS_DIR)/... form.
+    """
+    import re as _re
+
+    config_path = os.path.join(flow_dir, "designs", platform, design, "config.mk")
+    if not os.path.exists(config_path):
+        return f"ERROR: {config_path} not found"
+
+    # Translate Docker hook paths → ORFS-canonical paths for config.mk
+    writeback = {}
+    for param, value in params.items():
+        if param in CONFIG_HOOK_PATHS and value.startswith("/work/scripts/"):
+            writeback[param] = CONFIG_HOOK_PATHS[param]
+        else:
+            writeback[param] = value
+
+    with open(config_path) as f:
+        lines = f.readlines()
+
+    updated = set()
+    new_lines = []
+    for line in lines:
+        replaced = False
+        for param, value in writeback.items():
+            if _re.match(rf"^\s*export\s+{_re.escape(param)}\s*[=]", line):
+                new_lines.append(f"export {param} = {value}\n")
+                updated.add(param)
+                replaced = True
+                break
+        if not replaced:
+            new_lines.append(line)
+
+    # Append params not already present in the file
+    new_params = {p: v for p, v in writeback.items() if p not in updated}
+    if new_params:
+        if new_lines and not new_lines[-1].endswith("\n"):
+            new_lines.append("\n")
+        new_lines.append("\n# Written by loop_agent.py\n")
+        for param, value in new_params.items():
+            new_lines.append(f"export {param} = {value}\n")
+
+    with open(config_path, "w") as f:
+        f.writelines(new_lines)
+
+    return (
+        f"Updated: {sorted(updated)}  |  Added: {sorted(new_params)}"
+        f"  |  Path: {config_path}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Agent loop
 # ---------------------------------------------------------------------------
 
@@ -390,6 +484,10 @@ def run_loop(platform, design, tag, flow_dir):
                 print(f"{'='*70}")
                 change_log.append({"action": "finish", **inp})
                 finished = True
+                # Persist successful parameter changes back to config.mk
+                if inp.get("success") and pending_params:
+                    wb = write_config_params(pending_params, platform, design, flow_dir)
+                    print(f"[loop-agent] Write-back → {wb}")
                 result = "Loop terminated."
 
             else:
