@@ -80,42 +80,6 @@ while IFS= read -r HOST_ODB; do
         continue
     fi
 
-    # docker_shell's `docker run -i` reads from stdin until EOF; without
-    # </dev/null here it drains the outer `while read` loop's process
-    # substitution after the first iteration, silently ending the batch
-    # after one design.
-    make_out="$(util/docker_shell -- "make DESIGN_CONFIG=./${design_cfg} print-LIB_FILES print-PWR_NETS_VOLTAGES" 2>/dev/null </dev/null)"
-    lib_files="$(echo "$make_out" | sed -n 's/^LIB_FILES: *//p')"
-    pwr_nets_voltages="$(echo "$make_out" | sed -n 's/^PWR_NETS_VOLTAGES: *//p')"
-
-    if [ -z "$lib_files" ]; then
-        echo "Design: ${label}  [SKIP] LIB_FILES did not resolve via 'make print-LIB_FILES' for ${design_cfg}"
-        ((skip++)) || true
-        continue
-    fi
-    # LIB_FILES paths from `make print-` are absolute host paths already
-    # (make resolved $(PLATFORM_DIR) etc for real) — just remap the flow/
-    # prefix to the container's /work mount.
-    cont_libs=""
-    for lib in $lib_files; do
-        cont_libs="${cont_libs} /work/${lib#*/flow/}"
-    done
-
-    # PWR_NETS_VOLTAGES is a "<net1> <voltage1> <net2> <voltage2> ..." dict
-    # (same format scripts/final_outputs.tcl parses) — find the voltage for
-    # the requested --net.
-    voltage=""
-    set -- $pwr_nets_voltages
-    while [ "$#" -ge 2 ]; do
-        if [ "$1" = "$NET" ]; then voltage="$2"; fi
-        shift 2
-    done
-    if [ -z "$voltage" ]; then
-        echo "Design: ${label}  [SKIP] no voltage for net ${NET} in PWR_NETS_VOLTAGES ('${pwr_nets_voltages}')"
-        ((skip++)) || true
-        continue
-    fi
-
     cont_odb="/work/results/${rel}/6_final.odb"
     cont_spef="/work/results/${rel}/6_final.spef"
 
@@ -154,6 +118,46 @@ while IFS= read -r HOST_ODB; do
         echo "  [SKIP] IR-drop labels already extracted"
         ((skip++)) || true
     else
+        # docker_shell's `docker run -i` reads from stdin until EOF; without
+        # </dev/null here it drains the outer `while read` loop's process
+        # substitution after the first iteration, silently ending the batch
+        # after one design.
+        if ! make_out="$(util/docker_shell -- "make DESIGN_CONFIG=./${design_cfg} print-LIB_FILES print-PWR_NETS_VOLTAGES" 2>/dev/null </dev/null)"; then
+            echo "  [SKIP] 'make print-LIB_FILES print-PWR_NETS_VOLTAGES' failed for ${design_cfg}"
+            ((skip++)) || true
+            continue
+        fi
+        lib_files="$(echo "$make_out" | sed -n 's/^LIB_FILES: *//p')"
+        pwr_nets_voltages="$(echo "$make_out" | sed -n 's/^PWR_NETS_VOLTAGES: *//p')"
+
+        if [ -z "$lib_files" ]; then
+            echo "  [SKIP] LIB_FILES did not resolve via 'make print-LIB_FILES' for ${design_cfg}"
+            ((skip++)) || true
+            continue
+        fi
+        # LIB_FILES paths from `make print-` are absolute host paths already
+        # (make resolved $(PLATFORM_DIR) etc for real) — just remap the flow/
+        # prefix to the container's /work mount.
+        cont_libs=""
+        for lib in $lib_files; do
+            cont_libs="${cont_libs} /work/${lib#*/flow/}"
+        done
+
+        # PWR_NETS_VOLTAGES is a "<net1> <voltage1> <net2> <voltage2> ..." dict
+        # (same format scripts/final_outputs.tcl parses) — find the voltage for
+        # the requested --net.
+        voltage=""
+        set -- $pwr_nets_voltages
+        while [ "$#" -ge 2 ]; do
+            if [ "$1" = "$NET" ]; then voltage="$2"; fi
+            shift 2
+        done
+        if [ -z "$voltage" ]; then
+            echo "  [SKIP] no voltage for net ${NET} in PWR_NETS_VOLTAGES ('${pwr_nets_voltages}')"
+            ((skip++)) || true
+            continue
+        fi
+
         echo "  [RUN]  extract_irdrop_labels.py (timeout ${TIMEOUT_S}s)"
         if timeout "$TIMEOUT_S" util/docker_shell openroad -python "$IRDROP_SCRIPT" \
                --odb "$cont_odb" --spef "$cont_spef" --liberty $cont_libs \
