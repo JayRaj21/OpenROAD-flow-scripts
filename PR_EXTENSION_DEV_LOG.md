@@ -648,9 +648,9 @@ now thin wrappers that source the common lib.
 name-injection test. Suite is now 28 tests (was 24).
 
 **Commits:**
-- `800c02570` — validate config param values; dedupe timing-repair Tcl hooks into shared lib
-- `5104ecb9a` — block `${` Make-syntax variant in config param value validation
-- `f8ecc3069` — add regression tests for config value injection blocklist
+- `8c77f24cf` — validate config param values; dedupe timing-repair Tcl hooks into shared lib
+- `01cb3c686` — block `${` Make-syntax variant in config param value validation
+- `d34d787fd` — add regression tests for config value injection blocklist
 
 ---
 
