@@ -453,6 +453,32 @@ class TestResolveDirsValidation(unittest.TestCase):
             bd.resolve_dirs(args)
         self.assertIn("could not determine", str(ctx.exception))
 
+    def test_reports_dir_derives_tag_from_path_when_not_passed(self):
+        args = argparse.Namespace(
+            platform=None,
+            design=None,
+            tag=None,
+            reports_dir="/tmp/x/nangate45/ibex/hardened",
+            logs_dir=None,
+            flow_dir="/tmp",
+        )
+        bd.resolve_dirs(args)
+        self.assertEqual(args.platform, "nangate45")
+        self.assertEqual(args.design, "ibex")
+        self.assertEqual(args.tag, "hardened")
+
+    def test_reports_dir_explicit_tag_overrides_path_derivation(self):
+        args = argparse.Namespace(
+            platform=None,
+            design=None,
+            tag="explicit-tag",
+            reports_dir="/tmp/x/nangate45/ibex/hardened",
+            logs_dir=None,
+            flow_dir="/tmp",
+        )
+        bd.resolve_dirs(args)
+        self.assertEqual(args.tag, "explicit-tag")
+
 
 class TestHtmlOutput(unittest.TestCase):
     def test_html_written_and_non_empty_for_two_records(self):

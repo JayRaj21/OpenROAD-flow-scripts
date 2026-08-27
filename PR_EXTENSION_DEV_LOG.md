@@ -695,20 +695,22 @@ parser. `pr_metrics.py` itself is untouched.
   for WNS/Fmax/HPWL, inline `<style>`, no external JS/CSS/CDN/font references) so it
   renders in an air-gapped CI runner.
 
-**Tests (`flow/util/test_benchmark_dashboard.py`, unittest, 24 tests):** append-only
+**Tests (`flow/util/test_benchmark_dashboard.py`, unittest, 34 tests):** append-only
 behavior (multiple `record` calls never touch prior lines), delta/regression math on
 hand-built synthetic JSONL sequences (regression flagged/not-flagged at threshold
 boundaries for WNS/Fmax/overflow, best-ever flags, exit-code behavior via
 `build_report_rows`), a CLI subprocess test that runs `record` against a fake
-`flow/reports/.../6_finish.rpt` fixture and checks the written JSONL content, and an
+`flow/reports/.../6_finish.rpt` fixture and checks the written JSONL content, an
 HTML test asserting the output file is non-empty, contains `<svg>`/`<table>`, and has no
-`http(s)://` references (confirms it's genuinely offline-renderable). Ran together with
-the existing suite:
+`http(s)://` references (confirms it's genuinely offline-renderable), and
+`resolve_dirs()` tag-derivation tests (`--reports-dir` derives the tag from the path's
+last component when `--tag` isn't passed; an explicit `--tag` overrides derivation).
+Ran together with the existing suite:
 
 ```bash
 cd flow/util && python3 -m pytest test_benchmark_dashboard.py test_loop_agent.py -v
 ```
-52 passed (24 new + 28 existing), confirming no regression to `loop_agent.py`. Formatted
+62 passed (34 new + 28 existing), confirming no regression to `loop_agent.py`. Formatted
 both new files with `black` (26.5.1).
 
 **Left out of scope:** no Makefile/CI wiring to auto-invoke `record` after every flow
