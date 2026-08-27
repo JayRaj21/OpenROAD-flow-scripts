@@ -410,7 +410,7 @@ was abandoned because:
 | File | Purpose |
 |---|---|
 | `data_collection/extract_thermal_labels.py` | Reads a placed ODB, uses cell area as power proxy, writes HotSpot `.flp`/`.ptrace`, runs HotSpot, parses `.steady` output into a `thermal_map` + `power_grid` `.npz` |
-| `flow/ml/Dockerfile` | Extends `openroad/orfs:latest` with HotSpot v7.0 and Python ML packages |
+| `flow/ml/Dockerfile.ml` | Extends `openroad/orfs:latest` with HotSpot v7.0 and Python ML packages |
 
 **Discovered:** `flow/ml/data/` contains prior pre-placement GNN experiments with netlist
 `*_graph.npz` files and `*_congestion.npy` labels for ~15 nangate45/sky130hd designs including

@@ -1,7 +1,7 @@
 # Custom ORFS image with ML dependencies (HotSpot thermal solver + Python packages).
 #
 # Build:
-#   docker build -t openroad/orfs-ml:latest flow/ml/
+#   docker build -t openroad/orfs-ml:latest -f flow/ml/Dockerfile.ml flow/ml/
 #
 # Use (instead of plain docker_shell):
 #   OR_IMAGE=openroad/orfs-ml:latest util/docker_shell <cmd>
