@@ -86,7 +86,7 @@
 # convention from report_metrics.tcl, so flow/util/multicorner_dashboard.py
 # can glob and parse them per corner.
 
-proc report_multicorner_timing_enabled {} {
+proc report_multicorner_timing_enabled { } {
   if { ![info exists ::env(REPORT_MULTICORNER_TIMING)] } {
     return false
   }
