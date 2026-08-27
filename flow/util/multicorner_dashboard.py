@@ -25,10 +25,18 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pr_metrics import parse_rpt
 
-MULTICORNER_RE = re.compile(r"^(?P<stage>.+)_multicorner_(?P<corner>[^_.]+)\.rpt$")
+MULTICORNER_RE = re.compile(r"^(?P<stage>.+)_multicorner_(?P<corner>[^.]+)\.rpt$")
 
-# Higher-is-worse for these; worst_slack/wns/clock skew are more negative = worse.
-WORSE_IS_LOWER = {"tns", "wns", "worst_slack", "clock_skew"}
+# Lower-is-worse for these (more negative slack/tns = worse).
+WORSE_IS_LOWER = {"tns", "wns", "worst_slack"}
+# Larger-magnitude-is-worse for these (skew has no fixed sign convention).
+WORSE_IS_ABS_MAX = {"clock_skew"}
+
+# Matches report_clock_skew's per-clock summary line, e.g. "  0.050 setup skew"
+# or " -0.030 hold skew" (search/ClkSkew.cc: `report_->report("{:>7} {} skew", ...)`).
+# There is no aggregate "worst skew" line in OpenSTA's own output -- one line is
+# printed per clock, so the worst per corner is the largest-magnitude match.
+CLOCK_SKEW_RE = re.compile(r"([-\d.]+)\s+(?:setup|hold)\s+skew")
 
 METRIC_ROWS = [
     ("wns", "WNS (ns)", "{:+.3f}"),
@@ -39,19 +47,26 @@ METRIC_ROWS = [
 
 
 def parse_clock_skew(rpt_path):
-    """Extract worst clock skew from a per-corner .rpt file, if present."""
+    """Extract the largest-magnitude clock skew from a per-corner .rpt file.
+
+    report_clock_skew prints one "<value> setup skew" / "<value> hold skew"
+    line per clock (each already the worst launch/capture pair for that
+    clock) -- there is no single aggregate line, so this takes the
+    largest-magnitude value across all clocks as that corner's worst skew.
+    """
     if not os.path.isfile(rpt_path):
         return None
     with open(rpt_path) as f:
         content = f.read()
-    # report_clock_skew's summary line looks like "Worst skew -0.123"
-    m = re.search(r"[Ww]orst\s+skew\s+([-\d.]+)", content)
-    if m:
+    values = []
+    for m in CLOCK_SKEW_RE.finditer(content):
         try:
-            return float(m.group(1))
+            values.append(float(m.group(1)))
         except ValueError:
-            return None
-    return None
+            continue
+    if not values:
+        return None
+    return max(values, key=abs)
 
 
 def find_multicorner_reports(reports_dir, stage):
@@ -106,6 +121,8 @@ def worst_corner(data, metric):
     candidates = [(c, m[metric]) for c, m in data.items() if metric in m]
     if not candidates:
         return None
+    if metric in WORSE_IS_ABS_MAX:
+        return max(candidates, key=lambda cv: abs(cv[1]))[0]
     if metric in WORSE_IS_LOWER:
         return min(candidates, key=lambda cv: cv[1])[0]
     return max(candidates, key=lambda cv: cv[1])[0]

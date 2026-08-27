@@ -677,30 +677,76 @@ dashboard to compare corners side by side.
   `REPORT_MULTICORNER_TIMING` (unset/`0` = no-op, matching the
   `SKIP_REPORT_METRICS`/`DETAILED_METRICS`/`CTS_SNAPSHOTS` opt-in pattern).
   No-op when `CORNERS` has fewer than 2 entries. When enabled, loops
-  `$::env(CORNERS)` and writes `report_tns -corner`, `report_wns -corner`,
-  `report_worst_slack -corner`, and (if `REPORT_CLOCK_SKEW`) `report_clock_skew
-  -corner` into one file per corner:
-  `$::env(REPORTS_DIR)/${stage}_${when}_multicorner_${corner}.rpt` — mirroring
-  the existing single-corner `<stage>_<when>.rpt` naming from
-  `report_metrics.tcl` (which only reports the merged/worst-case view for
-  timing; it already does per-corner looping for `report_power`, confirming
-  `-corner` is a valid flag on these OpenSTA report procs).
+  `$::env(CORNERS)` and, per corner, reads TNS/worst-slack via the
+  corner-scoped SWIG commands (`sta::find_scene`, `sta::total_negative_slack_scene_cmd`,
+  `sta::worst_slack_scene` — see correction below), derives WNS as
+  `min(0.0, worst_slack)`, and (if `REPORT_CLOCK_SKEW`) appends
+  `report_clock_skew -corner $corner`'s native output, into one file per
+  corner: `$::env(REPORTS_DIR)/${stage}_${when}_multicorner_${corner}.rpt` —
+  mirroring the existing single-corner `<stage>_<when>.rpt` naming from
+  `report_metrics.tcl`.
 - `flow/util/multicorner_dashboard.py` — CLI (`--platform`/`--design`/`--tag`/
   `--flow-dir`, matching `pr_metrics.py`'s convention, plus `--stage` to pick
   which stage's `*_multicorner_*.rpt` files to read, defaulting to the
   highest-numbered stage found). Imports and reuses `pr_metrics.parse_rpt()`
-  for WNS/TNS/worst-slack (no reimplemented regexes) and adds a small
-  clock-skew-specific parser. Prints a table with corners as columns and an
-  asterisk-free `"(worst)"` suffix marking the worst corner per metric. Exits
-  non-zero with a clear message if no matching multicorner reports are found.
+  for WNS/TNS/worst-slack (no reimplemented regexes) and adds a clock-skew
+  parser matching OpenSTA's real per-clock `"<value> setup|hold skew"` output.
+  Prints a table with corners as columns and a `"(worst)"` suffix marking the
+  worst corner per metric (most-negative for slack/TNS/WNS, largest-magnitude
+  for skew). Exits non-zero with a clear message if no matching multicorner
+  reports are found.
 - `flow/util/test_multicorner_dashboard.py` — unittest-based (style matches
   `test_loop_agent.py`), synthetic `.rpt` fixtures in temp dirs, no
-  Docker/OpenSTA required. Covers file discovery/glob matching, stage
-  auto-selection, `parse_rpt()` reuse, worst-corner selection (both
-  higher-is-worse and lower-is-worse metrics), table rendering, and two
-  behavioral Tcl checks via `tclsh` subprocess: the script sources without a
-  *syntax* error, and `report_multicorner_timing` is a true no-op (writes no
-  files) for a single-corner `CORNERS` value.
+  Docker/OpenSTA required. Covers file discovery/glob matching (including
+  underscore-containing corner names like `ss_0p9v_125c`), stage
+  auto-selection, `parse_rpt()` reuse, worst-corner selection, table
+  rendering, and three behavioral Tcl checks via `tclsh` subprocess: the
+  script sources without a syntax error; the single-corner no-op path writes
+  no files; and — critically — the 2+-corner code path itself, driven end to
+  end with the real `sta::*` commands stubbed to return known values,
+  asserting the written files parse back to the expected TNS/WNS/worst-slack/
+  clock-skew numbers.
+
+**Correction (same day, before commit landed clean):** an independent review
+caught that the first draft of `report_multicorner_timing.tcl` called
+`report_tns -corner`, `report_wns -corner`, and `report_worst_slack -corner`
+by analogy with `report_power -corner` — but never verified it against real
+OpenSTA source. That analogy was wrong and would have hard-crashed the flow
+the first time it ran with `REPORT_MULTICORNER_TIMING=1` and 2+ corners:
+`parse_key_args` rejects unknown flags, and none of those three commands
+declare `-corner`. Re-derived the fix by pulling the actual OpenSTA source at
+the exact commit ORFS's `tools/OpenROAD` submodule pins
+(`509913b1398b36eda23caa1f1f380167465dceee`, verified via
+`gh api repos/The-OpenROAD-Project/OpenROAD/contents/src?ref=...`), not
+upstream `master` blindly:
+  - `search/Search.tcl` confirms `report_tns`/`report_wns`/`report_worst_slack`
+    take only `[-min] [-max] [-digits digits]` — no `-corner`.
+  - `search/Search.i` exposes the real lower-level, corner-scoped commands
+    those procs are missing: `total_negative_slack_scene_cmd(Scene*, MinMax*)`,
+    `worst_slack_scene(Scene*, MinMax*)`, and `find_scene(const char*)` — and
+    OpenSTA's own test suite (`search/test/search_worst_slack_sta.tcl`,
+    `search/test/search_corner_skew.tcl`) uses exactly this pattern
+    (`sta::find_scene`, `sta::total_negative_slack_scene_cmd $scene max`,
+    `sta::worst_slack_scene $scene max`). The script now uses these instead.
+  - The review also flagged `report_clock_skew -corner` as a dead parameter.
+    On closer reading of `tcl/CmdArgs.tcl` this is actually **not** dead:
+    `report_clock_skew` passes its parsed `keys` array by reference into
+    `parse_scenes_or_all keys`, which explicitly reads `keys(-corner)` as a
+    documented `"compabibility 05/29/2025"` alias for `-scenes`. So
+    `report_clock_skew -corner $corner` is genuine and was kept — but its
+    real output format is a per-clock `"<value> setup|hold skew"` line, not
+    an aggregate "worst skew" line as the first draft's dashboard parser
+    assumed; `multicorner_dashboard.py`'s clock-skew regex and worst-corner
+    logic (largest magnitude, not most-negative) were rewritten to match.
+  - Also fixed: the corner-name regex in `multicorner_dashboard.py`
+    (`find_multicorner_reports`) excluded underscores, which would break on
+    real corner names like `ss_0p9v_125c`; broadened to allow them.
+  - Added the missing test that actually drives the 2+-corner Tcl branch
+    (`TestTclSyntax::test_proc_report_multicorner_timing_drives_two_corner_branch`)
+    by stubbing the real `sta::find_scene` / `sta::total_negative_slack_scene_cmd`
+    / `sta::worst_slack_scene` / `sta::format_time` commands and asserting on
+    the files it writes — this is the exact branch the wrong first draft
+    would have crashed in, and it had zero coverage before.
 
 **Tcl integration decision:** used the existing `HOOK_PATHS`/`CONFIG_HOOK_PATHS`
 mechanism (same pattern as `post_cts_timing_repair.tcl`) rather than a direct
@@ -720,11 +766,11 @@ call site in a stage script; this was deliberately left as future work to
 keep this change additive-only.
 
 **Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py
-flow/util/test_loop_agent.py -v` → 43 passed. Also manually exercised the CLI
-against hand-built fixture `.rpt` files reproducing OpenSTA's `tns max` /
-`wns max` / `worst slack max` / `Worst skew` output format, confirming the
-table correctly renders and marks the worst corner. `black` applied to both
-new Python files.
+flow/util/test_loop_agent.py -v` → 46 passed. Also manually exercised the CLI
+against hand-built fixture `.rpt` files reproducing OpenSTA's real `tns max` /
+`wns max` / `worst slack max` / per-clock `"<value> setup skew"` output
+format (including underscore corner names), confirming the table correctly
+renders and marks the worst corner. `black` applied to both new Python files.
 
 **Out of scope:** wiring `REPORT_MULTICORNER_TIMING` into an actual design's
 `config.mk` (needs a real multi-corner platform config to validate against

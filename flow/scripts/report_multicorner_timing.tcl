@@ -4,12 +4,57 @@
 #
 # report_metrics.tcl already loops $::env(CORNERS) for report_power (see
 # its "report_power" section), but report_tns / report_wns /
-# report_worst_slack / report_clock_skew are called without -corner, so
-# only the merged worst-case view across corners is ever written to the
-# stage .rpt file. OpenSTA's report_tns/report_wns/report_worst_slack/
-# report_clock_skew all accept the same "-corner <name>" flag report_power
-# already uses here, so this script fills the per-corner gap without
-# touching report_metrics.tcl or any stage script.
+# report_worst_slack are called without any per-corner scoping, so only
+# the merged worst-case view across corners is ever written to the stage
+# .rpt file. This script fills that gap without touching
+# report_metrics.tcl or any stage script.
+#
+# --- Mechanism, verified against the exact OpenSTA commit ORFS's
+#     tools/OpenROAD submodule pins (509913b1398b36eda23caa1f1f380167465dceee,
+#     github.com/The-OpenROAD-Project/OpenSTA), NOT assumed: ---
+#
+#   report_tns / report_wns / report_worst_slack do NOT take -corner.
+#   (search/Search.tcl: `define_cmd_args "report_tns" {[-min] [-max]
+#   [-digits digits]}`, same for report_wns/report_worst_slack; the SWIG
+#   bindings they call -- total_negative_slack_cmd(min_max) and
+#   worst_slack_cmd(min_max) in search/Search.i -- take only a MinMax,
+#   no corner/scene.) Passing -corner to any of these three raises
+#   "... is not a known keyword or flag." from parse_key_args -- it does
+#   not silently ignore it. So per-corner TNS/WNS/worst-slack values are
+#   read here via the lower-level, corner-scoped SWIG commands that
+#   search/Search.i genuinely exposes and that OpenSTA's own test suite
+#   uses this way (search/test/search_worst_slack_sta.tcl,
+#   search/test/search_corner_skew.tcl):
+#     sta::find_scene $corner                       -> Scene* for a
+#                                                       CORNERS name
+#                                                       (define_corners is
+#                                                       a deprecated alias
+#                                                       for define_scenes_cmd,
+#                                                       so CORNERS entries
+#                                                       are scene names)
+#     sta::total_negative_slack_scene_cmd $scene max -> per-corner TNS
+#     sta::worst_slack_scene $scene max               -> per-corner worst
+#                                                        slack (max)
+#   WNS is then derived exactly as OpenSTA's own report_wns proc derives
+#   it from worst slack: wns = min(0.0, worst_slack).
+#
+#   report_clock_skew's -corner flag, by contrast, IS genuinely consumed
+#   (contrary to how it might look from a shallow read of just its own
+#   proc body): `parse_key_args` collects it into `keys(-corner)`, and
+#   `report_clock_skew` passes that `keys` array by reference into
+#   `parse_scenes_or_all keys` (tcl/CmdArgs.tcl), which explicitly reads
+#   `keys(-corner)` as a "compabibility 05/29/2025" alias for `-scenes`
+#   and resolves it via find_scenes. So `report_clock_skew -corner
+#   $corner` really does scope the report to that one corner, the same
+#   way report_power -corner does -- this was verified by reading
+#   parse_scenes_or_all's body at the pinned commit, not assumed by
+#   analogy with report_power.
+#
+#   Output format note: report_clock_skew does not print an aggregate
+#   "worst skew" summary line -- it prints one "<value> setup skew" /
+#   "<value> hold skew" line per clock (already the worst launch/capture
+#   pair for that clock). flow/util/multicorner_dashboard.py parses all
+#   such lines per corner and reports the largest-magnitude one.
 #
 # Opt-in: no-op unless REPORT_MULTICORNER_TIMING is set to a non-empty,
 # non-"0" value -- matches the SKIP_REPORT_METRICS / DETAILED_METRICS /
@@ -71,27 +116,36 @@ proc report_multicorner_timing { stage when } {
     set fileId [open $filename w]
     close $fileId
 
+    set scene [sta::find_scene $corner]
+    if { $scene eq "NULL" } {
+      puts "Warning: report_multicorner_timing: no scene found for corner '$corner', skipping"
+      continue
+    }
+
+    set tns [sta::total_negative_slack_scene_cmd $scene max]
+    set worst_slack [sta::worst_slack_scene $scene max]
+    set wns $worst_slack
+    if { $wns > 0.0 } {
+      set wns 0.0
+    }
+
     set fileId [open $filename a]
     puts $fileId "\n=========================================================================="
     puts $fileId "Corner: $corner"
-    puts $fileId "$when report_tns -corner $corner"
+    puts $fileId "$when report_tns (corner $corner)"
     puts $fileId "--------------------------------------------------------------------------"
-    close $fileId
-    report_tns -corner $corner >> $filename
+    puts $fileId "tns max [sta::format_time $tns 4]"
 
-    set fileId [open $filename a]
     puts $fileId "\n=========================================================================="
-    puts $fileId "$when report_wns -corner $corner"
+    puts $fileId "$when report_wns (corner $corner)"
     puts $fileId "--------------------------------------------------------------------------"
-    close $fileId
-    report_wns -corner $corner >> $filename
+    puts $fileId "wns max [sta::format_time $wns 4]"
 
-    set fileId [open $filename a]
     puts $fileId "\n=========================================================================="
-    puts $fileId "$when report_worst_slack -corner $corner"
+    puts $fileId "$when report_worst_slack (corner $corner)"
     puts $fileId "--------------------------------------------------------------------------"
+    puts $fileId "worst slack max [sta::format_time $worst_slack 4]"
     close $fileId
-    report_worst_slack -corner $corner >> $filename
 
     if { [info exists ::env(REPORT_CLOCK_SKEW)] && $::env(REPORT_CLOCK_SKEW) } {
       set fileId [open $filename a]
