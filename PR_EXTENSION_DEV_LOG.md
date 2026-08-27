@@ -664,6 +664,60 @@ Branch `pr-extension` → `master`.
 
 ---
 
+### 2026-08-27 — Regression / benchmark dashboard
+
+**Goal:** turn the single-run `pr_metrics.py` snapshot into a history that can catch
+regressions across runs/commits, usable both interactively and as a CI gate.
+
+**`flow/util/benchmark_dashboard.py`:** new module, two subcommands, argparse styled
+after `pr_metrics.py` (`--platform`/`--design`/`--tag` or `--reports-dir`/`--logs-dir`,
+same `--flow-dir` default). Imports `collect()` from `pr_metrics.py` rather than
+re-parsing reports/logs — that duplication (pr_metrics.py/triage_agent.py/loop_agent.py/
+compare_hook.sh all independently extracting the same metrics) was already flagged as a
+review issue, so this is strictly a history/regression layer on top of the existing
+parser. `pr_metrics.py` itself is untouched.
+
+- `record`: runs `collect()`, appends one JSON object (timestamp, `git rev-parse HEAD`,
+  platform/design/tag, per-stage metrics dict) as a line to
+  `flow/util/benchmark_history/<platform>__<design>__<tag>.jsonl`. JSONL + open-append
+  (`"a"` mode) was chosen specifically so a crash or concurrent writer can never
+  corrupt or rewrite prior history — each record is independent and the file is safe to
+  tail/grep.
+- `report`: reads the history file for a stage (default `Finish`), prints a table with
+  per-metric deltas vs. the previous record and `worse-than-best-*` flags vs. the
+  best-ever value across history. Regression detection compares only the latest record
+  against its immediate predecessor (not best-ever) against three configurable
+  thresholds — WNS worsening (`--wns-threshold`, default 0.01 ns), Fmax percentage drop
+  (`--fmax-threshold-pct`, default 1.0), GRT/GP overflow increase (`--overflow-threshold`,
+  default 0.001) — and exits 1 if any fire, 0 otherwise, so it drops straight into a CI
+  pipeline as a gate. Fewer than 2 records just prints the single row and exits 0.
+  `--html` additionally emits one self-contained HTML file (inline `<svg>` line charts
+  for WNS/Fmax/HPWL, inline `<style>`, no external JS/CSS/CDN/font references) so it
+  renders in an air-gapped CI runner.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`, unittest, 24 tests):** append-only
+behavior (multiple `record` calls never touch prior lines), delta/regression math on
+hand-built synthetic JSONL sequences (regression flagged/not-flagged at threshold
+boundaries for WNS/Fmax/overflow, best-ever flags, exit-code behavior via
+`build_report_rows`), a CLI subprocess test that runs `record` against a fake
+`flow/reports/.../6_finish.rpt` fixture and checks the written JSONL content, and an
+HTML test asserting the output file is non-empty, contains `<svg>`/`<table>`, and has no
+`http(s)://` references (confirms it's genuinely offline-renderable). Ran together with
+the existing suite:
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py test_loop_agent.py -v
+```
+52 passed (24 new + 28 existing), confirming no regression to `loop_agent.py`. Formatted
+both new files with `black` (26.5.1).
+
+**Left out of scope:** no Makefile/CI wiring to auto-invoke `record` after every flow
+run (roadmap says infra-only for this pass; wiring belongs with whichever CI workflow
+task consumes it), no retention/pruning policy for history files (JSONL is cheap and
+append-only; pruning can be a follow-up if files get large), no cross-design aggregate
+dashboard (each `<platform>__<design>__<tag>` gets its own file/report, matching how
+`pr_metrics.py` is already scoped to one run at a time).
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓
@@ -686,3 +740,4 @@ Branch `pr-extension` → `master`.
     (currently unit-tested only)
 16. **Second design**: run triage + loop on ibex or another design to validate generalization
 17. (Blocked on ML data) Congestion-feedback parameter tuner
+18. ~~Regression/benchmark dashboard (`benchmark_dashboard.py`)~~ ✓
