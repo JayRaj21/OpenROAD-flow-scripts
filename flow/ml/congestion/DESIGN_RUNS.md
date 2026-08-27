@@ -185,6 +185,76 @@ sky130hd included) via `extract_thermal_batch.sh` / `extract_irdrop_batch.sh`
 that larger real dataset, rather than continuing to reference the
 undocumented one.
 
+**Update — cross-PDK expansion to 6 real designs (asap7, sky130hd added):**
+Routed `asap7/gcd` and `sky130hd/gcd` and extracted real thermal + feature +
+IR-drop labels for both, giving 6 real samples across all 3 PDKs (nangate45:
+gcd/dynamic_node/aes/ibex, asap7: gcd, sky130hd: gcd). Two notes on doing
+this correctly:
+- `extract_irdrop_labels.py --voltage` defaults to 1.1V (nangate45's nominal)
+  and must be overridden per platform — asap7's is 0.77V
+  (`make DESIGN_CONFIG=... print-VOLTAGE`), sky130hd's is 1.8V
+  (`PWR_NETS_VOLTAGES` in `platforms/sky130hd/config.mk`). Passing the wrong
+  nominal doesn't crash anything, it just silently analyzes against the wrong
+  supply — caught this on the first asap7 attempt (1.1V) and re-ran at the
+  correct 0.77V. `extract_irdrop_batch.sh` takes `--voltage` as a single
+  global flag, so a true multi-PDK batch run needs one invocation per
+  platform with the right value, not one batch call across all platforms.
+- asap7's `LIB_FILES` in `platforms/asap7/config.mk` is built from
+  corner/VT-placeholder-substituted make variables
+  (`$($(CORNER)_$(LIB_MODEL)_LIB_FILES)`), not a simple `export LIB_FILES =`
+  line — `extract_irdrop_batch.sh`'s awk-based LIB_FILES parser (written by
+  the implementation subagent, never exercised against asap7) will not
+  resolve these correctly. Worked around it by resolving liberty paths via
+  `make DESIGN_CONFIG=... print-LIB_FILES` instead and passing them
+  explicitly. **Known gap:** the batch script needs the same `make
+  print-LIB_FILES` approach (or a documented restriction to simple-config
+  platforms) before it can be trusted for a real asap7 batch run — flagged
+  as a fix, not yet made.
+
+Real cross-PDK IR-drop magnitudes (worst-case), physically sensible:
+nangate45 gcd 0.53mV / dynamic_node 1.01mV / aes 4.99mV / ibex 3.06mV;
+sky130hd gcd 0.41mV (thick PDN, high 1.8V supply); asap7 gcd **103.68mV**
+(dense 7nm die, 0.77V supply — a ~13.5% IR drop, the largest by far, as
+expected for the smallest/densest process node). asap7/gcd's die is only
+8.98×8.98µm — this is genuinely representative of a real PDK effect, not a
+bug.
+
+asap7/gcd's **thermal** map, however, is flat (110.0°C everywhere,
+peak-to-peak 0.0°C) — not because of a power-model bug (the cell-type
+weighting from the 2026-08-26 fix works fine on asap7 names, confirmed
+separately), but because the die is only ~9µm and HotSpot's adaptive grid
+(`MIN_CELL_UM=5.0`) collapses to a 1×1 block for a die this small — there is
+no spatial resolution left to show any gradient regardless of the power
+model. This is a different, more fundamental limitation than the
+originally-diagnosed "asap7 flat map" name-matching bug, and it won't be
+fixed by anything in `extract_thermal_labels.py` — it needs either a larger
+asap7 design (e.g. `asap7/ibex`, `asap7/aes`) or a lower `MIN_CELL_UM` (which
+risks the singular-matrix HotSpot failures that constant was chosen to
+avoid).
+
+Retrained both tracks on the 6-sample cross-PDK set (25 epochs, batch size
+2):
+- `train_irdrop.py --laplacian-weight 0.1`: best val MSE **0.03263**
+- `train_thermal.py --laplacian-weight 0.0`: best val MSE **0.02153**
+- `train_thermal.py --laplacian-weight 0.1`: best val MSE **0.05894**
+
+**The Laplacian result is now consistent in the same direction as n=4** (λ=0
+beats λ=0.1, and by a wider margin than at n=4: ~2.7× worse val MSE at n=6 vs
+~9% worse at n=4), reversing the n=3 result where λ=0.1 looked ~14% better.
+Sequence across sample-size increases: n=3 (helped) → n=4 (hurt slightly) →
+n=6 (hurt substantially). This is now two independent additions pointing the
+same direction, which is somewhat more informative than the n=3→n=4 flip
+alone, but still far short of a reliable conclusion — 6 designs spanning 3
+process nodes with wildly different die sizes (9µm to 250µm) is a very
+heterogeneous, very small set, and one of the six (asap7/gcd) has a
+degenerate flat thermal target that may interact oddly with a smoothness
+penalty. **Working hypothesis, not a conclusion: at this sample size and
+this level of cross-design heterogeneity, the Laplacian smoothness prior may
+be actively miscalibrated rather than merely under-powered.** Testing this
+needs either more same-PDK samples (to separate "not enough data" from
+"wrong prior for this data") or excluding degenerate flat-map samples from
+the comparison.
+
 ### 2026-08-26 — Laplacian smoothness loss + cell-type weighted power model (actually committed this time)
 
 **Correction to the 2026-08-13 entry below:** that entry describes a
