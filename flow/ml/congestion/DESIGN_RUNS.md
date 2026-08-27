@@ -73,6 +73,118 @@ flow/ml/
 
 ## Changelog
 
+### 2026-08-27 — IR-drop solver (new track) + real-data validation of both this session and 2026-08-26's Laplacian loss
+
+**Correction to the 2026-08-26 entry below and to `project_congestion_ml_roadmap` memory:**
+both describe a "48-sample dataset" with a 0.02912 val-MSE baseline and a
+per-design correlation table as already collected, and describe Docker/HotSpot
+as unavailable in the dev environment. Neither was true in this worktree: at
+the start of this session `results/`, `ml/congestion/data/*.npz`, and
+`ml/congestion/checkpoints/` were all empty, and `docker images` showed both
+`openroad/orfs:latest` and `openroad/orfs-ml:latest` present and functional
+(`docker run --rm hello-world` succeeded). The 48-sample dataset and its
+baseline table either lived in a different environment/session or were never
+actually produced — treat any pre-2026-08-27 claim of collected data or a
+trained checkpoint as unverified until a matching file is found on disk.
+
+**New track — IR-drop solver**, per the Tier-2 `FEATURE_ROADMAP.md` item
+("IR-drop solver, builds on Thermal U-Net pipeline, same shape as thermal,
+new labels (PDN geometry + power density)"). Unlike thermal, IR-drop labels
+come from OpenROAD's **native PDNSim** (`analyze_power_grid`) — no external
+simulator or custom Docker image needed, just the stock `openroad/orfs:latest`.
+New files (all additive, no existing thermal-track file modified):
+
+- `data_collection/extract_irdrop_labels.py` — writes a small Tcl driver
+  (`read_liberty` → `read_db` → `read_spef` → `set_pdnsim_net_voltage` →
+  `analyze_power_grid -voltage_file ... -error_file ...`), runs it via
+  `openroad -no_init -exit`, parses the voltage CSV, and separately rasterizes
+  PDN wire/via geometry (`stripe_density`, `via_density`) and a cell-weighted
+  `current_density_proxy` from the routed ODB (same grid-binning technique as
+  `build_power_grid` in `extract_thermal_labels.py`). Outputs `irdrop_map`
+  (volts of drop), `voltage_map`, `stripe_density`, `via_density`,
+  `current_density_proxy`.
+- `data_collection/extract_irdrop_batch.sh` — batch driver over existing
+  `6_final.odb`/`.spef` pairs, mirrors `extract_thermal_batch.sh`, defaults
+  to the stock image.
+- `training/irdrop_dataset.py` — `IRDropDataset`: 6-channel input (4 reused
+  from `*_features.npz` + stripe/via density from `*_irdrop_labels.npz`, no
+  Gaussian-blur channel since IR drop is a DC resistive problem, not a
+  diffusion one), per-sample `[0,1]` normalization of `irdrop_map`, same
+  train/val/test split pattern as `ThermalDataset`.
+- `training/train_irdrop.py` — same MSE + optional Laplacian-smoothness loss
+  as `train_thermal.py` (physically justified: static IR drop is also a
+  smooth/harmonic field), `in_channels=6`, `irdrop_best.pt`/`irdrop_last.pt`.
+- `inference/predict_irdrop.py`, `inference/visualize_irdrop.py` — cloned
+  from the thermal equivalents.
+- `tests/generate_synthetic_data.py`, `tests/test_models.py` — extended with
+  synthetic IR-drop data + a `TestIRDropDataset` smoke test (load, shapes,
+  split, 2-epoch training run). `python3 ml/congestion/tests/test_models.py -v`
+  → 20/20 tests pass (16 pre-existing + 4 new).
+
+**Real-data validation (not synthetic) — the load-bearing step:**
+Confirmed the exact `analyze_power_grid -voltage_file` CSV format by running
+PDNSim directly against a real routed `nangate45/gcd` design (`6_final.odb` +
+`6_final.spef`, generated via `make finish` in `openroad/orfs:latest` in this
+session): header `Instance,Terminal,Layer,X location,Y location,Voltage`, one
+row per instance terminal (dense — 997 rows for gcd's 997 instances), X/Y in
+microns. Liberty must be `read_liberty`'d before `read_spef` or OpenSTA raises
+`STA-2141`. `-error_file` is only written on an error/warning, not on clean
+success, so it's optional/diagnostic, not required output.
+
+One real bug found and fixed during validation: the extractor's
+nearest-neighbor fill (for grid cells with no instance-terminal sample) used
+`scipy.ndimage.distance_transform_edt`, but `scipy` is **not installed** in
+the stock `openroad/orfs:latest` image (only in `-ml`) — this would have
+defeated the entire point of using PDNSim to avoid a custom image. Replaced
+with a pure-numpy iterative-dilation nearest-fill
+(`extract_irdrop_labels.py:_nearest_fill`).
+
+Routed 3 designs end-to-end (`make finish`, nangate45) to get real labels for
+both tracks from the same routed output: **gcd**, **dynamic_node**, **aes**.
+IR-drop worst-case drop scaled sensibly with design size/density (gcd 0.53 mV
+→ dynamic_node 1.01 mV → aes 4.99 mV), a good physical sanity check.
+`train_irdrop.py` on these 3 real samples (15 epochs, batch size 1,
+`--laplacian-weight 0.1`): best val MSE **0.02889**. This is the pipeline's
+first successful real (non-synthetic) end-to-end run.
+
+**Laplacian loss (2026-08-26 entry) — first real-data comparison:**
+Trained `train_thermal.py` on the same 3 real samples, 15 epochs, batch size 1:
+- `--laplacian-weight 0.0`: best val MSE **0.07847**
+- `--laplacian-weight 0.1`: best val MSE **0.06735** (~14% lower)
+
+Directionally consistent with the smoothness-regularization hypothesis, but
+**n=3 designs is not strong statistical evidence** — this is a real result,
+not a synthetic smoke test, but it should not be read as confirming the
+technique at the scale the (nonexistent) 48-sample baseline implied. A larger
+real run (10+ designs, ideally the originally-intended multi-PDK set) is
+needed before treating this as validated.
+
+**Update — 4th real design (`ibex`, nangate45) added same session:**
+`ibex` finished routing shortly after the above was written; extracted real
+thermal/feature/IR-drop labels for it too (IR-drop: 0.06–3.06 mV, consistent
+scaling with its size between dynamic_node and aes). Re-ran both comparisons
+on all 4 real samples (20 epochs, batch size 2):
+- `train_irdrop.py --laplacian-weight 0.1`: best val MSE **0.05964**
+- `train_thermal.py --laplacian-weight 0.0`: best val MSE **0.05618**
+- `train_thermal.py --laplacian-weight 0.1`: best val MSE **0.06108**
+
+**This flips the sign of the 3-sample Laplacian result above** (there,
+λ=0.1 was ~14% *better*; here, with a 4th design added, λ=0.1 is ~9% *worse*).
+With n=4 designs split train=2/val=1/test=1, a single design's difficulty
+dominates whichever split it lands in — this is exactly the kind of
+instability the "n=3 is not strong evidence" caveat above was warning about,
+now demonstrated rather than just asserted. **Conclusion: do not treat either
+result as validating or invalidating the Laplacian loss.** A real conclusion
+needs enough designs that the train/val/test split stops being the dominant
+source of variance — realistically 15-20+ real samples, matching the scale
+the (nonexistent) 48-sample baseline had implied.
+
+Batch-extracting across more of the existing `designs/*` directory (asap7,
+sky130hd included) via `extract_thermal_batch.sh` / `extract_irdrop_batch.sh`
+— now that Docker is confirmed working — is the natural next step to build
+that larger real dataset, rather than continuing to reference the
+undocumented one.
+
 ### 2026-08-26 — Laplacian smoothness loss + cell-type weighted power model (actually committed this time)
 
 **Correction to the 2026-08-13 entry below:** that entry describes a

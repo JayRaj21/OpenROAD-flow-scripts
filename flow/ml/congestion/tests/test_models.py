@@ -211,6 +211,73 @@ class TestDataset(unittest.TestCase):
         _ = ds[0]
 
 
+# ── IR-drop dataset tests ───────────────────────────────────────────────────
+
+
+class TestIRDropDataset(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        generate(self.tmp, n_designs=6, grid=GRID, seed=0)
+
+    def test_dataset_loads(self):
+        from irdrop_dataset import IRDropDataset
+
+        ds = IRDropDataset(self.tmp)
+        self.assertEqual(len(ds), 6)
+
+    def test_dataset_shapes(self):
+        from irdrop_dataset import IRDropDataset
+
+        ds = IRDropDataset(self.tmp)
+        item = ds[0]
+        self.assertEqual(item["x"].shape, (6, GRID, GRID))
+        self.assertEqual(item["irdrop"].shape, (1, GRID, GRID))
+
+    def test_split_sizes(self):
+        from irdrop_dataset import IRDropDataset, split_irdrop_dataset
+
+        ds = IRDropDataset(self.tmp)
+        train, val, test = split_irdrop_dataset(ds)
+        self.assertEqual(len(train) + len(val) + len(test), len(ds))
+
+    def test_two_epoch_training_runs(self):
+        """Docker-free validation gate: a short train_irdrop-style loop must
+        complete without NaNs on synthetic data, batch size 2, with the
+        Laplacian smoothness term enabled."""
+        import sys as _sys
+
+        _sys.path.insert(0, os.path.join(_HERE, "..", "models"))
+        from irdrop_dataset import IRDropDataset, split_irdrop_dataset
+        from unet import CongestionUNet
+        from torch.utils.data import DataLoader
+        import torch.nn as nn
+        import torch.nn.functional as F
+
+        ds = IRDropDataset(self.tmp)
+        train_set, _, _ = split_irdrop_dataset(ds)
+        loader = DataLoader(train_set, batch_size=2, shuffle=True)
+
+        model = CongestionUNet(in_channels=6, base_features=8, num_heatmap_layers=1)
+        opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+        kernel = torch.tensor(
+            [[0.0, 1.0, 0.0], [1.0, -4.0, 1.0], [0.0, 1.0, 0.0]]
+        ).view(1, 1, 3, 3)
+
+        model.train()
+        for epoch in range(2):
+            for batch in loader:
+                pred = model(batch["x"]).heatmap
+                mse = F.mse_loss(pred, batch["irdrop"])
+                lap = F.conv2d(F.pad(pred, (1, 1, 1, 1), mode="replicate"), kernel)
+                loss = mse + 0.1 * lap.pow(2).mean()
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                self.assertFalse(torch.isnan(loss), f"NaN loss at epoch {epoch}")
+
+
 # ── Mini training tests ────────────────────────────────────────────────────
 
 
