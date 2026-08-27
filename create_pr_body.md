@@ -6,11 +6,11 @@
 - **Metrics collector** (`flow/util/pr_metrics.py`): parses WNS/TNS/Fmax/overflow from ORFS report and log files across all P&R stages into a single trajectory table
 - **aes/nangate45 baseline fix**: triage agent correctly identified the CTS→GRT parasitic underestimation cliff; applying `SETUP_SLACK_MARGIN=0.03` + `POST_CTS_TCL` closed timing from WNS −0.330 ns to 0.000 ns, Fmax +49 MHz
 - **Congestion ML pipeline** (`flow/ml/congestion/`): U-Net + GNN models for routing congestion prediction, thermal estimation, and variant generation
-- **Unit tests** (`flow/util/test_loop_agent.py`): 24 tests covering allowlist enforcement, hook path translation, stale file sets, and config write-back — no API key or Docker required
+- **Unit tests** (`flow/util/test_loop_agent.py`): 28 tests covering allowlist enforcement, value-side injection blocklist, hook path translation, stale file sets, and config write-back — no API key or Docker required
 
 ## Test plan
 
-- [ ] `python3 flow/util/test_loop_agent.py` — all 24 unit tests pass
+- [ ] `python3 flow/util/test_loop_agent.py` — all 28 unit tests pass
 - [ ] `ANTHROPIC_API_KEY=<key> python3 flow/util/loop_agent.py --platform nangate45 --design aes --tag base` — loop agent closes timing and writes params to config.mk
 - [ ] `ANTHROPIC_API_KEY=<key> python3 flow/util/triage_agent.py --platform nangate45 --design aes --tag base` — triage agent diagnoses the CTS→GRT cliff correctly
 

@@ -567,7 +567,9 @@ loop_agent.py
 
 **Four tools exposed to Claude Opus 5:**
 1. `get_metrics` — read current WNS/TNS/Fmax/overflow trajectory
-2. `set_config_param(param, value)` — allowlisted params only; "enabled" → hook path
+2. `set_config_param(param, value)` — allowlisted params only, value checked against
+   `UNSAFE_VALUE_PATTERNS` (blocks `$(`, `${`, backticks, shell metacharacters) to
+   prevent Make-injection via config.mk write-back; "enabled" → hook path
 3. `run_stage(stage)` — valid stages: `place`, `cts`, `grt`, `finish`
 4. `finish(summary, success)` — terminate; if success=True, write params to config.mk
 
@@ -623,6 +625,35 @@ All 24 pass in ~0.004 s.
 
 ---
 
+### 2026-08-26 — Review fixes: value-side injection blocklist, hook dedup, regression tests
+
+**Problem:** `set_config_param` validated the param *name* against `PARAM_ALLOWLIST` but
+not the *value*. Since `write_config_params` writes the value verbatim into `config.mk`
+(a GNU Make include), an adversarial or hallucinated value containing `$(shell ...)` —
+or its `${shell ...}` equivalent, since Make treats `$(...)` and `${...}` as
+interchangeable — would execute arbitrary shell code on the next `make` invocation.
+
+**Fix (`flow/util/loop_agent.py`):** added `validate_param_value()`, called from
+`impl_set_config_param()` before a value is queued. Rejects values containing any of
+`UNSAFE_VALUE_PATTERNS` (`$(`, `${`, backtick, `;`, `|`, `&`, newline/CR).
+
+**Also:** `post_cts_timing_repair.tcl` and `post_grt_timing_repair.tcl` were near
+byte-for-byte duplicates (~200 lines each). Factored the shared upsizing logic into
+`flow/scripts/timing_repair_common.tcl` (namespace `::trepair`), parameterized by
+log-prefix and parasitics mode (`-placement` vs `-global_routing`); both hook files are
+now thin wrappers that source the common lib.
+
+**Tests:** added regression cases in `test_loop_agent.py` covering both the `$(` and
+`${` value-injection forms for an allowlisted param, distinct from the existing
+name-injection test. Suite is now 28 tests (was 24).
+
+**Commits:**
+- `800c02570` — validate config param values; dedupe timing-repair Tcl hooks into shared lib
+- `5104ecb9a` — block `${` Make-syntax variant in config param value validation
+- `f8ecc3069` — add regression tests for config value injection blocklist
+
+---
+
 ### 2026-08-23 — PR opened
 
 **PR #1:** https://github.com/JayRaj21/OpenROAD-flow-scripts/pull/1
@@ -644,12 +675,14 @@ Branch `pr-extension` → `master`.
 7. ~~Validate triage diagnosis on aes (end-to-end timing closure)~~ ✓
 8. ~~Closed-loop optimization agent (loop_agent.py)~~ ✓
 9. ~~Write-back to config.mk on success~~ ✓
-10. ~~Unit tests (24, no API/Docker required)~~ ✓
+10. ~~Unit tests (28, no API/Docker required)~~ ✓
 11. ~~Open PR~~ ✓
-12. **Integration test**: run loop agent end-to-end on aes baseline with API key to confirm
+12. ~~Value-side injection blocklist for config param write-back~~ ✓
+13. ~~Dedupe post-CTS/post-GRT timing-repair hooks into shared lib~~ ✓
+14. **Integration test**: run loop agent end-to-end on aes baseline with API key to confirm
     full cycle (observe → diagnose → intervene → verify → write-back) works live
-13. **Placement-stage test**: run a high-utilization aes variant (CORE_UTILIZATION=80)
+15. **Placement-stage test**: run a high-utilization aes variant (CORE_UTILIZATION=80)
     to exercise the `PLACE_DENSITY_LB_ADDON` / `place` re-run path end-to-end
     (currently unit-tested only)
-14. **Second design**: run triage + loop on ibex or another design to validate generalization
-15. (Blocked on ML data) Congestion-feedback parameter tuner
+16. **Second design**: run triage + loop on ibex or another design to validate generalization
+17. (Blocked on ML data) Congestion-feedback parameter tuner

@@ -51,17 +51,13 @@ class TestAllowlist(unittest.TestCase):
         self.assertIn("ERROR", result)
 
     def test_rejects_injected_value_dollar_paren(self):
-        result, pending, log = self._call(
-            "SETUP_SLACK_MARGIN", "$(shell rm -rf /)"
-        )
+        result, pending, log = self._call("SETUP_SLACK_MARGIN", "$(shell rm -rf /)")
         self.assertIn("ERROR", result)
         self.assertEqual(pending, {})
         self.assertEqual(log, [])
 
     def test_rejects_injected_value_dollar_brace(self):
-        result, pending, log = self._call(
-            "SETUP_SLACK_MARGIN", "${shell rm -rf /}"
-        )
+        result, pending, log = self._call("SETUP_SLACK_MARGIN", "${shell rm -rf /}")
         self.assertIn("ERROR", result)
         self.assertEqual(pending, {})
         self.assertEqual(log, [])
@@ -105,8 +101,7 @@ class TestStaleFilePaths(unittest.TestCase):
 
     def _paths(self, stage):
         return [
-            p.format(p="nangate45", d="aes", t="base")
-            for p in STAGE_STALE_FILES[stage]
+            p.format(p="nangate45", d="aes", t="base") for p in STAGE_STALE_FILES[stage]
         ]
 
     def test_cts_stale_files(self):
@@ -144,9 +139,7 @@ class TestWriteConfigParams(unittest.TestCase):
     """write_config_params updates in-place and appends new params correctly."""
 
     def _make_config(self, content):
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix="config.mk", delete=False
-        )
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix="config.mk", delete=False)
         tmp.write(textwrap.dedent(content))
         tmp.flush()
         return tmp.name
@@ -217,7 +210,10 @@ class TestWriteConfigParams(unittest.TestCase):
 
     def test_returns_error_for_missing_config(self):
         result = write_config_params(
-            {"SETUP_SLACK_MARGIN": "0.03"}, "nangate45", "missing_design", "/nonexistent"
+            {"SETUP_SLACK_MARGIN": "0.03"},
+            "nangate45",
+            "missing_design",
+            "/nonexistent",
         )
         self.assertIn("ERROR", result)
 
@@ -234,18 +230,14 @@ class TestWriteConfigParams(unittest.TestCase):
 
     def test_refuses_to_write_dollar_paren_injection(self):
         config = "export SETUP_SLACK_MARGIN = 0.00\n"
-        result, final = self._write(
-            config, {"SETUP_SLACK_MARGIN": "$(shell rm -rf /)"}
-        )
+        result, final = self._write(config, {"SETUP_SLACK_MARGIN": "$(shell rm -rf /)"})
         self.assertIn("ERROR", result)
         self.assertNotIn("$(shell", final)
         self.assertIn("export SETUP_SLACK_MARGIN = 0.00", final)
 
     def test_refuses_to_write_dollar_brace_injection(self):
         config = "export SETUP_SLACK_MARGIN = 0.00\n"
-        result, final = self._write(
-            config, {"SETUP_SLACK_MARGIN": "${shell rm -rf /}"}
-        )
+        result, final = self._write(config, {"SETUP_SLACK_MARGIN": "${shell rm -rf /}"})
         self.assertIn("ERROR", result)
         self.assertNotIn("${shell", final)
         self.assertIn("export SETUP_SLACK_MARGIN = 0.00", final)
