@@ -693,8 +693,8 @@ Branch `pr-extension` → `master`.
 
 **Built:** `flow/util/cts_diagnostic.py`, a standalone CLI (same
 `--platform`/`--design`/`--tag`/`--flow-dir`/`--reports-dir`/`--logs-dir` convention as
-`pr_metrics.py`, and it imports and reuses `pr_metrics.collect()`/`parse_rpt()` rather
-than re-parsing report files). It reports:
+`pr_metrics.py`, and it imports and reuses `pr_metrics.collect()` for stage WNS rather
+than re-parsing report files itself). It reports:
 
 - **Clock buffers/inverters inserted** and **sink count**, parsed structurally out of
   the CTS-stage log.
