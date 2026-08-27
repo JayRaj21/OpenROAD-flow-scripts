@@ -62,6 +62,72 @@ POWER_FLOOR_FRAC = 0.01
 # across all designs and process nodes.
 POWER_DENSITY_W_PER_MM2 = 10.0
 
+# Cell-type power weight multipliers, applied to area before it's used as the
+# leakage/power proxy. Clock-network and sequential cells dissipate several
+# times more power per unit area than combinational logic (higher switching
+# activity, larger drive strength); using raw area alone produces a nearly
+# uniform power (and therefore thermal) grid.
+#
+# Name matching is a lowercased *substring* test with no word-boundary
+# requirement, so it matches concatenated PDK naming schemes uniformly, e.g.:
+#   nangate45: CLKBUF_X1, DFF_X1
+#   asap7:     CKBUFx2_ASAP7_75t_R, DFFHQNx1_ASAP7_75t_R, ICGx1_ASAP7_75t_R
+#   sky130hd:  sky130_fd_sc_hd__clkbuf_1, sky130_fd_sc_hd__dfxtp_1
+# A word-boundary/exact-token match (e.g. r"\bDFF\b") would miss asap7's
+# concatenated names like "DFFHQNx1" — substring matching avoids that class
+# of bug entirely.
+_CLOCK_WEIGHT = 5.0
+_SEQUENTIAL_WEIGHT = 3.0
+_MACRO_WEIGHT = 2.0
+_COMBINATIONAL_WEIGHT = 1.0
+
+_CLOCK_NAME_TOKENS = (
+    "clkbuf",
+    "ckbuf",
+    "clkinv",
+    "ckinv",
+    "icg",
+    "clkgate",
+    "ckgate",
+    "clkdly",
+    "clkand",
+    "clkor",
+    "clkmux",
+)
+_SEQUENTIAL_NAME_TOKENS = (
+    "dff",
+    "sdff",
+    "latch",
+    "dlxtp",
+    "dfxtp",
+    "dlrtp",
+    "dfrtp",
+    "dfstp",
+    "sdlxtp",
+    "sdfxtp",
+)
+# Note: sky130's "sky130_fd_sc_hd__*" prefix contains "fd_" in every cell name
+# (standard-cell library tag, unrelated to flip-flops) — a bare "fd_"/"_fd_"
+# token would misclassify the entire sky130 library as sequential, so it's
+# deliberately excluded here.
+
+
+def _cell_power_weight(master_name: str, is_block: bool) -> float:
+    """
+    Power-density multiplier for a standard cell, based on its master name
+    and whether it's a hard macro (master.isBlock()). Macros get their own
+    weight regardless of name; standard cells are classified by name substring.
+    """
+    if is_block:
+        return _MACRO_WEIGHT
+
+    name = master_name.lower()
+    if any(tok in name for tok in _CLOCK_NAME_TOKENS):
+        return _CLOCK_WEIGHT
+    if any(tok in name for tok in _SEQUENTIAL_NAME_TOKENS):
+        return _SEQUENTIAL_WEIGHT
+    return _COMBINATIONAL_WEIGHT
+
 
 def _parse_args():
     ap = argparse.ArgumentParser()
@@ -110,8 +176,11 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
     Return (power_grid_W, die_bounds_m) where power_grid_W is (grid, grid)
     in Watts and die_bounds_m is (x0, y0, width, height) in metres.
 
-    Cell area (µm²) is accumulated per bin, then the whole grid is rescaled
-    so it sums to total_power_w. A small uniform floor (POWER_FLOOR_FRAC of
+    Cell area (µm²), scaled by a cell-type power weight (_cell_power_weight:
+    clock cells 5x, sequential 3x, macros 2x, combinational 1x), is
+    accumulated per bin. The whole grid is then rescaled so it sums to
+    total_power_w — weighting only reshapes the spatial distribution, it does
+    not change total chip power. A small uniform floor (POWER_FLOOR_FRAC of
     total) is added to every cell to prevent zero-power rows from making
     HotSpot's conductance matrix singular.
     """
@@ -124,6 +193,24 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
     dbu_per_um = block.getDbUnitsPerMicron()
 
     area_grid = np.zeros((grid, grid), dtype=np.float64)
+    type_area_um2 = {
+        "clock": 0.0,
+        "sequential": 0.0,
+        "macro": 0.0,
+        "combinational": 0.0,
+    }
+    type_weighted = {
+        "clock": 0.0,
+        "sequential": 0.0,
+        "macro": 0.0,
+        "combinational": 0.0,
+    }
+    _weight_to_label = {
+        _CLOCK_WEIGHT: "clock",
+        _SEQUENTIAL_WEIGHT: "sequential",
+        _MACRO_WEIGHT: "macro",
+        _COMBINATIONAL_WEIGHT: "combinational",
+    }
 
     for inst in block.getInsts():
         bbox = inst.getBBox()
@@ -138,7 +225,27 @@ def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
         # Area in µm²
         w_um = (bbox.xMax() - bbox.xMin()) / dbu_per_um
         h_um = (bbox.yMax() - bbox.yMin()) / dbu_per_um
-        area_grid[gy, gx] += w_um * h_um
+        area_um2 = w_um * h_um
+
+        master = inst.getMaster()
+        weight = _cell_power_weight(master.getName(), master.isBlock())
+        area_grid[gy, gx] += area_um2 * weight
+
+        label = _weight_to_label.get(weight, "combinational")
+        type_area_um2[label] += area_um2
+        type_weighted[label] += area_um2 * weight
+
+    total_weighted_area = sum(type_weighted.values())
+    if total_weighted_area > 0:
+        print("Cell-type power breakdown:")
+        for label in ("clock", "sequential", "macro", "combinational"):
+            if type_area_um2[label] == 0:
+                continue
+            pct = 100.0 * type_weighted[label] / total_weighted_area
+            print(
+                f"  {label:13s} area={type_area_um2[label]:10.2f} um^2  "
+                f"weighted_power={pct:5.1f}%"
+            )
 
     # Rescale so total power equals the user-supplied value
     total_area = area_grid.sum()

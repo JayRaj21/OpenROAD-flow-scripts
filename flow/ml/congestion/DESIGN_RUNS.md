@@ -73,6 +73,54 @@ flow/ml/
 
 ## Changelog
 
+### 2026-08-26 — Laplacian smoothness loss + cell-type weighted power model (actually committed this time)
+
+**Correction to the 2026-08-13 entry below:** that entry describes a
+`_cell_power_weight` cell-type weighted power model as already implemented,
+but `git log -- data_collection/extract_thermal_labels.py` shows the file was
+never touched after the initial add + a black-formatting commit — the
+function did not exist in the committed code. The file was still using pure
+area as the power proxy (see its module docstring). Re-implemented for real
+in this session; see below.
+
+**`training/train_thermal.py` — Laplacian smoothness loss (Option B):**
+Added `--laplacian-weight` (default 0.0, off). When > 0, adds
+`λ·||∇²T_pred||²` (5-point discrete Laplacian via a fixed 3×3 conv kernel,
+replicate-padded) to the training loss, penalising curvature in the
+prediction. Val loss is intentionally left as plain MSE so `best_val_loss`
+stays comparable to the existing baseline (0.02912). Smoke-tested: flat
+predictions get zero penalty, noisy ones get penalised (`_laplacian`/`_loss`
+unit-checked directly; full training loop run end-to-end on a synthetic
+6-sample dataset, 2 epochs, no errors).
+
+**`data_collection/extract_thermal_labels.py` — cell-type weighted power model:**
+Added `_cell_power_weight(master_name, is_block)`: clock cells 5×, sequential
+3×, macros (`master.isBlock()`) 2×, combinational 1×. Unlike the described
+(nonexistent) prior version, name matching is a lowercased **substring** test
+with no word-boundary requirement, specifically to handle concatenated PDK
+naming — asap7 (`CKBUFx2_ASAP7_75t_R`, `DFFHQNx1_ASAP7_75t_R`,
+`ICGx1_ASAP7_75t_R`) doesn't use the `CLKBUF`/`DFF_X1`-with-separators style
+nangate45 does. `build_power_grid()` now accumulates `area_um2 × weight` per
+grid cell instead of raw area, then rescales to `total_power_w` as before (total
+chip power unchanged, only its spatial distribution). Prints a per-type
+breakdown (area, % of weighted power) at extraction time.
+
+Verified the classifier against real cell names from all three PDKs in the
+dataset (nangate45, asap7, sky130hd) plus a macro case — 11/11 correct after
+one fix: an initial `_fd_`/`fd_` sequential token false-positived on every
+sky130 cell (`sky130_fd_sc_hd__*` prefix contains `fd_`), dropped in favor of
+the more specific flip-flop suffixes (`dfxtp`, `dlxtp`, etc.) sky130 actually
+uses. Not yet re-run against the real 48-sample dataset (needs
+`openroad/orfs-ml:latest` + HotSpot, not available in this environment) — the
+known asap7 flat-map issue (ΔT≈0) should be re-checked once that's rerun.
+
+**Next:** re-extract the 48-sample dataset with `--force` under
+`openroad/orfs-ml:latest`, retrain, and compare correlation against the
+2026-08-13 baseline table below (mean ~0.80, asap7 NaN/flat). Then try
+`--laplacian-weight` sweeps (start ~0.05–0.2) on the same data.
+
+---
+
 ### 2026-08-26 — Synced thermal-solver with fork master (133 upstream commits)
 
 Merged `origin/master` (fork master, itself up to date with upstream ORFS) into

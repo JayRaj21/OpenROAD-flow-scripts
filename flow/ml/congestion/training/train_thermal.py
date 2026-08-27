@@ -4,16 +4,20 @@ Train the U-Net thermal predictor.
 Input  : 4-channel 64×64 placement feature map  (*_features.npz)
 Target : 64×64 normalised thermal map            (*_thermal_labels.npz)
 
-Loss: MSE on the normalised thermal map (continuous regression — no BCE head).
-The model outputs only the heatmap head; hotspot and score heads are ignored
-for this task. At inference time, denormalize with dataset.denormalize() to
-recover °C values.
+Loss: MSE on the normalised thermal map, plus an optional Laplacian smoothness
+term  λ·||∇²T_pred||²  that penalises curvature in the prediction. Heat
+diffusion produces smooth temperature fields, so this regularises the model
+towards physically plausible maps instead of noisy/blocky ones — useful given
+the small (48-sample) dataset. The model outputs only the heatmap head;
+hotspot and score heads are ignored for this task. At inference time,
+denormalize with dataset.denormalize() to recover °C values.
 
 Usage (from flow/):
   python3 ml/congestion/training/train_thermal.py \\
       --data-dir ml/congestion/data \\
       --checkpoint-dir ml/congestion/checkpoints \\
-      --epochs 100
+      --epochs 100 \\
+      --laplacian-weight 0.1
 """
 
 import argparse
@@ -22,6 +26,7 @@ import sys
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "models"))
@@ -30,14 +35,36 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from thermal_dataset import ThermalDataset, split_thermal_dataset
 from unet import CongestionUNet
 
+# 5-point discrete Laplacian stencil, shared across calls.
+_LAPLACIAN_KERNEL = torch.tensor(
+    [[0.0, 1.0, 0.0], [1.0, -4.0, 1.0], [0.0, 1.0, 0.0]]
+).view(1, 1, 3, 3)
 
-def _loss(pred_heatmap: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    return nn.functional.mse_loss(pred_heatmap, target)
+
+def _laplacian(x: torch.Tensor) -> torch.Tensor:
+    """Discrete Laplacian ∇²x via 3x3 convolution, replicate-padded at the border."""
+    kernel = _LAPLACIAN_KERNEL.to(device=x.device, dtype=x.dtype)
+    x_padded = F.pad(x, (1, 1, 1, 1), mode="replicate")
+    return F.conv2d(x_padded, kernel)
+
+
+def _loss(
+    pred_heatmap: torch.Tensor,
+    target: torch.Tensor,
+    laplacian_weight: float = 0.0,
+) -> torch.Tensor:
+    mse = nn.functional.mse_loss(pred_heatmap, target)
+    if laplacian_weight <= 0.0:
+        return mse
+    smoothness = _laplacian(pred_heatmap).pow(2).mean()
+    return mse + laplacian_weight * smoothness
 
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
+    if args.laplacian_weight > 0.0:
+        print(f"Laplacian smoothness penalty: λ={args.laplacian_weight}")
 
     dataset = ThermalDataset(args.data_dir, augment=True)
     print(f"Dataset: {len(dataset)} samples")
@@ -95,7 +122,7 @@ def train(args):
             target = batch["thermal"].to(device)
             pred = model(x)
             thermal_pred = pred.heatmap  # (B, 1, H, W) — single thermal channel
-            loss = _loss(thermal_pred, target)
+            loss = _loss(thermal_pred, target, args.laplacian_weight)
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -120,9 +147,10 @@ def train(args):
 
         scheduler.step()
 
+        train_label = "train_loss" if args.laplacian_weight > 0.0 else "train_mse"
         print(
             f"Epoch {epoch:3d}/{args.epochs}  "
-            f"train_mse={train_loss:.5f}  val_mse={val_loss:.5f}  "
+            f"{train_label}={train_loss:.5f}  val_mse={val_loss:.5f}  "
             f"val_mae={val_mae_norm:.4f} (norm)"
         )
 
@@ -152,6 +180,15 @@ def main():
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument(
+        "--laplacian-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "Weight for the Laplacian smoothness penalty on train loss "
+            "(0 disables it; val loss stays plain MSE for comparability)."
+        ),
+    )
     train(ap.parse_args())
 
 
