@@ -15,6 +15,8 @@ Usage:
 """
 
 import argparse
+import fcntl
+import html
 import json
 import os
 import subprocess
@@ -59,8 +61,18 @@ def rows_to_stage_dict(rows):
 
 def append_record(path, record):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    line = json.dumps(record) + "\n"
+    # flock rather than relying on OS atomic-append: a full multi-stage record
+    # can exceed PIPE_BUF (4096 bytes), so plain O_APPEND no longer guarantees
+    # writes from concurrent `record` invocations won't interleave.
     with open(path, "a") as f:
-        f.write(json.dumps(record) + "\n")
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 def load_records(path):
@@ -68,11 +80,17 @@ def load_records(path):
     if not os.path.isfile(path):
         return records
     with open(path) as f:
-        for line in f:
+        for lineno, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
-            records.append(json.loads(line))
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                print(
+                    f"WARNING: skipping corrupt history line {lineno} in {path}: {e}",
+                    file=sys.stderr,
+                )
     return records
 
 
@@ -299,7 +317,7 @@ def render_html(records, stage, table_rows, label, out_path):
         )
         return f"""
         <div class="chart">
-          <h3>{title}</h3>
+          <h3>{html.escape(title)}</h3>
           <svg viewBox="0 0 {width} {height}" width="100%" height="{height}">
             <line x1="{pad_left}" y1="{height - pad_bottom}" x2="{width - pad_right}" y2="{height - pad_bottom}" stroke="#888"/>
             <line x1="{pad_left}" y1="{pad_top}" x2="{pad_left}" y2="{height - pad_bottom}" stroke="#888"/>
@@ -322,24 +340,27 @@ def render_html(records, stage, table_rows, label, out_path):
         rec = row["record"]
         m = row["metrics"]
         flags = ", ".join(row["flags"]) if row["flags"] else ""
-        regressions = "<br>".join(row["regressions"])
+        regressions = "<br>".join(html.escape(r) for r in row["regressions"])
         rows_html += (
             "<tr>"
-            f"<td>{rec.get('timestamp', '')[:19]}</td>"
-            f"<td>{(rec.get('git_sha') or '')[:8]}</td>"
+            f"<td>{html.escape(str(rec.get('timestamp', ''))[:19])}</td>"
+            f"<td>{html.escape(str(rec.get('git_sha') or '')[:8])}</td>"
             f"<td>{fmt(m.get('wns'), '{:+.3f}')}</td>"
             f"<td>{fmt(m.get('fmax_mhz'), '{:.1f}')}</td>"
             f"<td>{fmt(m.get('hpwl'), '{:,.0f}')}</td>"
-            f"<td>{flags}</td>"
+            f"<td>{html.escape(flags)}</td>"
             f"<td>{regressions}</td>"
             "</tr>\n"
         )
 
-    html = f"""<!doctype html>
+    safe_label = html.escape(label)
+    safe_stage = html.escape(stage)
+
+    doc = f"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Benchmark dashboard — {label}</title>
+<title>Benchmark dashboard — {safe_label}</title>
 <style>
   body {{ font-family: sans-serif; margin: 2em; color: #222; background: #fff; }}
   h1 {{ font-size: 1.3em; }}
@@ -350,7 +371,7 @@ def render_html(records, stage, table_rows, label, out_path):
 </style>
 </head>
 <body>
-<h1>Benchmark dashboard — {label} — stage: {stage}</h1>
+<h1>Benchmark dashboard — {safe_label} — stage: {safe_stage}</h1>
 {charts}
 <table>
 <thead><tr><th>Timestamp</th><th>SHA</th><th>WNS</th><th>Fmax</th><th>HPWL</th><th>Flags</th><th>Regressions</th></tr></thead>
@@ -362,7 +383,7 @@ def render_html(records, stage, table_rows, label, out_path):
 </html>
 """
     with open(out_path, "w") as f:
-        f.write(html)
+        f.write(doc)
 
 
 def cmd_record(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
@@ -394,10 +415,10 @@ def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
         print(f"No history found at {path}")
         sys.exit(0)
 
-    if args.last:
-        records = records[-args.last :]
-
     stage = args.stage
+    # best-ever and deltas are computed over the FULL history so that --last
+    # only narrows what's displayed, never what "worse than all-time best"
+    # or the regression check against the immediately-previous record means.
     table_rows, latest_regressions = build_report_rows(
         records,
         stage,
@@ -406,10 +427,12 @@ def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
         args.overflow_threshold,
     )
 
-    print_report(records, stage, table_rows, label)
+    display_rows = table_rows[-args.last :] if args.last else table_rows
+
+    print_report(records, stage, display_rows, label)
 
     if args.html:
-        render_html(records, stage, table_rows, label, args.html)
+        render_html(records, stage, display_rows, label, args.html)
         print(f"Wrote HTML dashboard: {args.html}")
 
     sys.exit(1 if latest_regressions else 0)
@@ -451,6 +474,14 @@ def resolve_dirs(args):
                 args.platform = args.platform or parts[-3]
                 args.design = args.design or parts[-2]
                 args.tag = args.tag or parts[-1]
+
+        if not args.platform or not args.design:
+            raise SystemExit(
+                "error: could not determine --platform/--design from "
+                f"--reports-dir {reports_dir!r} (need at least "
+                "<platform>/<design>/<tag> path components); pass "
+                "--platform and --design explicitly"
+            )
     return reports_dir, logs_dir, label
 
 

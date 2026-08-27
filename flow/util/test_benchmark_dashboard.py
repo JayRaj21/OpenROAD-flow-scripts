@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for benchmark_dashboard.py — no Docker, no API, no live ORFS run."""
 
+import argparse
 import json
 import os
 import subprocess
@@ -276,6 +277,181 @@ class TestCliRecordAndReport(unittest.TestCase):
             records2 = bd.load_records(history_file2)
             _, latest2 = bd.build_report_rows(records2, "Finish", 0.01, 1.0, 0.001)
             self.assertTrue(len(latest2) > 0)
+
+
+class TestLoadRecordsCorruptLines(unittest.TestCase):
+    def test_corrupt_line_skipped_not_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            good0 = json.dumps(make_record("t0", "s0", -0.05, 510.0, 90000))
+            good1 = json.dumps(make_record("t1", "s1", -0.06, 508.0, 91000))
+            with open(path, "w") as f:
+                f.write(good0 + "\n")
+                f.write("{not valid json truncated mid-rec\n")
+                f.write(good1 + "\n")
+
+            with mock.patch("sys.stderr") as mock_stderr:
+                records = bd.load_records(path)
+
+            self.assertEqual(len(records), 2)
+            self.assertEqual([r["git_sha"] for r in records], ["s0", "s1"])
+            written = "".join(c.args[0] for c in mock_stderr.write.call_args_list)
+            self.assertIn("line 2", written)
+
+    def test_all_corrupt_lines_returns_empty_not_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            with open(path, "w") as f:
+                f.write("{{{not json\n")
+                f.write("also not json\n")
+            with mock.patch("sys.stderr"):
+                records = bd.load_records(path)
+            self.assertEqual(records, [])
+
+    def test_report_cli_survives_corrupt_history_line(self):
+        util_dir = os.path.dirname(os.path.abspath(__file__))
+        tag = "corrupt-line-test"
+        history_file = os.path.join(
+            util_dir, "benchmark_history", f"nangate45__ibex__{tag}.jsonl"
+        )
+        try:
+            os.makedirs(os.path.dirname(history_file), exist_ok=True)
+            with open(history_file, "w") as f:
+                f.write(json.dumps(make_record("t0", "s0", -0.05, 510.0, 90000)) + "\n")
+                f.write("not valid json\n")
+                f.write(json.dumps(make_record("t1", "s1", -0.06, 508.0, 91000)) + "\n")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "benchmark_dashboard.py",
+                    "report",
+                    "--platform",
+                    "nangate45",
+                    "--design",
+                    "ibex",
+                    "--tag",
+                    tag,
+                ],
+                cwd=util_dir,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn(proc.returncode, (0, 1))
+            self.assertIn("WARNING", proc.stderr)
+            self.assertIn("s0", proc.stdout)
+            self.assertIn("s1", proc.stdout)
+        finally:
+            if os.path.isfile(history_file):
+                os.remove(history_file)
+
+
+class TestHtmlEscaping(unittest.TestCase):
+    def test_malicious_label_and_stage_are_escaped(self):
+        malicious = "</title></head><body><script>alert(1)</script>"
+        records = [
+            make_record("t0", "s0", -0.10, 500.0, 100000),
+            make_record("t1", "s1", -0.05, 510.0, 90000),
+        ]
+        table_rows, _ = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = os.path.join(tmp, "out.html")
+            bd.render_html(records, malicious, table_rows, malicious, out_path)
+            with open(out_path) as f:
+                content = f.read()
+            self.assertNotIn("<script>", content)
+            self.assertIn("&lt;script&gt;", content)
+
+    def test_malicious_git_sha_is_escaped(self):
+        records = [
+            make_record("t0", "<img src=x onerror=alert(1)>", -0.10, 500.0, 100000),
+            make_record("t1", "s1", -0.05, 510.0, 90000),
+        ]
+        table_rows, _ = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = os.path.join(tmp, "out.html")
+            bd.render_html(records, "Finish", table_rows, "label", out_path)
+            with open(out_path) as f:
+                content = f.read()
+            self.assertNotIn("<img src=x", content)
+            self.assertIn("&lt;img", content)
+
+
+class TestLastWindowKeepsFullHistoryBest(unittest.TestCase):
+    def test_last_does_not_narrow_best_ever_scope(self):
+        records = [
+            make_record("t0", "s0", -0.05, 510.0, 90000),
+            make_record("t1", "s1", -0.06, 508.0, 91000),
+            make_record("t2", "s2", -0.06, 508.0, 91000),
+            make_record("t3", "s3", -0.06, 508.0, 91000),
+            make_record("t4", "s4", -0.055, 505.0, 92000),
+        ]
+        table_rows, latest = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
+        display_rows = table_rows[-2:]
+
+        self.assertEqual(len(display_rows), 2)
+        self.assertIn("worse-than-best-WNS", display_rows[-1]["flags"])
+        self.assertIn("worse-than-best-Fmax", display_rows[-1]["flags"])
+        self.assertIn("worse-than-best-HPWL", display_rows[-1]["flags"])
+        # confirm the "true best" record (t0) is outside the 2-record window
+        self.assertNotIn(records[0], [row["record"] for row in display_rows])
+
+    def test_report_cli_last_flag_reports_true_best_ever(self):
+        util_dir = os.path.dirname(os.path.abspath(__file__))
+        tag = "last-window-test"
+        history_file = os.path.join(
+            util_dir, "benchmark_history", f"nangate45__ibex__{tag}.jsonl"
+        )
+        try:
+            os.makedirs(os.path.dirname(history_file), exist_ok=True)
+            with open(history_file, "w") as f:
+                for r in [
+                    make_record("t0", "s0", -0.05, 510.0, 90000),
+                    make_record("t1", "s1", -0.06, 508.0, 91000),
+                    make_record("t2", "s2", -0.06, 508.0, 91000),
+                    make_record("t3", "s3", -0.06, 508.0, 91000),
+                    make_record("t4", "s4", -0.055, 505.0, 92000),
+                ]:
+                    f.write(json.dumps(r) + "\n")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "benchmark_dashboard.py",
+                    "report",
+                    "--platform",
+                    "nangate45",
+                    "--design",
+                    "ibex",
+                    "--tag",
+                    tag,
+                    "--last",
+                    "2",
+                ],
+                cwd=util_dir,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn("worse-than-best-WNS", proc.stdout)
+            self.assertNotIn("s0", proc.stdout)
+        finally:
+            if os.path.isfile(history_file):
+                os.remove(history_file)
+
+
+class TestResolveDirsValidation(unittest.TestCase):
+    def test_raises_clear_error_when_platform_design_undeterminable(self):
+        args = argparse.Namespace(
+            platform=None,
+            design=None,
+            tag="base",
+            reports_dir="/tmp/x",
+            logs_dir=None,
+            flow_dir="/tmp",
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            bd.resolve_dirs(args)
+        self.assertIn("could not determine", str(ctx.exception))
 
 
 class TestHtmlOutput(unittest.TestCase):
