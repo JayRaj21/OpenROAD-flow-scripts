@@ -5,7 +5,7 @@
 - **Post-CTS/GRT hooks** (`flow/scripts/post_cts_timing_repair.tcl`, `post_grt_timing_repair.tcl`): iterative cell upsizing using placement parasitics; activated by the loop agent via `POST_CTS_TCL`/`POST_GLOBAL_ROUTE_TCL`
 - **Metrics collector** (`flow/util/pr_metrics.py`): parses WNS/TNS/Fmax/overflow from ORFS report and log files across all P&R stages into a single trajectory table
 - **aes/nangate45 baseline fix**: triage agent correctly identified the CTS→GRT parasitic underestimation cliff; applying `SETUP_SLACK_MARGIN=0.03` + `POST_CTS_TCL` closed timing from WNS −0.330 ns to 0.000 ns, Fmax +49 MHz
-- **Congestion ML pipeline** (`flow/ml/congestion/`): U-Net + GNN models for routing congestion prediction, thermal estimation, and variant generation
+- **Congestion ML pipeline** (`flow/util/ml/congestion/`): U-Net + GNN models for routing congestion prediction, thermal estimation, and variant generation
 - **Unit tests** (`flow/util/test_loop_agent.py`): 28 tests covering allowlist enforcement, value-side injection blocklist, hook path translation, stale file sets, and config write-back — no API key or Docker required
 
 ## Test plan

@@ -29,7 +29,7 @@ be resumed from a cold start without losing context. Update it after every worki
 ## Codebase Map
 
 ```
-flow/ml/
+flow/util/ml/
 ├── Dockerfile                          # Custom image: ORFS + HotSpot + Python ML packages
 ├── congestion/
 │   ├── DESIGN_RUNS.md                  # This file — canonical dev log
@@ -192,7 +192,7 @@ so `cont_odb=/work/results/results/asap7/...` was passed to docker.
 Fix: `${HOST_ODB#results/}` strips the leading `results/` from relative paths.
 
 **Bug 2 — skip-check path had extra `flow/` prefix:**
-`feat_host="flow/ml/..."` was wrong because the script already `cd`s into `flow/`.
+`feat_host="flow/util/ml/..."` was wrong because the script already `cd`s into `flow/`.
 Fix: `feat_host="ml/..."`.
 
 **Bug 3 — `docker run -i` consumed the `find` pipe (only 1 design processed):**
@@ -374,7 +374,7 @@ since they don't exist pre-placement. Forward signature simplified to
 - `training/train_gnn.py` — rewritten to use `GraphCongestionDataset` with real
   netlist graphs instead of the fake grid-to-graph conversion placeholder
 
-**Existing graph data note:** `flow/ml/data/*_congestion.npy` files are shape (10,)
+**Existing graph data note:** `flow/util/ml/data/*_congestion.npy` files are shape (10,)
 per-layer global scores, NOT spatial maps — incompatible with our spatial task.
 The graph_dataset pairs `*_graph.npz` with `*_labels.npz` (spatial, from
 extract_labels.py) by matching design names in the same directory.
@@ -402,7 +402,7 @@ was abandoned because:
 | `models/ensemble.py` | Premature — the two active tasks are now separate, not competing on the same problem |
 | `checkpoints/swin_*.pt`, `checkpoints/rf.pkl` | Stale checkpoints for removed models |
 | `model/` (directory) | Old single-model directory from early experiments, superseded by `models/` |
-| `flow/ml/floorplan/` | Old floorplan experiment directory, no source code remaining, just a checkpoint |
+| `flow/util/ml/floorplan/` | Old floorplan experiment directory, no source code remaining, just a checkpoint |
 | `flow/rsults/` | Typo directory (should be `results/`), contained one stale `clock_period.txt` |
 
 **Added:**
@@ -410,9 +410,9 @@ was abandoned because:
 | File | Purpose |
 |---|---|
 | `data_collection/extract_thermal_labels.py` | Reads a placed ODB, uses cell area as power proxy, writes HotSpot `.flp`/`.ptrace`, runs HotSpot, parses `.steady` output into a `thermal_map` + `power_grid` `.npz` |
-| `flow/ml/Dockerfile.ml` | Extends `openroad/orfs:latest` with HotSpot v7.0 and Python ML packages |
+| `flow/util/ml/Dockerfile.ml` | Extends `openroad/orfs:latest` with HotSpot v7.0 and Python ML packages |
 
-**Discovered:** `flow/ml/data/` contains prior pre-placement GNN experiments with netlist
+**Discovered:** `flow/util/ml/data/` contains prior pre-placement GNN experiments with netlist
 `*_graph.npz` files and `*_congestion.npy` labels for ~15 nangate45/sky130hd designs including
 larger ones (ariane133, black_parrot, mempool_group, microwatt). This data is directly usable
 for Track 1 without any new ORFS runs.
@@ -448,7 +448,7 @@ Motivated by the thermal track needing HotSpot, which is not in the ORFS base im
 
 **Build:**
 ```bash
-docker build -t openroad/orfs-ml:latest flow/ml/
+docker build -t openroad/orfs-ml:latest flow/util/ml/
 ```
 
 **Use (instead of plain `util/docker_shell`):**

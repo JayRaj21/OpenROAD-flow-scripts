@@ -145,8 +145,8 @@ whenever TNS > 0.
 - OPT_POST_GRT_WNS (0 or 1): VT-swap repair pass after GRT.
 - PLACE_DENSITY_LB_ADDON (float, 0.0–0.50): extra placement density margin. \
 Only increase if GRT overflow > 0.40. Each 0.05 step increases HPWL ~2–4%.
-- POST_CTS_TCL: set to "enabled" to arm the post-CTS upsizing hook.
-- POST_GLOBAL_ROUTE_TCL: set to "enabled" to arm the post-GRT hook.
+- POST_CTS_TCL: set to "enabled" to activate the post-CTS upsizing hook.
+- POST_GLOBAL_ROUTE_TCL: set to "enabled" to activate the post-GRT hook.
 
 ## Stage re-run rules (least expensive first)
 

@@ -28,7 +28,7 @@ from a cold start without losing context. Update it after every session.
 | `a6286ac` | 2026-08-06 | Add Swin, RF/XGBoost, Ensemble, Diffusion congestion models |
 | `10cec03` | 2026-08-06 | Add congestion ML pipeline from scratch (U-Net + GNN, 3 output heads) |
 
-The ML work is fully documented in `flow/ml/congestion/DESIGN_RUNS.md`.
+The ML work is fully documented in `flow/util/ml/congestion/DESIGN_RUNS.md`.
 Do not duplicate that content here — read it for ML context.
 
 ---
@@ -207,7 +207,7 @@ so all `odb`, `sta`, `grt`, `dpl` commands are available.
 ### 2026-08-14 — Session start, direction set
 
 - Reviewed P&R stage scripts: `global_route.tcl`, `detail_place.tcl`, `cts.tcl`.
-- Reviewed existing ML work in `flow/ml/congestion/`.
+- Reviewed existing ML work in `flow/util/ml/congestion/`.
 - Evaluated four augmentation directions (documented above).
 - Decision: deterministic augmentation only — no ML in the P&R extension.
   Rationale: ML earns its place where EDA tools have no answer (thermal, pre-placement
