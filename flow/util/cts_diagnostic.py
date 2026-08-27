@@ -28,7 +28,11 @@ import pr_metrics
 
 # ---------------------------------------------------------------------------
 # Grounding notes (see PR_EXTENSION_DEV_LOG.md for how these were verified
-# against real checked-in flow/logs/.../4_1_cts.log and 4_1_cts.json files):
+# against a real, locally-generated flow/logs/.../4_1_cts.log and
+# 4_1_cts.json from an actual `clock_tree_synthesis` run. flow/logs and
+# flow/reports are gitignored build output, not committed to this repo, so
+# these exact files are not reproducible from a clean checkout without
+# running the flow yourself):
 #
 # - flow/scripts/cts.tcl runs clock_tree_synthesis (TritonCTS) as stage
 #   "4_1_cts" (see flow/Makefile do-step(4_1_cts, ...)); flow.sh writes its

@@ -711,9 +711,15 @@ Exits non-zero if a cliff is detected or if buffers-per-sink exceeds
 otherwise.
 
 **Grounding — nothing here was guessed; every log/report field was verified against
-real, checked-in ORFS run artifacts** (`flow/logs/nangate45/ibex/base/` and
+a real, locally-generated ORFS run** (`flow/logs/nangate45/ibex/base/` and
 `flow/reports/nangate45/ibex/base/`, produced by an actual `clock_tree_synthesis` run
-already present in the repo before this change):
+in a local checkout). Note: `flow/logs` and `flow/reports` are gitignored build
+output — they are **not** committed to this repo, so these exact files are not
+present in `git log`/a clean checkout and a reader cannot reproduce the specific
+numbers below without running the flow themselves (e.g. `make cts` for
+`nangate45/ibex`). The grounding claim is about the log/report *format* (field names,
+line shapes, JSON keys), which is stable and inspectable in any ORFS run's output,
+not about these particular files being repo-tracked artifacts.
 
 - `flow/Makefile`'s `do-step(4_1_cts, ...)` call for the `cts` target, combined with
   `flow/scripts/flow.sh` (`"$LOG_DIR/$1.log"`, `-metrics "$LOG_DIR/$1.json"`), confirms
@@ -742,9 +748,13 @@ already present in the repo before this change):
   bazel-orfs consumers that only keep `.rpt`); note the `.rpt` text form only carries
   setup skew since `cts.tcl`'s `report_clock_skew` call site doesn't pass `-hold`.
 - Ran `cts_diagnostic.py --reports-dir flow/reports/nangate45/ibex/base --logs-dir
-  flow/logs/nangate45/ibex/base` against the real checked-in ibex run as a smoke test:
-  304 buffers, 2167 sinks, ratio 0.140, setup/hold skew ~0.025 ns, no cliff (CTS WNS
-  -0.010 ns vs. GRT WNS -0.000 ns) — exit code 0, as expected for a healthy run.
+  flow/logs/nangate45/ibex/base` against that local (not committed, gitignored) ibex
+  run as a smoke test: 304 buffers, 2167 sinks, ratio 0.140, setup/hold skew ~0.025 ns,
+  no cliff (CTS WNS -0.010 ns vs. GRT WNS -0.000 ns) — exit code 0, as expected for a
+  healthy run. These specific numbers are from that local run only and are not
+  reproducible by re-running this exact command from a clean checkout; the 47-test
+  synthetic-fixture suite in `test_cts_diagnostic.py` is what's actually reproducible
+  and reviewable from the repo alone.
 
 **Thresholds:**
 - `--cliff-threshold` default **0.05 ns**: small enough to catch a real
