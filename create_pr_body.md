@@ -6,11 +6,12 @@
 - **Metrics collector** (`flow/util/pr_metrics.py`): parses WNS/TNS/Fmax/overflow from ORFS report and log files across all P&R stages into a single trajectory table
 - **aes/nangate45 baseline fix**: triage agent correctly identified the CTS→GRT parasitic underestimation cliff; applying `SETUP_SLACK_MARGIN=0.03` + `POST_CTS_TCL` closed timing from WNS −0.330 ns to 0.000 ns, Fmax +49 MHz
 - **Congestion ML pipeline** (`flow/util/ml/congestion/`): U-Net + GNN models for routing congestion prediction, thermal estimation, and variant generation
-- **Unit tests** (`flow/util/test_loop_agent.py`): 28 tests covering allowlist enforcement, value-side injection blocklist, hook path translation, stale file sets, and config write-back — no API key or Docker required
+- **Multi-corner timing dashboard** (`flow/scripts/report_multicorner_timing.tcl`, `flow/util/multicorner_dashboard.py`): opt-in (`REPORT_MULTICORNER_TIMING`) per-corner WNS/TNS/worst-slack/clock-skew `.rpt` files wired via `HOOK_PATHS`, plus a CLI that reuses `pr_metrics.parse_rpt()` to print a per-corner comparison table marking the worst corner per metric
+- **Unit tests** (`flow/util/test_loop_agent.py`, `flow/util/test_multicorner_dashboard.py`): 46 tests covering allowlist enforcement, value-side injection blocklist, hook path translation, stale file sets, config write-back, and multi-corner report parsing/dashboard rendering — no API key or Docker required
 
 ## Test plan
 
-- [ ] `python3 flow/util/test_loop_agent.py` — all 28 unit tests pass
+- [ ] `python3 -m pytest flow/util/test_loop_agent.py flow/util/test_multicorner_dashboard.py` — all 46 unit tests pass
 - [ ] `ANTHROPIC_API_KEY=<key> python3 flow/util/loop_agent.py --platform nangate45 --design aes --tag base` — loop agent closes timing and writes params to config.mk
 - [ ] `ANTHROPIC_API_KEY=<key> python3 flow/util/triage_agent.py --platform nangate45 --design aes --tag base` — triage agent diagnoses the CTS→GRT cliff correctly
 
