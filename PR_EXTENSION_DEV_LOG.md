@@ -664,6 +664,75 @@ Branch `pr-extension` → `master`.
 
 ---
 
+### 2026-08-27 — Multi-corner / multi-mode timing dashboard
+
+**What:** added an opt-in, additive per-corner timing breakdown on top of ORFS's
+existing multi-corner STA support (`flow/scripts/read_liberty.tcl` already reads
+liberty per corner via `define_corners`/`read_liberty -corner`), plus a Python
+dashboard to compare corners side by side.
+
+**Files:**
+- `flow/scripts/report_multicorner_timing.tcl` — new standalone proc
+  `report_multicorner_timing { stage when }`. Gated behind
+  `REPORT_MULTICORNER_TIMING` (unset/`0` = no-op, matching the
+  `SKIP_REPORT_METRICS`/`DETAILED_METRICS`/`CTS_SNAPSHOTS` opt-in pattern).
+  No-op when `CORNERS` has fewer than 2 entries. When enabled, loops
+  `$::env(CORNERS)` and writes `report_tns -corner`, `report_wns -corner`,
+  `report_worst_slack -corner`, and (if `REPORT_CLOCK_SKEW`) `report_clock_skew
+  -corner` into one file per corner:
+  `$::env(REPORTS_DIR)/${stage}_${when}_multicorner_${corner}.rpt` — mirroring
+  the existing single-corner `<stage>_<when>.rpt` naming from
+  `report_metrics.tcl` (which only reports the merged/worst-case view for
+  timing; it already does per-corner looping for `report_power`, confirming
+  `-corner` is a valid flag on these OpenSTA report procs).
+- `flow/util/multicorner_dashboard.py` — CLI (`--platform`/`--design`/`--tag`/
+  `--flow-dir`, matching `pr_metrics.py`'s convention, plus `--stage` to pick
+  which stage's `*_multicorner_*.rpt` files to read, defaulting to the
+  highest-numbered stage found). Imports and reuses `pr_metrics.parse_rpt()`
+  for WNS/TNS/worst-slack (no reimplemented regexes) and adds a small
+  clock-skew-specific parser. Prints a table with corners as columns and an
+  asterisk-free `"(worst)"` suffix marking the worst corner per metric. Exits
+  non-zero with a clear message if no matching multicorner reports are found.
+- `flow/util/test_multicorner_dashboard.py` — unittest-based (style matches
+  `test_loop_agent.py`), synthetic `.rpt` fixtures in temp dirs, no
+  Docker/OpenSTA required. Covers file discovery/glob matching, stage
+  auto-selection, `parse_rpt()` reuse, worst-corner selection (both
+  higher-is-worse and lower-is-worse metrics), table rendering, and two
+  behavioral Tcl checks via `tclsh` subprocess: the script sources without a
+  *syntax* error, and `report_multicorner_timing` is a true no-op (writes no
+  files) for a single-corner `CORNERS` value.
+
+**Tcl integration decision:** used the existing `HOOK_PATHS`/`CONFIG_HOOK_PATHS`
+mechanism (same pattern as `post_cts_timing_repair.tcl`) rather than a direct
+call site inside a stage script, so `report_metrics.tcl` and every stage
+script (`cts.tcl`, `global_route.tcl`, `final_outputs.tcl`, etc.) stay
+completely untouched — zero risk of regressing existing runs. A design wires
+it in via e.g. `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing.tcl`
+plus `export REPORT_MULTICORNER_TIMING = 1`. Since a hook is only `source`d
+(no call-site args), the script reads optional `REPORT_MULTICORNER_STAGE`/
+`REPORT_MULTICORNER_WHEN` env vars (defaulting to `"4"`/`"cts final"`, tuned
+for `POST_CTS_TCL`) to label the output files, and also exposes
+`report_multicorner_timing { stage when }` for direct manual invocation after
+sourcing. Tradeoff: the hook-slot approach only fires at the specific point a
+hook already exists (post-CTS, post-GRT) — it cannot label an arbitrary
+stage/when pair without either wiring a hook per stage or a future direct
+call site in a stage script; this was deliberately left as future work to
+keep this change additive-only.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py
+flow/util/test_loop_agent.py -v` → 43 passed. Also manually exercised the CLI
+against hand-built fixture `.rpt` files reproducing OpenSTA's `tns max` /
+`wns max` / `worst slack max` / `Worst skew` output format, confirming the
+table correctly renders and marks the worst corner. `black` applied to both
+new Python files.
+
+**Out of scope:** wiring `REPORT_MULTICORNER_TIMING` into an actual design's
+`config.mk` (needs a real multi-corner platform config to validate against
+live OpenSTA output); a direct stage-script call site as an alternative to
+the hook mechanism.
+
+---
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓
