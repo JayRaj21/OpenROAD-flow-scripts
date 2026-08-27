@@ -202,14 +202,39 @@ this correctly:
 - asap7's `LIB_FILES` in `platforms/asap7/config.mk` is built from
   corner/VT-placeholder-substituted make variables
   (`$($(CORNER)_$(LIB_MODEL)_LIB_FILES)`), not a simple `export LIB_FILES =`
-  line — `extract_irdrop_batch.sh`'s awk-based LIB_FILES parser (written by
-  the implementation subagent, never exercised against asap7) will not
-  resolve these correctly. Worked around it by resolving liberty paths via
-  `make DESIGN_CONFIG=... print-LIB_FILES` instead and passing them
-  explicitly. **Known gap:** the batch script needs the same `make
-  print-LIB_FILES` approach (or a documented restriction to simple-config
-  platforms) before it can be trusted for a real asap7 batch run — flagged
-  as a fix, not yet made.
+  line — `extract_irdrop_batch.sh`'s original awk-based LIB_FILES parser
+  (written by the implementation subagent, never exercised against asap7)
+  did not resolve these correctly. Worked around it manually at first via
+  `make DESIGN_CONFIG=... print-LIB_FILES`, then **fixed the batch script
+  itself** (below) to do the same thing generically.
+
+**Fix — `extract_irdrop_batch.sh` rewritten to resolve liberty + voltage
+per design via `make print-X`, not by parsing config.mk text:** replaced
+the awk-based `LIB_FILES` scrape and the fixed `--voltage 1.1` CLI default
+with `make DESIGN_CONFIG=designs/<platform>/<design>/config.mk
+print-LIB_FILES print-PWR_NETS_VOLTAGES` (using `variables.mk`'s generic
+`print-%` target — the same mechanism used to manually resolve asap7's
+libs/voltage earlier in this entry). `PWR_NETS_VOLTAGES` is a universal
+`"<net> <voltage> ..."` dict (the same format `final_outputs.tcl` parses)
+so the per-platform nominal is now resolved automatically instead of
+requiring a manual `--voltage` override per platform.
+
+Found and fixed a second real bug while validating this: the `make print-X`
+call was made via `util/docker_shell -- "make ..."` *inside* the batch
+script's `while read HOST_ODB; do ... done < <(find results ...)` loop, and
+`docker run -i` reads from stdin until EOF — without an explicit
+`</dev/null` on that call, it silently drained the outer loop's process
+substitution pipe after the first iteration, ending the batch after
+processing exactly one design with no error message. Easy to miss (the
+script "worked", just only on the first design) — fixed by adding
+`</dev/null` to the `make print-X` invocation, matching what the two
+extraction-step invocations already did.
+
+Re-ran the fixed batch script (`--force`) against all 6 real routed designs
+from this entry: **6/6 passed**, producing byte-identical `irdrop_map`
+values to the earlier manual per-design runs (asap7 0.77V/103.68mV,
+nangate45 1.1V, sky130hd 1.8V/0.41mV) — confirms the generic resolution
+path is correct, not just non-crashing.
 
 Real cross-PDK IR-drop magnitudes (worst-case), physically sensible:
 nangate45 gcd 0.53mV / dynamic_node 1.01mV / aes 4.99mV / ibex 3.06mV;
