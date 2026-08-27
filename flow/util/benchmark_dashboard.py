@@ -233,7 +233,7 @@ def build_report_rows(
     return table_rows, latest_regressions
 
 
-def print_report(records, stage, table_rows, label):
+def print_report(stage, table_rows, label):
     print(f"\nBenchmark history — {label} — stage: {stage}")
     print("=" * 110)
     header = (
@@ -429,7 +429,7 @@ def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
 
     display_rows = table_rows[-args.last :] if args.last else table_rows
 
-    print_report(records, stage, display_rows, label)
+    print_report(stage, display_rows, label)
 
     if args.html:
         render_html(records, stage, display_rows, label, args.html)
@@ -444,7 +444,7 @@ def add_common_args(parser, flow_dir_default):
     group.add_argument("--reports-dir", help="Direct path to reports directory")
 
     parser.add_argument("--design", help="Design name (required with --platform)")
-    parser.add_argument("--tag", help="Tag / variant (default: base)", default="base")
+    parser.add_argument("--tag", help="Tag / variant (default: base)", default=None)
     parser.add_argument("--logs-dir", help="Direct path to logs directory")
     parser.add_argument(
         "--flow-dir",
@@ -457,6 +457,7 @@ def resolve_dirs(args):
     if args.platform:
         if not args.design:
             raise SystemExit("--design is required when using --platform")
+        args.tag = args.tag or "base"
         reports_dir = os.path.join(
             args.flow_dir, "reports", args.platform, args.design, args.tag
         )
@@ -468,7 +469,7 @@ def resolve_dirs(args):
         reports_dir = args.reports_dir
         logs_dir = args.logs_dir or reports_dir.replace("/reports/", "/logs/")
         label = reports_dir
-        if not args.platform or not args.design:
+        if not args.platform or not args.design or not args.tag:
             parts = os.path.normpath(reports_dir).split(os.sep)
             if len(parts) >= 3:
                 args.platform = args.platform or parts[-3]
@@ -482,6 +483,7 @@ def resolve_dirs(args):
                 "<platform>/<design>/<tag> path components); pass "
                 "--platform and --design explicitly"
             )
+        args.tag = args.tag or "base"
     return reports_dir, logs_dir, label
 
 
