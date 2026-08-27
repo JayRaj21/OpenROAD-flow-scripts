@@ -73,6 +73,27 @@ flow/ml/
 
 ## Changelog
 
+### 2026-08-26 — Synced thermal-solver with fork master (133 upstream commits)
+
+Merged `origin/master` (fork master, itself up to date with upstream ORFS) into
+`thermal-solver` via `git merge origin/master --no-edit`. No conflicts — the two
+branches never touched overlapping files (`flow/ml/**` vs. flow scripts/platforms/designs).
+
+**What landed from upstream:** `tools/OpenROAD` and `tools/kepler-formal` submodule bumps,
+new `asap7/coralnpu` and `nangate45/cva6` design configs, new fakeram LEF/LIB/Verilog models
+for asap7 and nangate45, `flow/scripts/{cts,floorplan,global_route,macro_place_util,synth}.tcl`
+updates, `flow/scripts/variables.{json,yaml}` additions, `flow/util/{genReportTable,uploadMetadata}.py`
+changes, and various `rules-base.json`/`constraint.sdc` regenerations across platforms.
+
+**Verification:** all `flow/ml/congestion/**/*.py` files still `py_compile` cleanly post-merge.
+Submodules (`tools/OpenROAD`, `tools/kepler-formal`, `tools/yosys`) are not checked out in this
+worktree — same state as before the merge, unrelated to it. No ORFS flow build was run (out of
+scope for this sync; the ML pipeline doesn't touch `flow/scripts/*` or `flow/platforms/*`).
+
+Merge commit: `4d64fba0d`. Pushed to `origin/thermal-solver`.
+
+---
+
 ### 2026-08-13 — Cell-type weighted power model + full 48-sample retrain
 
 **Root cause of previous near-flat thermal maps:**
