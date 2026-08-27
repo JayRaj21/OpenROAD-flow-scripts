@@ -65,6 +65,11 @@ CONFIG_HOOK_PATHS = {
     "POST_GLOBAL_ROUTE_TCL": "$(SCRIPTS_DIR)/post_grt_timing_repair.tcl",
 }
 
+# Characters/sequences that would let a value escape a plain scalar and
+# inject Make or shell syntax when written into config.mk or passed as a
+# KEY=value argv token to `make`.
+UNSAFE_VALUE_PATTERNS = ("$(", "`", ";", "|", "&", "\n", "\r")
+
 # Stale ODB files to delete when forcing a stage re-run
 STAGE_STALE_FILES = {
     "place": [
@@ -283,12 +288,28 @@ def impl_get_metrics(platform, design, tag, flow_dir):
     return "\n".join(lines)
 
 
+def validate_param_value(value):
+    """Reject values that could inject Make/shell syntax via config.mk or argv.
+
+    Returns an error string if the value is unsafe, or None if it is fine.
+    """
+    if not isinstance(value, str) or not value:
+        return "value must be a non-empty string"
+    for pattern in UNSAFE_VALUE_PATTERNS:
+        if pattern in value:
+            return f"value contains disallowed sequence '{pattern}'"
+    return None
+
+
 def impl_set_config_param(param, value, pending_params, change_log):
     if param not in PARAM_ALLOWLIST:
         return (
             f"ERROR: '{param}' is not allowlisted. "
             f"Allowed: {sorted(PARAM_ALLOWLIST)}"
         )
+    error = validate_param_value(value)
+    if error:
+        return f"ERROR: invalid value for '{param}': {error}"
     if param in HOOK_PATHS and value.lower() == "enabled":
         value = HOOK_PATHS[param]
     pending_params[param] = value
@@ -346,6 +367,14 @@ def write_config_params(params, platform, design, flow_dir):
     config_path = os.path.join(flow_dir, "designs", platform, design, "config.mk")
     if not os.path.exists(config_path):
         return f"ERROR: {config_path} not found"
+
+    trusted_values = set(HOOK_PATHS.values()) | set(CONFIG_HOOK_PATHS.values())
+    for param, value in params.items():
+        if value in trusted_values:
+            continue
+        error = validate_param_value(value)
+        if error:
+            return f"ERROR: refusing to write '{param}': {error}"
 
     # Translate Docker hook paths → ORFS-canonical paths for config.mk
     writeback = {}
