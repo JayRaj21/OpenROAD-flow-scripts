@@ -686,3 +686,85 @@ Branch `pr-extension` → `master`.
     (currently unit-tested only)
 16. **Second design**: run triage + loop on ibex or another design to validate generalization
 17. (Blocked on ML data) Congestion-feedback parameter tuner
+
+---
+
+### 2026-08-27 — CTS quality diagnostic (`cts_diagnostic.py`)
+
+**Built:** `flow/util/cts_diagnostic.py`, a standalone CLI (same
+`--platform`/`--design`/`--tag`/`--flow-dir`/`--reports-dir`/`--logs-dir` convention as
+`pr_metrics.py`, and it imports and reuses `pr_metrics.collect()`/`parse_rpt()` rather
+than re-parsing report files). It reports:
+
+- **Clock buffers/inverters inserted** and **sink count**, parsed structurally out of
+  the CTS-stage log.
+- **Buffers-per-sink ratio** — an over-buffering proxy.
+- **Setup/hold clock skew**, when `REPORT_CLOCK_SKEW` data is present.
+- A **CTS→GRT cliff check**: pulls CTS-stage and Global-route-stage WNS from
+  `pr_metrics.collect()` and prints `CLIFF DETECTED:` if WNS worsens by more than
+  `--cliff-threshold` (default 0.05 ns) between the two stages — the quantitative
+  counterpart to the "CTS→GRT parasitic underestimation cliff" pattern that
+  `triage_agent.py` already describes in its LLM prompt context (lines ~60-84).
+
+Exits non-zero if a cliff is detected or if buffers-per-sink exceeds
+`--buffer-ratio-threshold` (default 0.5), so it can gate a pipeline/CI step; exits 0
+otherwise.
+
+**Grounding — nothing here was guessed; every log/report field was verified against
+real, checked-in ORFS run artifacts** (`flow/logs/nangate45/ibex/base/` and
+`flow/reports/nangate45/ibex/base/`, produced by an actual `clock_tree_synthesis` run
+already present in the repo before this change):
+
+- `flow/Makefile`'s `do-step(4_1_cts, ...)` call for the `cts` target, combined with
+  `flow/scripts/flow.sh` (`"$LOG_DIR/$1.log"`, `-metrics "$LOG_DIR/$1.json"`), confirms
+  the CTS-stage log is `4_1_cts.log` and its metrics snapshot is `4_1_cts.json` — not a
+  guessed name.
+- Inspecting the real `4_1_cts.log` showed TritonCTS emits exactly one
+  `[INFO CTS-0018]     Created N clock buffers.` line per clock net (the final,
+  cumulative buffer count for that net's H-tree — confirmed by cross-checking against
+  `TritonCTS found 3 clock nets.` and the 3 resulting `Created N clock buffers.` lines:
+  2, 143, 157), plus a separate `Total number of delay buffers: N` line for
+  latency-balancing buffers, and one `Sinks N` summary line per net (e.g. `Sinks 1100`
+  for `clk_i_regs`, which is exactly `995` initial sinks + `105` "Dummy loads inserted"
+  — confirming this is the post-balancing final sink count, not the pre-clustering
+  count reported earlier in the same log as `... has 995 sinks.`). The parser
+  deliberately anchors on the `]\s*Sinks\s+(\d+)\s*$` and `]\s*Leaf buffers\s+(\d+)\s*$`
+  forms (clean, single-purpose lines) rather than the more ambiguous
+  `Total number of sinks: N.` / `Number of sinks covered: N.` lines that appear during
+  intermediate H-tree construction, to avoid double-counting.
+- Skew: `report_metrics.tcl`'s `report_clock_skew_metric` / `report_clock_skew_metric
+  -hold` calls (gated by `REPORT_CLOCK_SKEW`, default `1` per `variables.yaml`) write
+  metrics into the stage `.json`; the real `4_1_cts.json` contains
+  `cts__clock__skew__setup` and `cts__clock__skew__hold` keys, confirmed by direct
+  inspection. The parser matches on key suffix so it survives the `cts__` stage prefix.
+  A text-based fallback (`parse_cts_skew_rpt`) also matches the `<value> setup skew`
+  line found in the real `4_cts_final.rpt`, for when a `.json` isn't available (e.g.
+  bazel-orfs consumers that only keep `.rpt`); note the `.rpt` text form only carries
+  setup skew since `cts.tcl`'s `report_clock_skew` call site doesn't pass `-hold`.
+- Ran `cts_diagnostic.py --reports-dir flow/reports/nangate45/ibex/base --logs-dir
+  flow/logs/nangate45/ibex/base` against the real checked-in ibex run as a smoke test:
+  304 buffers, 2167 sinks, ratio 0.140, setup/hold skew ~0.025 ns, no cliff (CTS WNS
+  -0.010 ns vs. GRT WNS -0.000 ns) — exit code 0, as expected for a healthy run.
+
+**Thresholds:**
+- `--cliff-threshold` default **0.05 ns**: small enough to catch a real
+  parasitic-estimation regression, large enough to not fire on ordinary
+  run-to-run WNS noise between optimizer passes.
+- `--buffer-ratio-threshold` default **0.5**: the real ibex baseline measured 0.14
+  buffers/sink, so 0.5 leaves ~3.5x headroom above a known-healthy design before
+  flagging over-buffering — a heuristic sanity bound, not an EDA rule.
+
+**Tests:** `flow/util/test_cts_diagnostic.py` (unittest, no Docker/API, matches the
+house style of `test_loop_agent.py`) — synthetic log/json/rpt fixtures built from the
+verified real formats above; asserts computed buffer/sink/skew values, cliff
+detection/non-detection on crafted WNS sequences (including the case where GRT
+*improves* on CTS), buffer-ratio threshold triggering both ways, and an end-to-end
+`gather()` test combining a synthetic CTS `.rpt`, a GRT `.rpt`, and the CTS log/json.
+Ran `python3 -m pytest flow/util/test_cts_diagnostic.py flow/util/test_loop_agent.py -v`
+— all 47 tests pass (19 new + existing 28), plus 6 subtests.
+
+**Out of scope:** clock latency (target/source clock latency numbers are present in
+`.rpt` `report_checks` output but only for the single critical path, not tree-wide;
+left for a future pass), and any structural stats beyond buffer/sink/skew (e.g. wire
+segment counts, fanout distribution histograms) since they weren't called for by the
+roadmap item and add parsing surface without a clear consumer yet.
