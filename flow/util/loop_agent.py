@@ -68,7 +68,7 @@ CONFIG_HOOK_PATHS = {
 # Characters/sequences that would let a value escape a plain scalar and
 # inject Make or shell syntax when written into config.mk or passed as a
 # KEY=value argv token to `make`.
-UNSAFE_VALUE_PATTERNS = ("$(", "`", ";", "|", "&", "\n", "\r")
+UNSAFE_VALUE_PATTERNS = ("$(", "${", "`", ";", "|", "&", "\n", "\r")
 
 # Stale ODB files to delete when forcing a stage re-run
 STAGE_STALE_FILES = {
