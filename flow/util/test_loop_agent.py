@@ -50,6 +50,22 @@ class TestAllowlist(unittest.TestCase):
         result, _, _ = self._call("SETUP_SLACK_MARGIN; rm -rf /", "0.03")
         self.assertIn("ERROR", result)
 
+    def test_rejects_injected_value_dollar_paren(self):
+        result, pending, log = self._call(
+            "SETUP_SLACK_MARGIN", "$(shell rm -rf /)"
+        )
+        self.assertIn("ERROR", result)
+        self.assertEqual(pending, {})
+        self.assertEqual(log, [])
+
+    def test_rejects_injected_value_dollar_brace(self):
+        result, pending, log = self._call(
+            "SETUP_SLACK_MARGIN", "${shell rm -rf /}"
+        )
+        self.assertIn("ERROR", result)
+        self.assertEqual(pending, {})
+        self.assertEqual(log, [])
+
 
 class TestHookTranslation(unittest.TestCase):
     """'enabled' sentinel is translated to the Docker /work/scripts/ path."""
@@ -215,6 +231,24 @@ class TestWriteConfigParams(unittest.TestCase):
         _, final = self._write(config, {"SETUP_SLACK_MARGIN": "0.03"})
         # No new params → comment block should NOT be added
         self.assertNotIn("loop_agent.py", final)
+
+    def test_refuses_to_write_dollar_paren_injection(self):
+        config = "export SETUP_SLACK_MARGIN = 0.00\n"
+        result, final = self._write(
+            config, {"SETUP_SLACK_MARGIN": "$(shell rm -rf /)"}
+        )
+        self.assertIn("ERROR", result)
+        self.assertNotIn("$(shell", final)
+        self.assertIn("export SETUP_SLACK_MARGIN = 0.00", final)
+
+    def test_refuses_to_write_dollar_brace_injection(self):
+        config = "export SETUP_SLACK_MARGIN = 0.00\n"
+        result, final = self._write(
+            config, {"SETUP_SLACK_MARGIN": "${shell rm -rf /}"}
+        )
+        self.assertIn("ERROR", result)
+        self.assertNotIn("${shell", final)
+        self.assertIn("export SETUP_SLACK_MARGIN = 0.00", final)
 
 
 if __name__ == "__main__":
