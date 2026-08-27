@@ -1,6 +1,8 @@
 name: Create draft PR for updated YOSYS submodule
 on:
   push:
+    branches:
+      - master
   schedule:
   - cron: "0 8 * * MON"
   # Allows you to run this workflow manually from the Actions tab
@@ -9,6 +11,9 @@ on:
 jobs:
   update:
     runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Check out repository code recursively
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
