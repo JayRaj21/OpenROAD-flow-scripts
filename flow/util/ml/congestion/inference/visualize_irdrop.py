@@ -35,7 +35,9 @@ def _parse_args():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--data-dir", default="util/ml/congestion/data")
-    ap.add_argument("--checkpoint", default="util/ml/congestion/checkpoints/irdrop_best.pt")
+    ap.add_argument(
+        "--checkpoint", default="util/ml/congestion/checkpoints/irdrop_best.pt"
+    )
     ap.add_argument("--out", default="irdrop_report.html")
     ap.add_argument("--base-features", type=int, default=32)
     return ap.parse_args()
