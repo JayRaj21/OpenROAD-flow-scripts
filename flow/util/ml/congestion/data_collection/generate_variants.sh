@@ -21,7 +21,7 @@
 #   Option 3 — CORE_ASPECT_RATIO: 0.5 (wide), 1.5 (tall), 2.0 (very tall)
 
 set -euo pipefail
-cd "$(dirname "$0")/../../.."   # → flow/
+cd "$(dirname "$0")/../../../.."   # → flow/
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1

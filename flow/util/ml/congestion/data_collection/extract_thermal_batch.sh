@@ -22,7 +22,7 @@
 # 10+ minutes for ODB loading alone; raise the timeout if needed.
 
 set -euo pipefail
-cd "$(dirname "$0")/../../.."   # → flow/
+cd "$(dirname "$0")/../../../.."   # → flow/
 
 # Per-extractor timeout in seconds (override with --timeout N).
 # Large designs (ariane133/136, swerv, tinyRocket) can take 40+ min just

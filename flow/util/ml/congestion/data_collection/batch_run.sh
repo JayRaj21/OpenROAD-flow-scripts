@@ -9,7 +9,7 @@ set -euo pipefail
 
 GRID=64
 OUT_DIR="util/ml/congestion/data"
-FLOW_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+FLOW_DIR="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

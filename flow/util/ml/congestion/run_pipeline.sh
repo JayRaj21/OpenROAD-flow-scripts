@@ -15,7 +15,7 @@
 #   -h, --help        Show this help
 
 set -euo pipefail
-cd "$(dirname "$0")/../.."   # always run from flow/
+cd "$(dirname "$0")/../../.."   # always run from flow/
 
 GRID=64
 EPOCHS=50

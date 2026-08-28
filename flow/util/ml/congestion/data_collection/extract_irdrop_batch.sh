@@ -38,7 +38,7 @@
 # than silently analyzed against the wrong supply voltage.
 
 set -euo pipefail
-cd "$(dirname "$0")/../../.."   # -> flow/
+cd "$(dirname "$0")/../../../.."   # -> flow/
 
 TIMEOUT_S=3600
 FORCE=0
