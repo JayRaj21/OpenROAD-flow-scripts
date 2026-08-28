@@ -117,3 +117,4 @@ flow/ml/congestion/checkpoints/*.pt
 flow/ml/data/
 flow/ml/congestion/*.log
 flow/ml/congestion/pipeline/logs/
+flow/thermal_report.html
