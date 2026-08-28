@@ -8,16 +8,16 @@ global), so no external norm JSON is needed.
 Two usage modes:
 
   1. From pre-extracted feature file (no OpenROAD needed):
-       python3 ml/congestion/inference/predict_thermal.py \\
-           --features   ml/congestion/data/<label>_features.npz \\
-           --checkpoint ml/congestion/checkpoints/thermal_best.pt \\
+       python3 util/ml/congestion/inference/predict_thermal.py \\
+           --features   util/ml/congestion/data/<label>_features.npz \\
+           --checkpoint util/ml/congestion/checkpoints/thermal_best.pt \\
            --out        predicted_thermal.npz
 
   2. From a placed ODB (requires openroad/orfs-ml:latest and extracts features
      automatically via docker_shell):
-       python3 ml/congestion/inference/predict_thermal.py \\
+       python3 util/ml/congestion/inference/predict_thermal.py \\
            --odb        /work/results/<platform>/<design>/<tag>/3_place.odb \\
-           --checkpoint ml/congestion/checkpoints/thermal_best.pt \\
+           --checkpoint util/ml/congestion/checkpoints/thermal_best.pt \\
            --out        predicted_thermal.npz
 
 Output (.npz):
@@ -77,7 +77,7 @@ def _extract_features_from_odb(odb_path: str, grid: int) -> str:
     """Run extract_features.py inside docker_shell and return path to temp npz."""
     tmp = tempfile.mktemp(suffix="_features.npz")
     cont_out = f"/work/{os.path.basename(tmp)}"
-    feat_script = "/work/ml/congestion/data_collection/extract_features.py"
+    feat_script = "/work/util/ml/congestion/data_collection/extract_features.py"
 
     cmd = [
         "util/docker_shell",

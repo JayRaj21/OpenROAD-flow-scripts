@@ -4,16 +4,16 @@ Run congestion inference on a single design using either model.
 Usage:
   cd flow
   # Extract features first (inside Docker):
-  util/docker_shell openroad -python ml/congestion/data_collection/extract_features.py \
+  util/docker_shell openroad -python util/ml/congestion/data_collection/extract_features.py \
       --odb results/nangate45/aes/base/3_5_place_dp.odb \
-      --out ml/congestion/data/nangate45_aes_features.npz
+      --out util/ml/congestion/data/nangate45_aes_features.npz
 
   # Then predict (on the host):
-  python3 ml/congestion/inference/predict.py \
-      --features ml/congestion/data/nangate45_aes_features.npz \
+  python3 util/ml/congestion/inference/predict.py \
+      --features util/ml/congestion/data/nangate45_aes_features.npz \
       --model unet \
-      --checkpoint ml/congestion/checkpoints/unet_best.pt \
-      --out-dir ml/congestion/data
+      --checkpoint util/ml/congestion/checkpoints/unet_best.pt \
+      --out-dir util/ml/congestion/data
 """
 
 import argparse
@@ -152,7 +152,7 @@ def main():
     ap.add_argument("--features", required=True)
     ap.add_argument("--model", choices=["unet", "swin", "gnn"], default="unet")
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--out-dir", default="ml/congestion/data")
+    ap.add_argument("--out-dir", default="util/ml/congestion/data")
     predict(ap.parse_args())
 
 

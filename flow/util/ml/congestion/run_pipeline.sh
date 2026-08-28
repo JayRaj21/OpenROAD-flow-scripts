@@ -3,7 +3,7 @@
 # Extracts data from existing ORFS results, trains all models, evaluates, and predicts.
 #
 # Usage (from the flow/ directory):
-#   bash ml/congestion/run_pipeline.sh [OPTIONS]
+#   bash util/ml/congestion/run_pipeline.sh [OPTIONS]
 #
 # Options:
 #   --grid N          Grid resolution (default: 64)
@@ -42,9 +42,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-DATA_DIR="ml/congestion/data"
-CKPT_DIR="ml/congestion/checkpoints"
-SCRIPT_DIR="ml/congestion"
+DATA_DIR="util/ml/congestion/data"
+CKPT_DIR="util/ml/congestion/checkpoints"
+SCRIPT_DIR="util/ml/congestion"
 
 _has_model() { echo "$MODELS" | grep -qw "$1"; }
 

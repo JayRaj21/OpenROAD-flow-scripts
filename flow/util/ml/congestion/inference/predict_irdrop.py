@@ -8,19 +8,19 @@ the worst-drop point in that specific design. Normalisation is per-sample
 Two usage modes:
 
   1. From pre-extracted feature/label files (no OpenROAD needed):
-       python3 ml/congestion/inference/predict_irdrop.py \\
-           --features   ml/congestion/data/<label>_features.npz \\
-           --irdrop-features ml/congestion/data/<label>_irdrop_labels.npz \\
-           --checkpoint ml/congestion/checkpoints/irdrop_best.pt \\
+       python3 util/ml/congestion/inference/predict_irdrop.py \\
+           --features   util/ml/congestion/data/<label>_features.npz \\
+           --irdrop-features util/ml/congestion/data/<label>_irdrop_labels.npz \\
+           --checkpoint util/ml/congestion/checkpoints/irdrop_best.pt \\
            --out        predicted_irdrop.npz
 
   2. From a routed ODB (requires openroad/orfs:latest and extracts features
      + PDN geometry automatically via docker_shell):
-       python3 ml/congestion/inference/predict_irdrop.py \\
+       python3 util/ml/congestion/inference/predict_irdrop.py \\
            --odb        /work/results/<platform>/<design>/<tag>/6_final.odb \\
            --spef       /work/results/<platform>/<design>/<tag>/6_final.spef \\
            --liberty    /work/platforms/<platform>/lib/<lib>.lib \\
-           --checkpoint ml/congestion/checkpoints/irdrop_best.pt \\
+           --checkpoint util/ml/congestion/checkpoints/irdrop_best.pt \\
            --out        predicted_irdrop.npz
 
 Output (.npz):
@@ -100,8 +100,8 @@ def _extract_from_odb(args) -> tuple:
     tmp_irdrop = tempfile.mktemp(suffix="_irdrop_labels.npz")
     cont_feat_out = f"/work/{os.path.basename(tmp_feat)}"
     cont_irdrop_out = f"/work/{os.path.basename(tmp_irdrop)}"
-    feat_script = "/work/ml/congestion/data_collection/extract_features.py"
-    irdrop_script = "/work/ml/congestion/data_collection/extract_irdrop_labels.py"
+    feat_script = "/work/util/ml/congestion/data_collection/extract_features.py"
+    irdrop_script = "/work/util/ml/congestion/data_collection/extract_irdrop_labels.py"
 
     print(f"[predict] Extracting features from {args.odb} ...")
     cmd = [

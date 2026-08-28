@@ -10,10 +10,10 @@ Tests:
   6. Checkpoint save/load round-trip
 
 Run from the flow/ directory:
-  python3 ml/congestion/tests/test_models.py
+  python3 util/ml/congestion/tests/test_models.py
 
 Or run a specific test:
-  python3 ml/congestion/tests/test_models.py TestModelShapes.test_unet_shapes
+  python3 util/ml/congestion/tests/test_models.py TestModelShapes.test_unet_shapes
 """
 
 import os

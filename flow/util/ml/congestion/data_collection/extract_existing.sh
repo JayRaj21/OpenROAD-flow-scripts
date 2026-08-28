@@ -5,7 +5,7 @@
 set -euo pipefail
 
 GRID=${1:-64}
-OUT_DIR="ml/congestion/data"
+OUT_DIR="util/ml/congestion/data"
 mkdir -p "$OUT_DIR"
 
 ok=0
@@ -50,7 +50,7 @@ for entry in "${DESIGNS[@]}"; do
 
     echo "  Extracting features..."
     if ! util/docker_shell openroad -python \
-            /work/ml/congestion/data_collection/extract_features.py \
+            /work/util/ml/congestion/data_collection/extract_features.py \
             --odb "/work/${dp_odb}" \
             --out "/work/${feat_out}" \
             --grid "$GRID" < /dev/null 2>&1 | sed 's/^/    /'; then
@@ -61,7 +61,7 @@ for entry in "${DESIGNS[@]}"; do
 
     echo "  Extracting labels..."
     if ! util/docker_shell openroad -python \
-            /work/ml/congestion/data_collection/extract_labels.py \
+            /work/util/ml/congestion/data_collection/extract_labels.py \
             --odb "/work/${grt_odb}" \
             --out "/work/${label_out}" \
             --grid "$GRID" < /dev/null 2>&1 | sed 's/^/    /'; then

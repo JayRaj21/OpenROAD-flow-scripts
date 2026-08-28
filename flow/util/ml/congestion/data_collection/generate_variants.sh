@@ -6,12 +6,12 @@
 # minimum needed for thermal label extraction.  Full routing is not needed.
 #
 # Usage (from flow/):
-#   bash ml/congestion/data_collection/generate_variants.sh [--dry-run]
+#   bash util/ml/congestion/data_collection/generate_variants.sh [--dry-run]
 #
 # --dry-run  Print the make commands without executing them.
 #
 # After this script completes, re-run the batch thermal extractor:
-#   bash ml/congestion/data_collection/extract_thermal_batch.sh
+#   bash util/ml/congestion/data_collection/extract_thermal_batch.sh
 #
 # Target designs (chosen for real ΔT and structural diversity):
 #   nangate45: ibex, jpeg, swerv, ariane133, riscv32i (sky130hd)
@@ -110,5 +110,5 @@ done
 echo ""
 echo "========================================================"
 echo " Done. Next step:"
-echo "   bash ml/congestion/data_collection/extract_thermal_batch.sh"
+echo "   bash util/ml/congestion/data_collection/extract_thermal_batch.sh"
 echo "========================================================"

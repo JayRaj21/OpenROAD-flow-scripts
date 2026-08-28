@@ -13,9 +13,9 @@ hotspot and score heads are ignored for this task. At inference time,
 denormalize with dataset.denormalize() to recover °C values.
 
 Usage (from flow/):
-  python3 ml/congestion/training/train_thermal.py \\
-      --data-dir ml/congestion/data \\
-      --checkpoint-dir ml/congestion/checkpoints \\
+  python3 util/ml/congestion/training/train_thermal.py \\
+      --data-dir util/ml/congestion/data \\
+      --checkpoint-dir util/ml/congestion/checkpoints \\
       --epochs 100 \\
       --laplacian-weight 0.1
 """
@@ -173,10 +173,10 @@ def main():
     )
     ap.add_argument(
         "--data-dir",
-        default="ml/congestion/data",
+        default="util/ml/congestion/data",
         help="Directory containing *_features.npz and *_thermal_labels.npz",
     )
-    ap.add_argument("--checkpoint-dir", default="ml/congestion/checkpoints")
+    ap.add_argument("--checkpoint-dir", default="util/ml/congestion/checkpoints")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-3)

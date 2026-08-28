@@ -3,8 +3,8 @@
 #
 # Iterates every 6_final.odb already on disk (routed, RCX-extracted stage)
 # with a matching 6_final.spef and runs:
-#   1. extract_features.py         -> ml/congestion/data/<label>_features.npz
-#   2. extract_irdrop_labels.py    -> ml/congestion/data/<label>_irdrop_labels.npz
+#   1. extract_features.py         -> util/ml/congestion/data/<label>_features.npz
+#   2. extract_irdrop_labels.py    -> util/ml/congestion/data/<label>_irdrop_labels.npz
 #
 # Unlike extract_thermal_batch.sh, IR-drop extraction uses OpenROAD's native
 # PDNSim (analyze_power_grid), so the *stock* openroad/orfs:latest image is
@@ -12,7 +12,7 @@
 #
 # Usage (from flow/):
 #   export OR_IMAGE=openroad/orfs:latest
-#   bash ml/congestion/data_collection/extract_irdrop_batch.sh [--timeout 600] [--force] \
+#   bash util/ml/congestion/data_collection/extract_irdrop_batch.sh [--timeout 600] [--force] \
 #       [--net VDD]
 #
 # --force  : re-extract IR-drop labels even if they already exist (use after
@@ -52,9 +52,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-DATA_DIR="/work/ml/congestion/data"
-FEAT_SCRIPT="/work/ml/congestion/data_collection/extract_features.py"
-IRDROP_SCRIPT="/work/ml/congestion/data_collection/extract_irdrop_labels.py"
+DATA_DIR="/work/util/ml/congestion/data"
+FEAT_SCRIPT="/work/util/ml/congestion/data_collection/extract_features.py"
+IRDROP_SCRIPT="/work/util/ml/congestion/data_collection/extract_irdrop_labels.py"
 
 pass=0; fail=0; skip=0
 
@@ -86,8 +86,8 @@ while IFS= read -r HOST_ODB; do
     feat_out="${DATA_DIR}/${label}_features.npz"
     irdrop_out="${DATA_DIR}/${label}_irdrop_labels.npz"
 
-    feat_host="ml/congestion/data/${label}_features.npz"
-    irdrop_host="ml/congestion/data/${label}_irdrop_labels.npz"
+    feat_host="util/ml/congestion/data/${label}_features.npz"
+    irdrop_host="util/ml/congestion/data/${label}_irdrop_labels.npz"
 
     echo "========================================="
     echo "Design: ${label}"

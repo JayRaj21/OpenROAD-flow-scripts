@@ -79,8 +79,8 @@ flow/ml/
 both describe a "48-sample dataset" with a 0.02912 val-MSE baseline and a
 per-design correlation table as already collected, and describe Docker/HotSpot
 as unavailable in the dev environment. Neither was true in this worktree: at
-the start of this session `results/`, `ml/congestion/data/*.npz`, and
-`ml/congestion/checkpoints/` were all empty, and `docker images` showed both
+the start of this session `results/`, `util/ml/congestion/data/*.npz`, and
+`util/ml/congestion/checkpoints/` were all empty, and `docker images` showed both
 `openroad/orfs:latest` and `openroad/orfs-ml:latest` present and functional
 (`docker run --rm hello-world` succeeded). The 48-sample dataset and its
 baseline table either lived in a different environment/session or were never
@@ -118,7 +118,7 @@ New files (all additive, no existing thermal-track file modified):
   from the thermal equivalents.
 - `tests/generate_synthetic_data.py`, `tests/test_models.py` — extended with
   synthetic IR-drop data + a `TestIRDropDataset` smoke test (load, shapes,
-  split, 2-epoch training run). `python3 ml/congestion/tests/test_models.py -v`
+  split, 2-epoch training run). `python3 util/ml/congestion/tests/test_models.py -v`
   → 20/20 tests pass (16 pre-existing + 4 new).
 
 **Real-data validation (not synthetic) — the load-bearing step:**
@@ -355,7 +355,7 @@ for asap7 and nangate45, `flow/scripts/{cts,floorplan,global_route,macro_place_u
 updates, `flow/scripts/variables.{json,yaml}` additions, `flow/util/{genReportTable,uploadMetadata}.py`
 changes, and various `rules-base.json`/`constraint.sdc` regenerations across platforms.
 
-**Verification:** all `flow/ml/congestion/**/*.py` files still `py_compile` cleanly post-merge.
+**Verification:** all `flow/util/ml/congestion/**/*.py` files still `py_compile` cleanly post-merge.
 Submodules (`tools/OpenROAD`, `tools/kepler-formal`, `tools/yosys`) are not checked out in this
 worktree — same state as before the merge, unrelated to it. No ORFS flow build was run (out of
 scope for this sync; the ML pipeline doesn't touch `flow/scripts/*` or `flow/platforms/*`).
@@ -389,7 +389,7 @@ so Docker used `openroad/orfs:latest` (no HotSpot) instead of `openroad/orfs-ml:
 Fix: always set `OR_IMAGE=openroad/orfs-ml:latest` before running `extract_thermal_batch.sh`.
 
 ```bash
-cd flow && OR_IMAGE=openroad/orfs-ml:latest bash ml/congestion/data_collection/extract_thermal_batch.sh --force
+cd flow && OR_IMAGE=openroad/orfs-ml:latest bash util/ml/congestion/data_collection/extract_thermal_batch.sh --force
 ```
 Result: **passed=48, failed=0** (skipped=48 = features already extracted).
 
@@ -401,18 +401,18 @@ Result: **passed=48, failed=0** (skipped=48 = features already extracted).
 - Train/val gap after epoch 70 indicates mild overfitting at 33 samples
 
 ```bash
-OR_IMAGE=openroad/orfs-ml:latest util/docker_shell python3 /work/ml/congestion/training/train_thermal.py \
-    --data-dir /work/ml/congestion/data \
-    --checkpoint-dir /work/ml/congestion/checkpoints
+OR_IMAGE=openroad/orfs-ml:latest util/docker_shell python3 /work/util/ml/congestion/training/train_thermal.py \
+    --data-dir /work/util/ml/congestion/data \
+    --checkpoint-dir /work/util/ml/congestion/checkpoints
 ```
 
 **Visualization report (`inference/visualize_thermal.py`) — per-design correlation:**
 
 Run from `flow/` on host (matplotlib not in orfs-ml image):
 ```bash
-python3 ml/congestion/inference/visualize_thermal.py \
-    --data-dir ml/congestion/data \
-    --checkpoint ml/congestion/checkpoints/thermal_best.pt \
+python3 util/ml/congestion/inference/visualize_thermal.py \
+    --data-dir util/ml/congestion/data \
+    --checkpoint util/ml/congestion/checkpoints/thermal_best.pt \
     --out thermal_report.html
 ```
 
@@ -522,10 +522,10 @@ mounted workspace.
   Needs 50+ samples to outperform U-Net reliably.
 
 **Next steps:**
-1. Retrain with 5-channel input: `python3 ml/congestion/training/train_thermal.py --data-dir ml/congestion/data --checkpoint-dir ml/congestion/checkpoints --epochs 200`
-2. Run variant generation (dry-run first to check): `bash ml/congestion/data_collection/generate_variants.sh --dry-run`
-3. Run for real (takes several hours): `bash ml/congestion/data_collection/generate_variants.sh`
-4. Re-extract thermal labels for new variants: `bash ml/congestion/data_collection/extract_thermal_batch.sh`
+1. Retrain with 5-channel input: `python3 util/ml/congestion/training/train_thermal.py --data-dir util/ml/congestion/data --checkpoint-dir util/ml/congestion/checkpoints --epochs 200`
+2. Run variant generation (dry-run first to check): `bash util/ml/congestion/data_collection/generate_variants.sh --dry-run`
+3. Run for real (takes several hours): `bash util/ml/congestion/data_collection/generate_variants.sh`
+4. Re-extract thermal labels for new variants: `bash util/ml/congestion/data_collection/extract_thermal_batch.sh`
 5. Retrain again on expanded dataset (~50 samples).
 
 ---
@@ -592,10 +592,10 @@ Two usage modes:
 Outputs `thermal_pred_norm` (64×64), `thermal_pred_c` (64×64 in °C), and normalisation
 constants to a `.npz`. Run from `flow/`:
 ```bash
-python3 ml/congestion/inference/predict_thermal.py \\
-    --features ml/congestion/data/<label>_features.npz \\
-    --checkpoint ml/congestion/checkpoints/thermal_best.pt \\
-    --norm ml/congestion/checkpoints/thermal_norm.json \\
+python3 util/ml/congestion/inference/predict_thermal.py \\
+    --features util/ml/congestion/data/<label>_features.npz \\
+    --checkpoint util/ml/congestion/checkpoints/thermal_best.pt \\
+    --norm util/ml/congestion/checkpoints/thermal_norm.json \\
     --out predicted_thermal.npz
 ```
 
@@ -636,11 +636,11 @@ Three new files to support thermal model training:
 
 **`data_collection/extract_thermal_batch.sh`** — batch extraction over all existing
 `3_place.odb` files on disk (26 found). Runs `extract_features.py` + `extract_thermal_labels.py`
-for each, writes paired `*_features.npz` + `*_thermal_labels.npz` to `ml/congestion/data/`.
+for each, writes paired `*_features.npz` + `*_thermal_labels.npz` to `util/ml/congestion/data/`.
 Idempotent — already-extracted files are skipped. Run with:
 ```bash
 cd flow && export OR_IMAGE=openroad/orfs-ml:latest
-bash ml/congestion/data_collection/extract_thermal_batch.sh
+bash util/ml/congestion/data_collection/extract_thermal_batch.sh
 ```
 
 **`training/thermal_dataset.py`** — `ThermalDataset`: finds matched `*_features.npz` +
@@ -657,7 +657,7 @@ only, no hotspot/score heads. Saves `thermal_best.pt`, `thermal_last.pt`, and
 
 ### 2026-08-10 — Pipeline run results + bug analysis
 
-Run: `python3 ml/congestion/pipeline/run_pipeline.py` (WITHOUT `OR_IMAGE=openroad/orfs-ml:latest`).
+Run: `python3 util/ml/congestion/pipeline/run_pipeline.py` (WITHOUT `OR_IMAGE=openroad/orfs-ml:latest`).
 
 | Design | Result | Notes |
 |---|---|---|
@@ -730,9 +730,9 @@ as input, writes `{data_dir}/{out_label}_graph.npz` alongside the congestion lab
 **Run manually:**
 ```bash
 OR_IMAGE=openroad/orfs-ml:latest util/docker_shell openroad -python \
-    /work/ml/congestion/data_collection/extract_netlist_features.py \
+    /work/util/ml/congestion/data_collection/extract_netlist_features.py \
     --odb /work/results/<platform>/<design>/<tag>/1_synth.odb \
-    --out /work/ml/congestion/data/<label>_graph.npz
+    --out /work/util/ml/congestion/data/<label>_graph.npz
 ```
 
 ---
@@ -759,7 +759,7 @@ and skips without failing the run. Congestion data is always saved.
 
 To enable thermal extraction, run the pipeline with the custom image:
 ```bash
-OR_IMAGE=openroad/orfs-ml:latest python3 ml/congestion/pipeline/run_pipeline.py
+OR_IMAGE=openroad/orfs-ml:latest python3 util/ml/congestion/pipeline/run_pipeline.py
 ```
 
 ---
@@ -792,7 +792,7 @@ since they don't exist pre-placement. Forward signature simplified to
 - `training/train_gnn.py` — rewritten to use `GraphCongestionDataset` with real
   netlist graphs instead of the fake grid-to-graph conversion placeholder
 
-**Existing graph data note:** `flow/ml/data/*_congestion.npy` files are shape (10,)
+**Existing graph data note:** `flow/util/ml/data/*_congestion.npy` files are shape (10,)
 per-layer global scores, NOT spatial maps — incompatible with our spatial task.
 The graph_dataset pairs `*_graph.npz` with `*_labels.npz` (spatial, from
 extract_labels.py) by matching design names in the same directory.
@@ -830,7 +830,7 @@ was abandoned because:
 | `data_collection/extract_thermal_labels.py` | Reads a placed ODB, uses cell area as power proxy, writes HotSpot `.flp`/`.ptrace`, runs HotSpot, parses `.steady` output into a `thermal_map` + `power_grid` `.npz` |
 | `flow/ml/Dockerfile` | Extends `openroad/orfs:latest` with HotSpot v7.0 and Python ML packages |
 
-**Discovered:** `flow/ml/data/` contains prior pre-placement GNN experiments with netlist
+**Discovered:** `flow/util/ml/data/` contains prior pre-placement GNN experiments with netlist
 `*_graph.npz` files and `*_congestion.npy` labels for ~15 nangate45/sky130hd designs including
 larger ones (ariane133, black_parrot, mempool_group, microwatt). This data is directly usable
 for Track 1 without any new ORFS runs.
@@ -1003,28 +1003,28 @@ Data starvation in the 10–70% hotspot range is the primary blocker for model t
 1. **Collect remaining 18 thermal label files** (run overnight):
    ```bash
    cd flow && export OR_IMAGE=openroad/orfs-ml:latest
-   bash ml/congestion/data_collection/extract_thermal_batch.sh 2>&1 | tee batch_thermal.log
+   bash util/ml/congestion/data_collection/extract_thermal_batch.sh 2>&1 | tee batch_thermal.log
    ```
    Already-extracted designs (8) will be skipped. Large designs (ariane136, swerv x3, tinyRocket)
    take ~40 min each; full run will take 4–6 hours. Script now has 1-hour per-design timeout.
 
 2. **Train U-Net once 20+ samples are collected:**
    ```bash
-   cd flow && python3 ml/congestion/training/train_thermal.py \
-       --data-dir ml/congestion/data \
-       --checkpoint-dir ml/congestion/checkpoints \
+   cd flow && python3 util/ml/congestion/training/train_thermal.py \
+       --data-dir util/ml/congestion/data \
+       --checkpoint-dir util/ml/congestion/checkpoints \
        --epochs 200
    ```
-   Checkpoint saved to `ml/congestion/checkpoints/thermal_best.pt`.
+   Checkpoint saved to `util/ml/congestion/checkpoints/thermal_best.pt`.
    **Note:** normalisation is now per-sample (not global) — no `thermal_norm.json` needed.
 
 ### Short term
 
 3. **Evaluate thermal model** on held-out designs:
    ```bash
-   python3 ml/congestion/inference/predict_thermal.py \
-       --features ml/congestion/data/<label>_features.npz \
-       --checkpoint ml/congestion/checkpoints/thermal_best.pt \
+   python3 util/ml/congestion/inference/predict_thermal.py \
+       --features util/ml/congestion/data/<label>_features.npz \
+       --checkpoint util/ml/congestion/checkpoints/thermal_best.pt \
        --out predicted_thermal.npz
    ```
    Output is a relative hotspot map [0,1] — visualise with matplotlib.

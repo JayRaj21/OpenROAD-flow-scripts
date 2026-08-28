@@ -12,9 +12,9 @@ Models evaluated (if checkpoints exist):
 
 Usage:
   cd flow
-  python3 ml/congestion/inference/evaluate.py \
-      --data-dir ml/congestion/data \
-      --checkpoint-dir ml/congestion/checkpoints
+  python3 util/ml/congestion/inference/evaluate.py \
+      --data-dir util/ml/congestion/data \
+      --checkpoint-dir util/ml/congestion/checkpoints
 """
 
 import argparse
@@ -140,8 +140,8 @@ def _eval_classical(model, data_dir, grid=64):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", default="ml/congestion/data")
-    ap.add_argument("--checkpoint-dir", default="ml/congestion/checkpoints")
+    ap.add_argument("--data-dir", default="util/ml/congestion/data")
+    ap.add_argument("--checkpoint-dir", default="util/ml/congestion/checkpoints")
     ap.add_argument("--grid", type=int, default=64)
     ap.add_argument("--batch", type=int, default=4)
     args = ap.parse_args()

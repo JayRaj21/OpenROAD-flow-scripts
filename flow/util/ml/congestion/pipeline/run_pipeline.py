@@ -7,7 +7,7 @@ automatically retrying at lower utilization on FLW-0024, then
 extracts features + labels on success.
 
 Run from the flow/ directory:
-    python3 ml/congestion/pipeline/run_pipeline.py
+    python3 util/ml/congestion/pipeline/run_pipeline.py
 
 Flags:
     --stop-on-error   Pause on any unexpected failure and ask whether to skip
@@ -220,7 +220,7 @@ def extract_data(results_dir: str, out_label: str) -> bool:
         log("3_place.odb not found — skipping extraction.")
         return False
 
-    data_dir = "/work/ml/congestion/data"
+    data_dir = "/work/util/ml/congestion/data"
     graph_out = f"{data_dir}/{out_label}_graph.npz"
     feat_out = f"{data_dir}/{out_label}_features.npz"
     label_out = f"{data_dir}/{out_label}_labels.npz"
@@ -235,7 +235,7 @@ def extract_data(results_dir: str, out_label: str) -> bool:
                 "util/docker_shell",
                 "openroad",
                 "-python",
-                "/work/ml/congestion/data_collection/extract_netlist_features.py",
+                "/work/util/ml/congestion/data_collection/extract_netlist_features.py",
                 "--odb",
                 synth_odb,
                 "--out",
@@ -259,7 +259,7 @@ def extract_data(results_dir: str, out_label: str) -> bool:
             "util/docker_shell",
             "openroad",
             "-python",
-            "/work/ml/congestion/data_collection/extract_features.py",
+            "/work/util/ml/congestion/data_collection/extract_features.py",
             "--odb",
             place_odb,
             "--out",
@@ -278,7 +278,7 @@ def extract_data(results_dir: str, out_label: str) -> bool:
             "util/docker_shell",
             "openroad",
             "-python",
-            "/work/ml/congestion/data_collection/extract_labels.py",
+            "/work/util/ml/congestion/data_collection/extract_labels.py",
             "--odb",
             grt_odb,
             "--out",
@@ -297,7 +297,7 @@ def extract_data(results_dir: str, out_label: str) -> bool:
             "util/docker_shell",
             "openroad",
             "-python",
-            "/work/ml/congestion/data_collection/extract_thermal_labels.py",
+            "/work/util/ml/congestion/data_collection/extract_thermal_labels.py",
             "--odb",
             place_odb,
             "--out",

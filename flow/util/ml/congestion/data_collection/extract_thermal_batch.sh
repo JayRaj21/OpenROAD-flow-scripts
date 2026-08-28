@@ -2,8 +2,8 @@
 # Batch thermal (and placement feature) extraction from existing ORFS result dirs.
 #
 # Iterates every 3_place.odb already on disk and runs:
-#   1. extract_features.py      → ml/congestion/data/<label>_features.npz
-#   2. extract_thermal_labels.py → ml/congestion/data/<label>_thermal_labels.npz
+#   1. extract_features.py      → util/ml/congestion/data/<label>_features.npz
+#   2. extract_thermal_labels.py → util/ml/congestion/data/<label>_thermal_labels.npz
 #
 # Both extractors run inside Docker. Thermal requires openroad/orfs-ml:latest
 # (has HotSpot). Features work with the base image but we use the same image
@@ -11,7 +11,7 @@
 #
 # Usage (from flow/):
 #   export OR_IMAGE=openroad/orfs-ml:latest
-#   bash ml/congestion/data_collection/extract_thermal_batch.sh [--timeout 600] [--force]
+#   bash util/ml/congestion/data_collection/extract_thermal_batch.sh [--timeout 600] [--force]
 #
 # --force  : re-extract thermal labels even if they already exist (use after
 #            changing extract_thermal_labels.py, e.g. power model fix)
@@ -37,9 +37,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-DATA_DIR="/work/ml/congestion/data"
-FEAT_SCRIPT="/work/ml/congestion/data_collection/extract_features.py"
-THERM_SCRIPT="/work/ml/congestion/data_collection/extract_thermal_labels.py"
+DATA_DIR="/work/util/ml/congestion/data"
+FEAT_SCRIPT="/work/util/ml/congestion/data_collection/extract_features.py"
+THERM_SCRIPT="/work/util/ml/congestion/data_collection/extract_thermal_labels.py"
 
 pass=0; fail=0; skip=0
 
@@ -57,8 +57,8 @@ while IFS= read -r HOST_ODB; do
     therm_out="${DATA_DIR}/${label}_thermal_labels.npz"
 
     # Host-side skip checks (relative to flow/ where the script runs)
-    feat_host="ml/congestion/data/${label}_features.npz"
-    therm_host="ml/congestion/data/${label}_thermal_labels.npz"
+    feat_host="util/ml/congestion/data/${label}_features.npz"
+    therm_host="util/ml/congestion/data/${label}_thermal_labels.npz"
 
     echo "========================================="
     echo "Design: ${label}"

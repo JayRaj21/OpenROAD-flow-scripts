@@ -8,7 +8,7 @@
 set -euo pipefail
 
 GRID=64
-OUT_DIR="ml/congestion/data"
+OUT_DIR="util/ml/congestion/data"
 FLOW_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
@@ -44,8 +44,8 @@ for entry in "${DESIGNS[@]}"; do
     platform="${entry%/*}"
     design="${entry#*/}"
     tag="${platform}_${design}"
-    features_out="/work/ml/congestion/data/${tag}_features.npz"
-    labels_out="/work/ml/congestion/data/${tag}_labels.npz"
+    features_out="/work/util/ml/congestion/data/${tag}_features.npz"
+    labels_out="/work/util/ml/congestion/data/${tag}_labels.npz"
     config="/work/designs/${platform}/${design}/config.mk"
 
     echo "=== $tag ==="
@@ -76,7 +76,7 @@ for entry in "${DESIGNS[@]}"; do
 
     echo "  Extracting features..."
     if ! util/docker_shell openroad -python \
-            /work/ml/congestion/data_collection/extract_features.py \
+            /work/util/ml/congestion/data_collection/extract_features.py \
             --odb "$dp_odb" --out "$features_out" --grid "$GRID"; then
         echo "  FAIL — feature extraction"
         (( fail++ )) || true
@@ -85,7 +85,7 @@ for entry in "${DESIGNS[@]}"; do
 
     echo "  Extracting labels..."
     if ! util/docker_shell openroad -python \
-            /work/ml/congestion/data_collection/extract_labels.py \
+            /work/util/ml/congestion/data_collection/extract_labels.py \
             --odb "$grt_odb" --out "$labels_out" --grid "$GRID"; then
         echo "  FAIL — label extraction"
         (( fail++ )) || true

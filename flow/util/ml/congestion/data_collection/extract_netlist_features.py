@@ -38,7 +38,7 @@ Output (*_graph.npz):
 Run inside Docker via util/docker_shell:
   openroad -python extract_netlist_features.py \\
       --odb  <results_dir>/1_synth.odb \\
-      --out  /work/ml/congestion/data/<label>_graph.npz \\
+      --out  /work/util/ml/congestion/data/<label>_graph.npz \\
       [--fanout-cap 100]
 """
 

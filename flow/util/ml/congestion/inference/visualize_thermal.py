@@ -3,9 +3,9 @@ Generate a self-contained HTML report comparing predicted vs ground-truth
 thermal maps for every design in the data directory.
 
 Usage (from flow/):
-  python3 ml/congestion/inference/visualize_thermal.py \\
-      --data-dir   ml/congestion/data \\
-      --checkpoint ml/congestion/checkpoints/thermal_best.pt \\
+  python3 util/ml/congestion/inference/visualize_thermal.py \\
+      --data-dir   util/ml/congestion/data \\
+      --checkpoint util/ml/congestion/checkpoints/thermal_best.pt \\
       --out        thermal_report.html
 
 Open the output file in any browser — no server needed.
@@ -35,8 +35,8 @@ def _parse_args():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--data-dir", default="ml/congestion/data")
-    ap.add_argument("--checkpoint", default="ml/congestion/checkpoints/thermal_best.pt")
+    ap.add_argument("--data-dir", default="util/ml/congestion/data")
+    ap.add_argument("--checkpoint", default="util/ml/congestion/checkpoints/thermal_best.pt")
     ap.add_argument("--out", default="thermal_report.html")
     ap.add_argument("--base-features", type=int, default=32)
     return ap.parse_args()
