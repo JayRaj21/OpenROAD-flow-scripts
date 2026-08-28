@@ -236,6 +236,21 @@ values to the earlier manual per-design runs (asap7 0.77V/103.68mV,
 nangate45 1.1V, sky130hd 1.8V/0.41mV) — confirms the generic resolution
 path is correct, not just non-crashing.
 
+**Hardening — contained the `make print-X` call and gated it behind the
+skip-check:** review of the fix above found two follow-on issues, both
+fixed in the same commit set. First, the `make print-LIB_FILES
+print-PWR_NETS_VOLTAGES` call was a bare assignment under `set -euo
+pipefail`, so any `make` failure (not just an empty `LIB_FILES`) would
+abort the whole batch instead of skipping just that design — wrapped in
+`if ! make_out=...; then skip; continue; fi` like every other per-design
+step. Second, the call ran unconditionally per design even when
+`irdrop_host` already existed and `--force` was not passed, spinning up a
+docker container just to resolve liberty/voltage for a design that was
+going to be skipped anyway — moved inside the `irdrop_host` skip-check's
+`else` branch so it only runs when extraction will actually happen.
+Re-verified: `bash -n` passes, and re-running without `--force` against
+all 6 designs now skips instantly with zero docker/make invocations.
+
 Real cross-PDK IR-drop magnitudes (worst-case), physically sensible:
 nangate45 gcd 0.53mV / dynamic_node 1.01mV / aes 4.99mV / ibex 3.06mV;
 sky130hd gcd 0.41mV (thick PDN, high 1.8V supply); asap7 gcd **103.68mV**
