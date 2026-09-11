@@ -86,21 +86,50 @@ def find_multicorner_reports(reports_dir, stage):
 
 
 def default_stage(reports_dir):
-    """Pick the stage with the highest numeric prefix among available multicorner files."""
+    """Pick the stage with the highest numeric prefix among available multicorner files.
+
+    Stage labels are collected into a list (not a set) and sorted by a fully
+    deterministic key -- numeric prefix, then the full string alphabetically
+    -- so the result never depends on set iteration / hash order (and thus
+    not on PYTHONHASHSEED). When two or more stage labels share the same
+    numeric prefix, this is treated as an ambiguous tie: it is broken by
+    picking the label whose report files were most recently modified, and a
+    warning is printed to stderr since it likely indicates stale reports
+    left over from a prior run with a different REPORT_MULTICORNER_WHEN.
+    """
     pattern = os.path.join(reports_dir, "*multicorner_*.rpt")
-    stages = set()
+    stage_mtimes = {}
     for path in glob.glob(pattern):
         m = MULTICORNER_RE.match(os.path.basename(path))
-        if m:
-            stages.add(m.group("stage"))
-    if not stages:
+        if not m:
+            continue
+        stage = m.group("stage")
+        mtime = os.path.getmtime(path)
+        if stage not in stage_mtimes or mtime > stage_mtimes[stage]:
+            stage_mtimes[stage] = mtime
+    if not stage_mtimes:
         return None
 
-    def sort_key(s):
+    def numeric_prefix(s):
         m = re.match(r"(\d+)", s)
         return int(m.group(1)) if m else -1
 
-    return sorted(stages, key=sort_key)[-1]
+    stages = sorted(stage_mtimes.keys(), key=lambda s: (numeric_prefix(s), s))
+
+    highest_prefix = numeric_prefix(stages[-1])
+    tied = [s for s in stages if numeric_prefix(s) == highest_prefix]
+    if len(tied) > 1:
+        chosen = max(tied, key=lambda s: (stage_mtimes[s], s))
+        print(
+            f"Warning: multiple multi-corner stage labels share numeric prefix "
+            f"{highest_prefix} ({', '.join(sorted(tied))}) -- possibly stale "
+            f"reports from a prior run. Picking '{chosen}' (most recently "
+            "modified).",
+            file=sys.stderr,
+        )
+        return chosen
+
+    return stages[-1]
 
 
 def collect_per_corner(reports_dir, stage):

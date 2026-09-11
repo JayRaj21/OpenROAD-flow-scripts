@@ -124,6 +124,76 @@ class TestParsing(unittest.TestCase):
     def test_default_stage_none_when_no_reports(self):
         self.assertIsNone(default_stage(self.tmpdir))
 
+    def test_default_stage_tie_on_numeric_prefix_is_deterministic(self):
+        """Two stage labels sharing the numeric prefix "4" used to be stored
+        in a `set` and broken by hash-randomized iteration order (varies with
+        PYTHONHASHSEED). default_stage() must now pick the same answer every
+        time regardless of hash seed -- verified here both by running the
+        selection many times in-process (proving it does not depend on
+        Python's per-run randomized set/str hash salt within calls that
+        rebuild the set each time) and by re-invoking this exact test in a
+        subprocess under several different PYTHONHASHSEED values.
+        """
+        # "4_cts_final" is written after "4_cts_pre-repair-timing", so by the
+        # mtime tie-break it should always win.
+        self._write(
+            "4_cts_pre-repair-timing_multicorner_tt.rpt",
+            _rpt_text("tt", -1.0, -0.5, -0.5),
+        )
+        self._write("4_cts_final_multicorner_tt.rpt", _rpt_text("tt", -1.0, -0.5, -0.5))
+
+        results = {default_stage(self.tmpdir) for _ in range(50)}
+        self.assertEqual(
+            results,
+            {"4_cts_final"},
+            "default_stage() returned different answers across repeated calls "
+            "with identical inputs",
+        )
+
+    def test_default_stage_tie_deterministic_across_pythonhashseed(self):
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "multicorner_dashboard.py")
+        picks = set()
+        for seed in ("0", "1", "42"):
+            env = dict(os.environ, PYTHONHASHSEED=seed)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; sys.path.insert(0, %r); "
+                        "from multicorner_dashboard import default_stage; "
+                        "print(default_stage(%r))"
+                    )
+                    % (os.path.dirname(script), self.tmpdir),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            picks.add(proc.stdout.strip())
+        self.assertEqual(
+            len(picks),
+            1,
+            f"default_stage() picked different stages across PYTHONHASHSEED values: {picks}",
+        )
+
+    def test_default_stage_tie_warns_on_stderr(self):
+        self._write(
+            "4_cts_pre-repair-timing_multicorner_tt.rpt",
+            _rpt_text("tt", -1.0, -0.5, -0.5),
+        )
+        self._write("4_cts_final_multicorner_tt.rpt", _rpt_text("tt", -1.0, -0.5, -0.5))
+
+        old_stderr = sys.stderr
+        sys.stderr = captured = __import__("io").StringIO()
+        try:
+            default_stage(self.tmpdir)
+        finally:
+            sys.stderr = old_stderr
+        self.assertIn("Warning", captured.getvalue())
+
     def test_collect_per_corner_uses_pr_metrics_parse_rpt(self):
         self._write(
             "4_cts_final_multicorner_tt.rpt",
@@ -319,6 +389,79 @@ puts "OK"
             self.assertAlmostEqual(data["tt"]["clock_skew"], -0.100)
             self.assertAlmostEqual(data["ss"]["clock_skew"], -0.300)
             self.assertEqual(worst_corner(data, "wns"), "ss")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_two_hook_sourcings_in_one_session_do_not_cross_contaminate(self):
+        """POST_CTS_TCL and POST_GLOBAL_ROUTE_TCL can be wired to this same
+        file with REPORT_MULTICORNER_STAGE/WHEN left unset (both are
+        process-global env vars, so a single `export` cannot label the two
+        hook points differently). Source the script twice in the same
+        interpreter, as those two hooks would, with the underlying timing
+        data changed in between, and confirm the first (CTS) invocation's
+        report file survives untouched and unmislabeled once the second
+        (global-route) invocation runs, instead of being truncated /
+        overwritten under the same label."""
+        tclsh = shutil.which("tclsh")
+        if not tclsh:
+            self.skipTest("tclsh not available")
+
+        script = os.path.join(
+            REPO_ROOT, "flow", "scripts", "report_multicorner_timing.tcl"
+        )
+        tmpdir = tempfile.mkdtemp()
+        try:
+            tcl_input = f"""
+proc env_var_exists_and_non_empty {{env_var}} {{
+  return [expr {{[info exists ::env($env_var)] && $::env($env_var) ne ""}}]
+}}
+
+namespace eval sta {{
+  proc find_scene {{name}} {{
+    if {{[info exists ::TNS_BY_CORNER($name)]}} {{
+      return $name
+    }}
+    return "NULL"
+  }}
+  proc total_negative_slack_scene_cmd {{scene min_max}} {{
+    return $::TNS_BY_CORNER($scene)
+  }}
+  proc worst_slack_scene {{scene min_max}} {{
+    return $::WS_BY_CORNER($scene)
+  }}
+  proc format_time {{val digits}} {{
+    return [format "%.4f" $val]
+  }}
+}}
+
+set ::env(CORNERS) {{tt ss}}
+set ::env(REPORTS_DIR) {{{tmpdir}}}
+set ::env(REPORT_MULTICORNER_TIMING) 1
+
+array set ::TNS_BY_CORNER {{tt -5.0 ss -20.0}}
+array set ::WS_BY_CORNER {{tt -1.2 ss -3.5}}
+source "{script}"
+
+array set ::TNS_BY_CORNER {{tt -1.0 ss -2.0}}
+array set ::WS_BY_CORNER {{tt -0.5 ss -0.6}}
+source "{script}"
+
+puts "OK"
+"""
+            proc = subprocess.run(
+                [tclsh], input=tcl_input, capture_output=True, text=True, timeout=10
+            )
+            self.assertIn("OK", proc.stdout, msg=f"stderr: {proc.stderr}")
+
+            cts_path = os.path.join(tmpdir, "4_cts_final_multicorner_tt.rpt")
+            grt_path = os.path.join(tmpdir, "5_global_route_multicorner_tt.rpt")
+            self.assertTrue(os.path.isfile(cts_path), os.listdir(tmpdir))
+            self.assertTrue(os.path.isfile(grt_path), os.listdir(tmpdir))
+
+            cts_data = collect_per_corner(tmpdir, "4_cts_final")
+            grt_data = collect_per_corner(tmpdir, "5_global_route")
+            self.assertAlmostEqual(cts_data["tt"]["tns"], -5.0)
+            self.assertAlmostEqual(grt_data["tt"]["tns"], -1.0)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 

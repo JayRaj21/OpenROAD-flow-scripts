@@ -779,6 +779,73 @@ the hook mechanism.
 
 ---
 
+### 2026-09-11 — Fix two MEDIUM findings from independent validator review
+
+**Context:** an independent validator agent reproduced two MEDIUM-severity bugs
+end-to-end against the real OpenSTA source at the pinned `tools/OpenROAD`
+submodule commit (`509913b1398b36eda23caa1f1f380167465dceee`). No HIGHs were
+found on this branch; LOW-severity items were left alone per scope.
+
+**Finding 1 — nondeterministic `default_stage()` on a numeric-prefix tie
+(`flow/util/multicorner_dashboard.py`):** `default_stage()` collected stage
+labels into a `set` and broke ties on `sort_key` (numeric prefix only), so
+two labels sharing a prefix (e.g. `4_cts_final` vs.
+`4_cts_pre-repair-timing`, both left on disk because `REPORTS_DIR` is only
+swept by `make clean_cts`, not between incremental re-runs with a changed
+`REPORT_MULTICORNER_WHEN`) resolved by Python's hash-randomized set iteration
+order — i.e. by `PYTHONHASHSEED`. Same inputs, different dashboard on every
+invocation.
+
+**Fix:** `default_stage()` now builds a `{stage: max_mtime}` dict (not a set),
+sorts candidates by `(numeric_prefix, full_string)` — a fully deterministic
+key independent of hash order — and, when multiple labels still tie on the
+same numeric prefix, breaks the tie by picking the most-recently-modified
+one and prints a warning to stderr flagging that stale reports may be
+present.
+
+**Finding 2 — cross-invocation label/data stomping
+(`flow/scripts/report_multicorner_timing.tcl`):** the proc itself already
+took explicit `stage`/`when` arguments, so direct calls were never the
+problem. The bug was in the bottom "wired as a hook" block: it derived
+`stage`/`when` from `REPORT_MULTICORNER_STAGE`/`REPORT_MULTICORNER_WHEN`,
+which are Make/env variables — process-global for the whole flow run. Wiring
+this same file to both `POST_CTS_TCL` and `POST_GLOBAL_ROUTE_TCL` (as the
+file's own header comment suggested was supported) sources it twice in one
+interpreter with a single `export` visible to both sourcings, so the second
+invocation reused the first's label, truncating (`open $filename w`) and
+overwriting the first invocation's report under a now-mislabeled name.
+
+**Fix:** the hook-wiring block now tracks `::report_multicorner_invocation_num`
+and `::report_multicorner_seen_stages` — Tcl globals that persist across
+re-sourcing within the same interpreter (never `unset`) — so each successive
+sourcing in one session gets a distinct default label (`4`/"cts final", then
+`5`/"global route", ...), and an explicit env override that collides with a
+stage already seen earlier in the session is detected, warned about on
+stderr, and auto-adjusted instead of silently overwriting. Separately,
+inside `report_multicorner_timing` itself, the per-corner `open $filename w`
+truncate-and-create is now ordered *after* the `sta::find_scene` validity
+check (previously it ran first), so an unknown corner no longer leaves a
+0-byte file behind — a one-line reordering that incidentally also closes the
+related LOW-severity finding, per the plan's guidance to take that fix since
+it was free.
+
+**Tests (`flow/util/test_multicorner_dashboard.py`):** added
+`test_default_stage_tie_on_numeric_prefix_is_deterministic`,
+`test_default_stage_tie_deterministic_across_pythonhashseed` (re-invokes
+`default_stage()` in subprocesses under `PYTHONHASHSEED=0,1,42` and asserts
+identical output), and `test_default_stage_tie_warns_on_stderr`; plus
+`test_two_hook_sourcings_in_one_session_do_not_cross_contaminate`, which
+sources `report_multicorner_timing.tcl` twice in one `tclsh` process with the
+underlying timing data changed in between (mirroring `POST_CTS_TCL` =
+`POST_GLOBAL_ROUTE_TCL`) and asserts both `4_cts_final_multicorner_tt.rpt`
+and `5_global_route_multicorner_tt.rpt` exist with their own, uncontaminated
+data.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
+22 passed (was 18).
+
+---
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓
