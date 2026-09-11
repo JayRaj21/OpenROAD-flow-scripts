@@ -1,6 +1,10 @@
-# report_multicorner_timing.tcl
+# multicorner_timing_common.tcl
 #
-# Additive, opt-in per-corner timing breakdown.
+# Additive, opt-in per-corner timing breakdown. Shared implementation for
+# report_multicorner_timing_cts.tcl / report_multicorner_timing_grt.tcl,
+# which each supply a hardcoded stage/when identity and source this file
+# (same split-file convention as timing_repair_common.tcl /
+# post_cts_timing_repair.tcl / post_grt_timing_repair.tcl).
 #
 # report_metrics.tcl already loops $::env(CORNERS) for report_power (see
 # its "report_power" section), but report_tns / report_wns /
@@ -67,18 +71,16 @@
 #   1. HOOK_PATHS / CONFIG_HOOK_PATHS mechanism (see post_cts_timing_repair.tcl
 #      for the pattern). Add to a design config.mk:
 #        export REPORT_MULTICORNER_TIMING = 1
-#        export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing.tcl
-#      Optionally set REPORT_MULTICORNER_STAGE / REPORT_MULTICORNER_WHEN to
-#      label the output files (defaults below are tuned for POST_CTS_TCL:
-#      stage "4", when "cts final"). The same file can also be wired to
-#      POST_GLOBAL_ROUTE_TCL in the same run -- since REPORT_MULTICORNER_STAGE/
-#      WHEN are process-global env vars, a single `export` cannot give the two
-#      hook points different labels, so the second sourcing in a given
-#      interpreter session automatically falls back to the next default
-#      ("5" / "global route") instead of reusing the first invocation's label.
+#        export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_cts.tcl
+#        export POST_GLOBAL_ROUTE_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_grt.tcl
+#      Each wrapper hardcodes its own stage/when label -- no env var is
+#      needed to disambiguate POST_CTS_TCL from POST_GLOBAL_ROUTE_TCL,
+#      since cts.tcl and global_route.tcl each run in a separate OpenROAD
+#      process (see flow/util/loop_agent.py / the flow Makefile), so there
+#      is no shared interpreter state to worry about.
 #
 #   2. Direct call from a Tcl console or another script, after sourcing:
-#        source $::env(SCRIPTS_DIR)/report_multicorner_timing.tcl
+#        source $::env(SCRIPTS_DIR)/multicorner_timing_common.tcl
 #        report_multicorner_timing 6 "finish"
 #      (this still requires REPORT_MULTICORNER_TIMING to be set to run).
 #
@@ -159,67 +161,4 @@ proc report_multicorner_timing { stage when } {
     }
   }
   unset corner
-}
-
-# When wired directly as a HOOK_PATHS entry (POST_CTS_TCL /
-# POST_GLOBAL_ROUTE_TCL), this file is only `source`d -- there is no call
-# site available to pass stage/when, so pull them from env with defaults
-# tuned for the post-CTS hook point and invoke immediately.
-#
-# REPORT_MULTICORNER_STAGE / REPORT_MULTICORNER_WHEN are Make/env variables,
-# i.e. process-global for the whole flow run -- they cannot hold two
-# different values if this same file is wired to both POST_CTS_TCL and
-# POST_GLOBAL_ROUTE_TCL (a single `export` in config.mk is seen by both
-# sourcings). Relying on them alone would silently reuse the same label
-# for both hook points, truncating the first invocation's report file and
-# mislabeling it with the second invocation's data.
-#
-# ::report_multicorner_invocation_num and ::report_multicorner_seen_stages
-# persist across re-sourcing within the same interpreter (they are only
-# set, never unset), so each successive invocation in one session gets a
-# distinct default label, and an explicit env override that collides with
-# a stage already used earlier in the session is detected and bumped
-# instead of silently overwriting the earlier invocation's file.
-if { [report_multicorner_timing_enabled] } {
-  if { ![info exists ::report_multicorner_invocation_num] } {
-    set ::report_multicorner_invocation_num 0
-  }
-  if { ![info exists ::report_multicorner_seen_stages] } {
-    set ::report_multicorner_seen_stages {}
-  }
-
-  set report_multicorner_defaults {
-    {4 "cts final"}
-    {5 "global route"}
-  }
-
-  if { $::report_multicorner_invocation_num < [llength $report_multicorner_defaults] } {
-    lassign [lindex $report_multicorner_defaults $::report_multicorner_invocation_num] \
-      report_multicorner_stage report_multicorner_when
-  } else {
-    set report_multicorner_stage [expr {4 + $::report_multicorner_invocation_num}]
-    set report_multicorner_when "stage_$::report_multicorner_invocation_num"
-  }
-
-  if { [info exists ::env(REPORT_MULTICORNER_STAGE)] && $::env(REPORT_MULTICORNER_STAGE) ne "" } {
-    set report_multicorner_stage $::env(REPORT_MULTICORNER_STAGE)
-  }
-  if { [info exists ::env(REPORT_MULTICORNER_WHEN)] && $::env(REPORT_MULTICORNER_WHEN) ne "" } {
-    set report_multicorner_when $::env(REPORT_MULTICORNER_WHEN)
-  }
-
-  if { [lsearch -exact $::report_multicorner_seen_stages $report_multicorner_stage] >= 0 } {
-    puts stderr "Warning: report_multicorner_timing: stage '$report_multicorner_stage' was\
-        already reported earlier in this session (REPORT_MULTICORNER_STAGE/WHEN are\
-        process-global and cannot distinguish POST_CTS_TCL from POST_GLOBAL_ROUTE_TCL) --\
-        auto-adjusting the label to avoid overwriting the earlier invocation's report."
-    set report_multicorner_stage [expr {int($report_multicorner_stage) + $::report_multicorner_invocation_num}]
-    append report_multicorner_when "_$::report_multicorner_invocation_num"
-  }
-
-  lappend ::report_multicorner_seen_stages $report_multicorner_stage
-  incr ::report_multicorner_invocation_num
-
-  report_multicorner_timing $report_multicorner_stage $report_multicorner_when
-  unset report_multicorner_stage report_multicorner_when report_multicorner_defaults
 }

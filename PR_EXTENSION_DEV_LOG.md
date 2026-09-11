@@ -752,7 +752,12 @@ upstream `master` blindly:
 mechanism (same pattern as `post_cts_timing_repair.tcl`) rather than a direct
 call site inside a stage script, so `report_metrics.tcl` and every stage
 script (`cts.tcl`, `global_route.tcl`, `final_outputs.tcl`, etc.) stay
-completely untouched — zero risk of regressing existing runs. A design wires
+completely untouched — zero risk of regressing existing runs. **(Superseded
+2026-09-11, see below: wire `POST_CTS_TCL` to
+`report_multicorner_timing_cts.tcl` and `POST_GLOBAL_ROUTE_TCL` to
+`report_multicorner_timing_grt.tcl`, not the same file for both — the
+`REPORT_MULTICORNER_STAGE`/`REPORT_MULTICORNER_WHEN` env-var-based labelling
+described in this paragraph was removed.)** A design wires
 it in via e.g. `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing.tcl`
 plus `export REPORT_MULTICORNER_TIMING = 1`. Since a hook is only `source`d
 (no call-site args), the script reads optional `REPORT_MULTICORNER_STAGE`/
@@ -843,6 +848,96 @@ data.
 
 **Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
 22 passed (was 18).
+
+---
+
+### 2026-09-11 — Round 2: the Finding-2 fix above was wrong; split into
+### per-stage hook files instead of in-process counters
+
+**Context:** the Finding 2 fix above (`::report_multicorner_invocation_num` /
+`::report_multicorner_seen_stages` Tcl globals persisting across re-sourcing
+"within the same interpreter") rested on an unverified assumption: that
+`POST_CTS_TCL` and `POST_GLOBAL_ROUTE_TCL`, when wired to the same file,
+source it twice in *one* interpreter session. Checking the actual ORFS
+Makefile / `flow.sh` shows this is false — `cts.tcl` and `global_route.tcl`
+each run as a **separate, fresh OpenROAD process**. So the counter/seen-set
+globals reset to empty on every hook firing and always pick the same
+first-slot default (`4`/"cts final") regardless of which hook actually
+fired. The round-1 fix did nothing; the original bug — a `POST_GLOBAL_ROUTE_TCL`
+firing silently overwriting the CTS report under a mislabeled `4_cts_final`
+name — was exactly as broken as before, and the header comment's claim of
+automatic same-interpreter handling was false.
+
+**Root cause:** there is no reliable way for a single hook file to
+introspect "what stage am I in" from a fresh process — no exposed getter
+for the current stage name, no argv/env variable carries it, and a
+Make-target-specific export can't work in single-process `flow.tcl`/
+bazel-orfs mode either. The only correct fix is to give each hook point its
+own file with a hardcoded identity, exactly like the existing
+`post_cts_timing_repair.tcl` / `post_grt_timing_repair.tcl` split (which
+share `timing_repair_common.tcl`).
+
+**Fix:**
+- **New file `flow/scripts/multicorner_timing_common.tcl`** — the actual
+  reporting logic (`report_multicorner_timing_enabled`, and
+  `report_multicorner_timing { stage when }` with its corner-iteration /
+  report-writing body), unchanged except the header comment's wiring
+  section and the removal of the false same-interpreter-fallback claim.
+- **New file `flow/scripts/report_multicorner_timing_cts.tcl`** — sources
+  `multicorner_timing_common.tcl`, then calls
+  `report_multicorner_timing 4 "cts final"` (the actual pre-existing
+  default for the CTS hook). Wired via
+  `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_cts.tcl`.
+- **New file `flow/scripts/report_multicorner_timing_grt.tcl`** — sources
+  `multicorner_timing_common.tcl`, then calls
+  `report_multicorner_timing 5 "global route"` (the actual pre-existing
+  default for the GRT hook). Wired via
+  `export POST_GLOBAL_ROUTE_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_grt.tcl`.
+- **Removed** `flow/scripts/report_multicorner_timing.tcl` entirely, along
+  with the `::report_multicorner_invocation_num` /
+  `::report_multicorner_seen_stages` global-tracking code and the
+  `REPORT_MULTICORNER_STAGE` / `REPORT_MULTICORNER_WHEN` env-var-based
+  label-guessing block — all dead weight once each hook file has a
+  hardcoded identity. `report_multicorner_timing { stage when }` itself
+  (the part that always took explicit arguments) is untouched.
+- Since each hook point is now a distinct file/process by construction,
+  the "two hooks in one interpreter session" scenario the header comment
+  used to warn about can no longer occur, so that warning was deleted
+  rather than reworded.
+- `flow/util/multicorner_dashboard.py`'s module docstring updated to
+  reference `multicorner_timing_common.tcl` /
+  `report_multicorner_timing_cts.tcl` / `report_multicorner_timing_grt.tcl`
+  instead of the removed single file. No functional change to
+  `multicorner_dashboard.py` — the round-1 `default_stage()` tie-break fix
+  and the `open`-after-`find_scene` reordering are untouched.
+
+**Tests (`flow/util/test_multicorner_dashboard.py`):**
+- `test_two_hook_sourcings_in_one_session_do_not_cross_contaminate` removed
+  — it tested an artificial single-interpreter double-sourcing scenario
+  that does not match ORFS's real per-stage-process model, so it validated
+  nothing about the actual bug.
+- Replaced with
+  `test_cts_and_grt_wrappers_in_separate_processes_do_not_collide`, which
+  runs `report_multicorner_timing_cts.tcl` and
+  `report_multicorner_timing_grt.tcl` in two **separate** `tclsh`
+  subprocess invocations (matching the real two-process ORFS model), each
+  with its own stubbed `sta::*` data, and asserts both produce correctly
+  labelled (`4_cts_final_multicorner_tt.rpt` / `5_global_route_multicorner_tt.rpt`),
+  non-colliding, independently-correct output files.
+- `test_tcl_script_is_syntactically_valid` split into
+  `test_common_script_is_syntactically_valid`,
+  `test_cts_wrapper_is_syntactically_valid`, and
+  `test_grt_wrapper_is_syntactically_valid`, one per new file.
+- `test_proc_report_multicorner_timing_drives_two_corner_branch` and
+  `test_proc_report_multicorner_timing_is_noop_for_single_corner` now
+  source `multicorner_timing_common.tcl` (still calling
+  `report_multicorner_timing` directly with explicit stage/when args, which
+  was always correct) instead of the removed single file.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
+24 passed (was 22; removed 1 artificial test, added 3: the two-process
+collision test plus per-file syntax checks for the common lib and each
+wrapper).
 
 ---
 

@@ -22,7 +22,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 
 
 def _rpt_text(corner, tns, wns, worst_slack, skews=None):
-    """Build a fixture matching report_multicorner_timing.tcl's real output:
+    """Build a fixture matching multicorner_timing_common.tcl's real output:
     tns/wns/worst_slack lines it writes itself, plus report_clock_skew's own
     native per-clock "<value> setup|hold skew" lines (search/ClkSkew.cc),
     not an invented "Worst skew" summary line.
@@ -151,7 +151,9 @@ class TestParsing(unittest.TestCase):
         )
 
     def test_default_stage_tie_deterministic_across_pythonhashseed(self):
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "multicorner_dashboard.py")
+        script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "multicorner_dashboard.py"
+        )
         picks = set()
         for seed in ("0", "1", "42"):
             env = dict(os.environ, PYTHONHASHSEED=seed)
@@ -269,16 +271,14 @@ class TestBuildTable(unittest.TestCase):
 
 
 class TestTclSyntax(unittest.TestCase):
-    """report_multicorner_timing.tcl parses as valid Tcl (behavior, not just text)."""
+    """multicorner_timing_common.tcl and its two hook wrappers parse as valid
+    Tcl (behavior, not just text)."""
 
-    def test_tcl_script_is_syntactically_valid(self):
+    def _assert_no_syntax_errors(self, script):
         tclsh = shutil.which("tclsh")
         if not tclsh:
             self.skipTest("tclsh not available")
 
-        script = os.path.join(
-            REPO_ROOT, "flow", "scripts", "report_multicorner_timing.tcl"
-        )
         self.assertTrue(os.path.isfile(script))
 
         proc = subprocess.run(
@@ -301,6 +301,25 @@ class TestTclSyntax(unittest.TestCase):
                 f"Tcl syntax error detected: {proc.stderr}",
             )
 
+    def test_common_script_is_syntactically_valid(self):
+        self._assert_no_syntax_errors(
+            os.path.join(REPO_ROOT, "flow", "scripts", "multicorner_timing_common.tcl")
+        )
+
+    def test_cts_wrapper_is_syntactically_valid(self):
+        self._assert_no_syntax_errors(
+            os.path.join(
+                REPO_ROOT, "flow", "scripts", "report_multicorner_timing_cts.tcl"
+            )
+        )
+
+    def test_grt_wrapper_is_syntactically_valid(self):
+        self._assert_no_syntax_errors(
+            os.path.join(
+                REPO_ROOT, "flow", "scripts", "report_multicorner_timing_grt.tcl"
+            )
+        )
+
     def test_proc_report_multicorner_timing_drives_two_corner_branch(self):
         """Exercise the actual 2+-corner code path (the one Finding 1 found
         crashing) by stubbing the real, verified OpenSTA SWIG commands the
@@ -312,7 +331,7 @@ class TestTclSyntax(unittest.TestCase):
             self.skipTest("tclsh not available")
 
         script = os.path.join(
-            REPO_ROOT, "flow", "scripts", "report_multicorner_timing.tcl"
+            REPO_ROOT, "flow", "scripts", "multicorner_timing_common.tcl"
         )
         tmpdir = tempfile.mkdtemp()
         try:
@@ -392,31 +411,37 @@ puts "OK"
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def test_two_hook_sourcings_in_one_session_do_not_cross_contaminate(self):
-        """POST_CTS_TCL and POST_GLOBAL_ROUTE_TCL can be wired to this same
-        file with REPORT_MULTICORNER_STAGE/WHEN left unset (both are
-        process-global env vars, so a single `export` cannot label the two
-        hook points differently). Source the script twice in the same
-        interpreter, as those two hooks would, with the underlying timing
-        data changed in between, and confirm the first (CTS) invocation's
-        report file survives untouched and unmislabeled once the second
-        (global-route) invocation runs, instead of being truncated /
-        overwritten under the same label."""
+    def test_cts_and_grt_wrappers_in_separate_processes_do_not_collide(self):
+        """POST_CTS_TCL and POST_GLOBAL_ROUTE_TCL are wired to the two
+        separate wrapper files, each run in its own OpenROAD process (the
+        real ORFS model: cts.tcl and global_route.tcl each start a fresh
+        interpreter -- see the Makefile/flow.sh). Run
+        report_multicorner_timing_cts.tcl and report_multicorner_timing_grt.tcl
+        in two separate `tclsh` subprocesses, with different underlying
+        timing data, and confirm each produces its own correctly-labelled,
+        non-colliding output files."""
         tclsh = shutil.which("tclsh")
         if not tclsh:
             self.skipTest("tclsh not available")
 
-        script = os.path.join(
-            REPO_ROOT, "flow", "scripts", "report_multicorner_timing.tcl"
+        cts_script = os.path.join(
+            REPO_ROOT, "flow", "scripts", "report_multicorner_timing_cts.tcl"
+        )
+        grt_script = os.path.join(
+            REPO_ROOT, "flow", "scripts", "report_multicorner_timing_grt.tcl"
         )
         tmpdir = tempfile.mkdtemp()
-        try:
-            tcl_input = f"""
+
+        def _stub_preamble(tns_by_corner, ws_by_corner):
+            return f"""
 proc env_var_exists_and_non_empty {{env_var}} {{
   return [expr {{[info exists ::env($env_var)] && $::env($env_var) ne ""}}]
 }}
 
 namespace eval sta {{
+  array set ::TNS_BY_CORNER {{{tns_by_corner}}}
+  array set ::WS_BY_CORNER {{{ws_by_corner}}}
+
   proc find_scene {{name}} {{
     if {{[info exists ::TNS_BY_CORNER($name)]}} {{
       return $name
@@ -437,21 +462,26 @@ namespace eval sta {{
 set ::env(CORNERS) {{tt ss}}
 set ::env(REPORTS_DIR) {{{tmpdir}}}
 set ::env(REPORT_MULTICORNER_TIMING) 1
-
-array set ::TNS_BY_CORNER {{tt -5.0 ss -20.0}}
-array set ::WS_BY_CORNER {{tt -1.2 ss -3.5}}
-source "{script}"
-
-array set ::TNS_BY_CORNER {{tt -1.0 ss -2.0}}
-array set ::WS_BY_CORNER {{tt -0.5 ss -0.6}}
-source "{script}"
-
-puts "OK"
 """
-            proc = subprocess.run(
-                [tclsh], input=tcl_input, capture_output=True, text=True, timeout=10
+
+        try:
+            cts_input = (
+                _stub_preamble("tt -5.0 ss -20.0", "tt -1.2 ss -3.5")
+                + f'source "{cts_script}"\nputs "OK"\n'
             )
-            self.assertIn("OK", proc.stdout, msg=f"stderr: {proc.stderr}")
+            cts_proc = subprocess.run(
+                [tclsh], input=cts_input, capture_output=True, text=True, timeout=10
+            )
+            self.assertIn("OK", cts_proc.stdout, msg=f"stderr: {cts_proc.stderr}")
+
+            grt_input = (
+                _stub_preamble("tt -1.0 ss -2.0", "tt -0.5 ss -0.6")
+                + f'source "{grt_script}"\nputs "OK"\n'
+            )
+            grt_proc = subprocess.run(
+                [tclsh], input=grt_input, capture_output=True, text=True, timeout=10
+            )
+            self.assertIn("OK", grt_proc.stdout, msg=f"stderr: {grt_proc.stderr}")
 
             cts_path = os.path.join(tmpdir, "4_cts_final_multicorner_tt.rpt")
             grt_path = os.path.join(tmpdir, "5_global_route_multicorner_tt.rpt")
@@ -471,7 +501,7 @@ puts "OK"
             self.skipTest("tclsh not available")
 
         script = os.path.join(
-            REPO_ROOT, "flow", "scripts", "report_multicorner_timing.tcl"
+            REPO_ROOT, "flow", "scripts", "multicorner_timing_common.tcl"
         )
         tmpdir = tempfile.mkdtemp()
         try:

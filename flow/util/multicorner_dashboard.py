@@ -3,8 +3,9 @@
 Multi-corner / multi-mode timing dashboard.
 
 Builds on flow/util/pr_metrics.py and ORFS's multi-corner STA support
-(flow/scripts/read_liberty.tcl, flow/scripts/report_multicorner_timing.tcl).
-report_multicorner_timing.tcl writes one <stage>_<when>_multicorner_<corner>.rpt
+(flow/scripts/read_liberty.tcl, flow/scripts/multicorner_timing_common.tcl,
+sourced by report_multicorner_timing_cts.tcl / report_multicorner_timing_grt.tcl).
+Those write one <stage>_<when>_multicorner_<corner>.rpt
 file per corner when REPORT_MULTICORNER_TIMING is set and CORNERS has more
 than one entry; this script finds those files for a given stage, parses
 each with pr_metrics.parse_rpt(), and prints a per-corner comparison table
