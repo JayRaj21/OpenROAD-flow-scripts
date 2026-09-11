@@ -76,22 +76,61 @@ def append_record(path, record):
 
 
 def load_records(path):
+    """Return (records, dropped_last_line).
+
+    dropped_last_line is True if the most recent physical line in the file
+    was corrupt/malformed and had to be skipped — callers that compare the
+    latest record against history must treat that as unsafe to report on,
+    since the "latest" record would silently become a stale one.
+    """
     records = []
+    dropped_last_line = False
     if not os.path.isfile(path):
-        return records
+        return records, dropped_last_line
+
     with open(path) as f:
-        for lineno, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                print(
-                    f"WARNING: skipping corrupt history line {lineno} in {path}: {e}",
-                    file=sys.stderr,
-                )
-    return records
+        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+        try:
+            lines = f.readlines()
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+    total_lines = len(lines)
+    for lineno, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError as e:
+            print(
+                f"WARNING: skipping corrupt history line {lineno} in {path}: {e}",
+                file=sys.stderr,
+            )
+            if lineno == total_lines:
+                dropped_last_line = True
+            continue
+
+        stages = rec.get("stages") if isinstance(rec, dict) else None
+        valid_shape = isinstance(rec, dict) and (
+            "stages" not in rec
+            or (
+                isinstance(stages, dict)
+                and all(v is None or isinstance(v, dict) for v in stages.values())
+            )
+        )
+        if not valid_shape:
+            print(
+                f"WARNING: skipping malformed history line {lineno} in {path}: "
+                "record is not a valid JSON object with the expected shape",
+                file=sys.stderr,
+            )
+            if lineno == total_lines:
+                dropped_last_line = True
+            continue
+
+        records.append(rec)
+    return records, dropped_last_line
 
 
 def overflow_of(stage_metrics):
@@ -112,6 +151,12 @@ def detect_regressions(
     prev_metrics, cur_metrics, wns_threshold, fmax_threshold_pct, overflow_threshold
 ):
     regressions = []
+
+    if prev_metrics and not cur_metrics:
+        regressions.append(
+            "REGRESSION: stage produced no metrics — design may have failed "
+            "to reach this stage"
+        )
 
     wns_delta = compute_delta(prev_metrics, cur_metrics, "wns")
     if wns_delta is not None and wns_delta < -wns_threshold:
@@ -146,7 +191,7 @@ def detect_regressions(
 def best_ever(records, stage, key, better="lower"):
     values = []
     for r in records:
-        v = r.get("stages", {}).get(stage, {}).get(key)
+        v = (r.get("stages", {}).get(stage) or {}).get(key)
         if v is not None:
             values.append(v)
     if not values:
@@ -155,13 +200,13 @@ def best_ever(records, stage, key, better="lower"):
 
 
 def fmt(val, fmt_str, missing="—"):
-    if val is None:
+    if not isinstance(val, (int, float)):
         return missing
     return fmt_str.format(val)
 
 
 def fmt_delta(val, fmt_str, missing="—"):
-    if val is None:
+    if not isinstance(val, (int, float)):
         return missing
     return fmt_str.format(val)
 
@@ -178,7 +223,7 @@ def build_report_rows(
     best_hpwl = best_ever(records, stage, "hpwl", "lower")
 
     for idx, rec in enumerate(records):
-        metrics = rec.get("stages", {}).get(stage, {})
+        metrics = rec.get("stages", {}).get(stage) or {}
 
         wns_delta = compute_delta(prev_metrics, metrics, "wns")
         tns_delta = compute_delta(prev_metrics, metrics, "tns")
@@ -246,7 +291,7 @@ def print_report(stage, table_rows, label):
     for row in table_rows:
         rec = row["record"]
         m = row["metrics"]
-        ts = rec.get("timestamp", "—")[:19]
+        ts = (rec.get("timestamp") or "—")[:19]
         sha = (rec.get("git_sha") or "—")[:8]
         wns = fmt(m.get("wns"), "{:+.3f}")
         dwns = fmt_delta(row["wns_delta"], "{:+.3f}")
@@ -391,7 +436,15 @@ def cmd_record(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
         print(f"ERROR: reports directory not found: {reports_dir}", file=sys.stderr)
         sys.exit(1)
 
-    rows = collect(reports_dir, logs_dir)
+    try:
+        rows = collect(reports_dir, logs_dir)
+    except Exception as e:
+        print(
+            f"ERROR: failed to parse reports in {reports_dir}: {e}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     repo_dir = os.path.dirname(flow_dir)
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -409,11 +462,19 @@ def cmd_record(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
 
 def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
     path = history_path(flow_util_dir, args.platform, args.design, args.tag)
-    records = load_records(path)
+    records, dropped_last_line = load_records(path)
 
     if not records:
         print(f"No history found at {path}")
         sys.exit(0)
+
+    if dropped_last_line:
+        print(
+            f"ERROR: history file {path} has a corrupt/truncated record and "
+            "cannot be safely compared",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     stage = args.stage
     # best-ever and deltas are computed over the FULL history so that --last
@@ -471,7 +532,15 @@ def resolve_dirs(args):
         label = reports_dir
         if not args.platform or not args.design or not args.tag:
             parts = os.path.normpath(reports_dir).split(os.sep)
-            if len(parts) >= 3:
+            if len(parts) >= 4:
+                if parts[-4] != "reports":
+                    raise SystemExit(
+                        "error: --reports-dir "
+                        f"{reports_dir!r} does not look like "
+                        ".../reports/<platform>/<design>/<tag> (the directory "
+                        "4 levels above the tag must be named 'reports'); "
+                        "pass --platform, --design, and --tag explicitly"
+                    )
                 args.platform = args.platform or parts[-3]
                 args.design = args.design or parts[-2]
                 args.tag = args.tag or parts[-1]

@@ -743,3 +743,69 @@ dashboard (each `<platform>__<design>__<tag>` gets its own file/report, matching
 16. **Second design**: run triage + loop on ibex or another design to validate generalization
 17. (Blocked on ML data) Congestion-feedback parameter tuner
 18. ~~Regression/benchmark dashboard (`benchmark_dashboard.py`)~~ ✓
+
+---
+
+### 2026-09-11 — Independent validator review: 7 fixes to benchmark_dashboard.py
+
+An independent validator agent re-ran the CI-gate scenarios end-to-end against
+`flow/util/benchmark_dashboard.py` and found seven ways the "gate" could report
+green (or crash) on a genuinely broken run. All seven are fixed on this branch,
+`benchmark_dashboard.py` only:
+
+- **HIGH — torn/corrupt newest line silently gated green.** `load_records` now
+  returns `(records, dropped_last_line)`; if the *most recent* physical line in
+  the history file was corrupt/malformed, `cmd_report` prints a clear
+  `stderr` error ("history file has a corrupt/truncated record and cannot be
+  safely compared") and exits 1, instead of silently comparing record N-2 vs
+  N-1 and reporting success.
+- **HIGH — empty latest-stage metrics gated green.** `detect_regressions` now
+  flags `{}`/missing metrics on the current record (when the previous record
+  had non-empty metrics for the same stage) as its own regression
+  ("stage produced no metrics — design may have failed to reach this stage"),
+  so `cmd_report` exits 1 instead of reporting a clean run when a design
+  stopped producing timing numbers for the requested stage.
+- **HIGH — `resolve_dirs` accepted a one-level-too-high `--reports-dir`.**
+  Previously any path with ≥3 components was silently sliced into
+  platform/design/tag, so pointing `--reports-dir` at a *design* directory
+  (missing the tag level) produced `platform='reports'` and a garbage history
+  file. `resolve_dirs` now checks that the component 4 levels above the
+  presumed tag is literally `"reports"`; if not, it raises a clear
+  `SystemExit` ("does not look like .../reports/<platform>/<design>/<tag>")
+  instead of proceeding.
+- **MEDIUM — non-dict/null JSON lines crashed with a raw traceback.**
+  `load_records` now validates each parsed line is a JSON object with the
+  expected shape (top-level dict; `stages`, if present, a dict whose values
+  are each a dict or `null`) and treats anything else as corrupt using the
+  same skip+warn+last-line-tracking path as a `JSONDecodeError`. `timestamp`
+  is now read defensively (`rec.get("timestamp") or "—"`) like `git_sha`
+  already was, and `build_report_rows`/`best_ever` guard against a `null`
+  nested stage value (`.get(stage) or {}`) instead of crashing on
+  `None.get(...)`.
+- **MEDIUM — non-numeric metric value crashed formatting.** `fmt`/`fmt_delta`
+  now render anything that isn't `int`/`float` (not just `None`) as `"—"`
+  instead of raising `ValueError` out of `str.format`.
+- **MEDIUM — `cmd_record` died with an unhandled traceback on a malformed
+  report.** The `collect()` call in `cmd_record` is now wrapped in
+  `try`/`except Exception`, printing a clear message naming the reports dir
+  and the underlying exception to `stderr` and exiting 1, rather than letting
+  a raw traceback surface. `pr_metrics.py` itself was not touched (shared
+  file, out of scope for this branch).
+- **MEDIUM — reader took no lock.** `load_records` now takes a shared lock
+  (`fcntl.flock(..., LOCK_SH)`) around the read, matching the exclusive lock
+  `append_record` already takes, so a reader can no longer observe a
+  partially-written record from a concurrent `record` invocation.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`):** extended to 50 (from 43),
+covering all seven fixes above, plus updated three pre-existing tests that
+exercised the old (buggy) `resolve_dirs`/`load_records` behavior directly —
+`test_reports_dir_derives_tag_from_path_when_not_passed` and
+`test_reports_dir_explicit_tag_overrides_path_derivation` now use a
+`--reports-dir` that actually has `reports/` in the right position, and all
+`bd.load_records(...)` call sites were updated to unpack the new
+`(records, dropped_last_line)` return.
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+50 passed.

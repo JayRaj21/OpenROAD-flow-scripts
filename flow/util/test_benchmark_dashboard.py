@@ -39,9 +39,10 @@ class TestAppendRecord(unittest.TestCase):
             path = os.path.join(tmp, "sub", "history.jsonl")
             bd.append_record(path, make_record("t0", "sha0", -0.1, 500.0, 100000))
             self.assertTrue(os.path.isfile(path))
-            records = bd.load_records(path)
+            records, dropped_last_line = bd.load_records(path)
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]["git_sha"], "sha0")
+            self.assertFalse(dropped_last_line)
 
     def test_append_is_append_only_across_multiple_calls(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -50,7 +51,7 @@ class TestAppendRecord(unittest.TestCase):
             bd.append_record(path, make_record("t1", "sha1", -0.2, 490.0, 105000))
             bd.append_record(path, make_record("t2", "sha2", -0.05, 510.0, 98000))
 
-            records = bd.load_records(path)
+            records, _ = bd.load_records(path)
             self.assertEqual(len(records), 3)
             self.assertEqual([r["git_sha"] for r in records], ["sha0", "sha1", "sha2"])
 
@@ -199,6 +200,31 @@ class TestBuildReportRows(unittest.TestCase):
         _, latest = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
         self.assertEqual(latest, [])
 
+    def test_empty_latest_stage_metrics_flagged_as_regression(self):
+        records = [
+            make_record("t0", "s0", -0.05, 510.0, 90000),
+            {
+                "timestamp": "t1",
+                "git_sha": "s1",
+                "platform": "nangate45",
+                "design": "ibex",
+                "tag": "base",
+                "stages": {},
+            },
+        ]
+        table_rows, latest = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
+        self.assertTrue(any("no metrics" in r for r in latest))
+
+    def test_empty_latest_stage_metrics_after_previous_success(self):
+        regs = bd.detect_regressions(
+            {"wns": -0.05, "fmax_mhz": 510.0}, {}, 0.01, 1.0, 0.001
+        )
+        self.assertTrue(any("no metrics" in r for r in regs))
+
+    def test_no_regression_when_both_prev_and_cur_empty(self):
+        regs = bd.detect_regressions(None, {}, 0.01, 1.0, 0.001)
+        self.assertEqual(regs, [])
+
 
 class TestCliRecordAndReport(unittest.TestCase):
     def _run(self, args, cwd):
@@ -249,7 +275,7 @@ class TestCliRecordAndReport(unittest.TestCase):
                 )
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertTrue(os.path.isfile(history_file))
-                records = bd.load_records(history_file)
+                records, _ = bd.load_records(history_file)
                 self.assertEqual(len(records), 1)
                 self.assertAlmostEqual(records[0]["stages"]["Finish"]["wns"], -0.10)
             finally:
@@ -263,7 +289,7 @@ class TestCliRecordAndReport(unittest.TestCase):
             bd.append_record(history_file, make_record("t0", "s0", -0.05, 510.0, 90000))
             bd.append_record(history_file, make_record("t1", "s1", -0.06, 508.0, 91000))
 
-            records = bd.load_records(history_file)
+            records, _ = bd.load_records(history_file)
             _, latest = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
             self.assertEqual(latest, [])
 
@@ -274,7 +300,7 @@ class TestCliRecordAndReport(unittest.TestCase):
             bd.append_record(
                 history_file2, make_record("t1", "s1", -0.30, 480.0, 90000)
             )
-            records2 = bd.load_records(history_file2)
+            records2, _ = bd.load_records(history_file2)
             _, latest2 = bd.build_report_rows(records2, "Finish", 0.01, 1.0, 0.001)
             self.assertTrue(len(latest2) > 0)
 
@@ -291,10 +317,11 @@ class TestLoadRecordsCorruptLines(unittest.TestCase):
                 f.write(good1 + "\n")
 
             with mock.patch("sys.stderr") as mock_stderr:
-                records = bd.load_records(path)
+                records, dropped_last_line = bd.load_records(path)
 
             self.assertEqual(len(records), 2)
             self.assertEqual([r["git_sha"] for r in records], ["s0", "s1"])
+            self.assertFalse(dropped_last_line)
             written = "".join(c.args[0] for c in mock_stderr.write.call_args_list)
             self.assertIn("line 2", written)
 
@@ -305,8 +332,9 @@ class TestLoadRecordsCorruptLines(unittest.TestCase):
                 f.write("{{{not json\n")
                 f.write("also not json\n")
             with mock.patch("sys.stderr"):
-                records = bd.load_records(path)
+                records, dropped_last_line = bd.load_records(path)
             self.assertEqual(records, [])
+            self.assertTrue(dropped_last_line)
 
     def test_report_cli_survives_corrupt_history_line(self):
         util_dir = os.path.dirname(os.path.abspath(__file__))
@@ -344,6 +372,98 @@ class TestLoadRecordsCorruptLines(unittest.TestCase):
         finally:
             if os.path.isfile(history_file):
                 os.remove(history_file)
+
+    def test_report_cli_fails_when_last_line_is_corrupt(self):
+        util_dir = os.path.dirname(os.path.abspath(__file__))
+        tag = "corrupt-last-line-test"
+        history_file = os.path.join(
+            util_dir, "benchmark_history", f"nangate45__ibex__{tag}.jsonl"
+        )
+        try:
+            os.makedirs(os.path.dirname(history_file), exist_ok=True)
+            with open(history_file, "w") as f:
+                f.write(json.dumps(make_record("t0", "s0", -0.05, 510.0, 90000)) + "\n")
+                f.write(json.dumps(make_record("t1", "s1", -0.06, 508.0, 91000)) + "\n")
+                f.write('{"truncated": tr\n')
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "benchmark_dashboard.py",
+                    "report",
+                    "--platform",
+                    "nangate45",
+                    "--design",
+                    "ibex",
+                    "--tag",
+                    tag,
+                ],
+                cwd=util_dir,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("corrupt/truncated record", proc.stderr)
+        finally:
+            if os.path.isfile(history_file):
+                os.remove(history_file)
+
+    def test_load_records_flags_dropped_last_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            with open(path, "w") as f:
+                f.write(json.dumps(make_record("t0", "s0", -0.05, 510.0, 90000)) + "\n")
+                f.write("not valid json at all\n")
+            with mock.patch("sys.stderr"):
+                records, dropped_last_line = bd.load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertTrue(dropped_last_line)
+
+    def test_non_dict_json_line_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            with open(path, "w") as f:
+                f.write("null\n")
+                f.write(json.dumps([1, 2, 3]) + "\n")
+                f.write(json.dumps(make_record("t0", "s0", -0.05, 510.0, 90000)) + "\n")
+            with mock.patch("sys.stderr"):
+                records, dropped_last_line = bd.load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["git_sha"], "s0")
+            self.assertFalse(dropped_last_line)
+
+    def test_null_nested_stage_value_treated_as_valid_empty_stage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            rec = make_record("t0", "s0", -0.05, 510.0, 90000)
+            rec["stages"]["Global route"] = None
+            with open(path, "w") as f:
+                f.write(json.dumps(rec) + "\n")
+            records, dropped_last_line = bd.load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertFalse(dropped_last_line)
+            table_rows, _ = bd.build_report_rows(
+                records, "Global route", 0.01, 1.0, 0.001
+            )
+            self.assertEqual(table_rows[0]["metrics"], {})
+
+    def test_load_records_takes_shared_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            bd.append_record(path, make_record("t0", "s0", -0.05, 510.0, 90000))
+
+            flock_calls = []
+            real_flock = bd.fcntl.flock
+
+            def spy_flock(fd, op):
+                flock_calls.append(op)
+                return real_flock(fd, op)
+
+            with mock.patch("benchmark_dashboard.fcntl.flock", side_effect=spy_flock):
+                records, _ = bd.load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertIn(bd.fcntl.LOCK_SH, flock_calls)
+            self.assertIn(bd.fcntl.LOCK_UN, flock_calls)
 
 
 class TestHtmlEscaping(unittest.TestCase):
@@ -458,7 +578,7 @@ class TestResolveDirsValidation(unittest.TestCase):
             platform=None,
             design=None,
             tag=None,
-            reports_dir="/tmp/x/nangate45/ibex/hardened",
+            reports_dir="/tmp/x/reports/nangate45/ibex/hardened",
             logs_dir=None,
             flow_dir="/tmp",
         )
@@ -472,12 +592,25 @@ class TestResolveDirsValidation(unittest.TestCase):
             platform=None,
             design=None,
             tag="explicit-tag",
-            reports_dir="/tmp/x/nangate45/ibex/hardened",
+            reports_dir="/tmp/x/reports/nangate45/ibex/hardened",
             logs_dir=None,
             flow_dir="/tmp",
         )
         bd.resolve_dirs(args)
         self.assertEqual(args.tag, "explicit-tag")
+
+    def test_raises_clear_error_when_reports_dir_one_level_too_high(self):
+        args = argparse.Namespace(
+            platform=None,
+            design=None,
+            tag=None,
+            reports_dir="/tmp/flow/reports/nangate45/ibex",
+            logs_dir=None,
+            flow_dir="/tmp",
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            bd.resolve_dirs(args)
+        self.assertIn("does not look like", str(ctx.exception))
 
 
 class TestHtmlOutput(unittest.TestCase):
@@ -502,6 +635,57 @@ class TestHtmlOutput(unittest.TestCase):
             self.assertIn("s1", content)
             self.assertNotIn("http://", content)
             self.assertNotIn("https://", content)
+
+
+class TestFmtNonNumeric(unittest.TestCase):
+    def test_fmt_returns_missing_for_non_numeric_value(self):
+        self.assertEqual(bd.fmt("n/a", "{:+.3f}"), "—")
+
+    def test_fmt_returns_missing_for_none(self):
+        self.assertEqual(bd.fmt(None, "{:+.3f}"), "—")
+
+    def test_fmt_formats_numeric_value(self):
+        self.assertEqual(bd.fmt(-0.1, "{:+.3f}"), "-0.100")
+
+    def test_fmt_delta_returns_missing_for_non_numeric_value(self):
+        self.assertEqual(bd.fmt_delta("n/a", "{:+.3f}"), "—")
+
+    def test_fmt_delta_formats_numeric_value(self):
+        self.assertEqual(bd.fmt_delta(0.1, "{:+.3f}"), "+0.100")
+
+    def test_print_report_survives_non_numeric_metric(self):
+        records = [
+            {
+                "timestamp": "t0",
+                "git_sha": "s0",
+                "platform": "nangate45",
+                "design": "ibex",
+                "tag": "base",
+                "stages": {"Finish": {"wns": "n/a", "fmax_mhz": 500.0, "hpwl": 100000}},
+            }
+        ]
+        table_rows, _ = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
+        bd.print_report("Finish", table_rows, "nangate45/ibex/base")
+
+
+class TestCmdRecordCollectFailure(unittest.TestCase):
+    def test_cmd_record_reports_clear_error_on_collect_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            reports_dir = os.path.join(tmp, "reports")
+            logs_dir = os.path.join(tmp, "logs")
+            os.makedirs(reports_dir)
+            os.makedirs(logs_dir)
+            args = argparse.Namespace(platform="nangate45", design="ibex", tag="base")
+            flow_util_dir = os.path.dirname(os.path.abspath(__file__))
+
+            with mock.patch(
+                "benchmark_dashboard.collect", side_effect=ValueError("bad report")
+            ):
+                with self.assertRaises(SystemExit) as ctx:
+                    bd.cmd_record(
+                        args, tmp, flow_util_dir, reports_dir, logs_dir, "label"
+                    )
+            self.assertEqual(ctx.exception.code, 1)
 
 
 if __name__ == "__main__":
