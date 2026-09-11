@@ -99,6 +99,35 @@ class TestComputeDelta(unittest.TestCase):
         )
 
 
+class TestComputeDeltaNonNumeric(unittest.TestCase):
+    def test_delta_none_when_both_non_numeric(self):
+        self.assertIsNone(bd.compute_delta({"wns": "n/a"}, {"wns": "n/a"}, "wns"))
+
+    def test_report_survives_both_non_numeric_history_records(self):
+        records = [
+            {
+                "timestamp": "t0",
+                "git_sha": "s0",
+                "platform": "nangate45",
+                "design": "ibex",
+                "tag": "base",
+                "stages": {"Finish": {"wns": "n/a", "fmax_mhz": "n/a", "hpwl": "n/a"}},
+            },
+            {
+                "timestamp": "t1",
+                "git_sha": "s1",
+                "platform": "nangate45",
+                "design": "ibex",
+                "tag": "base",
+                "stages": {"Finish": {"wns": "n/a", "fmax_mhz": "n/a", "hpwl": "n/a"}},
+            },
+        ]
+        table_rows, latest = bd.build_report_rows(records, "Finish", 0.01, 1.0, 0.001)
+        self.assertIsNone(table_rows[1]["wns_delta"])
+        self.assertEqual(latest, [])
+        bd.print_report("Finish", table_rows, "nangate45/ibex/base")
+
+
 class TestDetectRegressions(unittest.TestCase):
     def test_wns_regression_flagged(self):
         prev = {"wns": -0.10, "fmax_mhz": 500.0, "grt_overflow": 0.0}
@@ -447,6 +476,52 @@ class TestLoadRecordsCorruptLines(unittest.TestCase):
             )
             self.assertEqual(table_rows[0]["metrics"], {})
 
+    def test_load_records_flags_dropped_last_line_with_trailing_blank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "history.jsonl")
+            with open(path, "w") as f:
+                f.write(json.dumps(make_record("t0", "s0", -0.05, 510.0, 90000)) + "\n")
+                f.write("not valid json at all\n")
+                f.write("\n")
+            with mock.patch("sys.stderr"):
+                records, dropped_last_line = bd.load_records(path)
+            self.assertEqual(len(records), 1)
+            self.assertTrue(dropped_last_line)
+
+    def test_report_cli_fails_on_all_garbage_history(self):
+        util_dir = os.path.dirname(os.path.abspath(__file__))
+        tag = "all-garbage-test"
+        history_file = os.path.join(
+            util_dir, "benchmark_history", f"nangate45__ibex__{tag}.jsonl"
+        )
+        try:
+            os.makedirs(os.path.dirname(history_file), exist_ok=True)
+            with open(history_file, "w") as f:
+                f.write("not valid json\n")
+                f.write("also not valid json\n")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "benchmark_dashboard.py",
+                    "report",
+                    "--platform",
+                    "nangate45",
+                    "--design",
+                    "ibex",
+                    "--tag",
+                    tag,
+                ],
+                cwd=util_dir,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("corrupt/truncated record", proc.stderr)
+        finally:
+            if os.path.isfile(history_file):
+                os.remove(history_file)
+
     def test_load_records_takes_shared_lock(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "history.jsonl")
@@ -612,6 +687,34 @@ class TestResolveDirsValidation(unittest.TestCase):
             bd.resolve_dirs(args)
         self.assertIn("does not look like", str(ctx.exception))
 
+    def test_reports_dir_with_no_reports_component_still_works(self):
+        args = argparse.Namespace(
+            platform=None,
+            design=None,
+            tag=None,
+            reports_dir="/tmp/artifacts/nangate45/ibex/base",
+            logs_dir=None,
+            flow_dir="/tmp",
+        )
+        bd.resolve_dirs(args)
+        self.assertEqual(args.platform, "nangate45")
+        self.assertEqual(args.design, "ibex")
+        self.assertEqual(args.tag, "base")
+
+    def test_relative_three_component_path_still_works(self):
+        args = argparse.Namespace(
+            platform=None,
+            design=None,
+            tag=None,
+            reports_dir="nangate45/ibex/base",
+            logs_dir=None,
+            flow_dir="/tmp",
+        )
+        bd.resolve_dirs(args)
+        self.assertEqual(args.platform, "nangate45")
+        self.assertEqual(args.design, "ibex")
+        self.assertEqual(args.tag, "base")
+
 
 class TestHtmlOutput(unittest.TestCase):
     def test_html_written_and_non_empty_for_two_records(self):
@@ -652,6 +755,13 @@ class TestFmtNonNumeric(unittest.TestCase):
 
     def test_fmt_delta_formats_numeric_value(self):
         self.assertEqual(bd.fmt_delta(0.1, "{:+.3f}"), "+0.100")
+
+    def test_fmt_returns_missing_for_bool_value(self):
+        self.assertEqual(bd.fmt(True, "{:+.3f}"), "—")
+        self.assertEqual(bd.fmt(False, "{:+.3f}"), "—")
+
+    def test_fmt_delta_returns_missing_for_bool_value(self):
+        self.assertEqual(bd.fmt_delta(True, "{:+.3f}"), "—")
 
     def test_print_report_survives_non_numeric_metric(self):
         records = [

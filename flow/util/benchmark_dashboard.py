@@ -95,7 +95,11 @@ def load_records(path):
         finally:
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
-    total_lines = len(lines)
+    last_nonblank_lineno = 0
+    for lineno, raw_line in enumerate(lines, start=1):
+        if raw_line.strip():
+            last_nonblank_lineno = lineno
+
     for lineno, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
         if not line:
@@ -107,7 +111,7 @@ def load_records(path):
                 f"WARNING: skipping corrupt history line {lineno} in {path}: {e}",
                 file=sys.stderr,
             )
-            if lineno == total_lines:
+            if lineno == last_nonblank_lineno:
                 dropped_last_line = True
             continue
 
@@ -125,7 +129,7 @@ def load_records(path):
                 "record is not a valid JSON object with the expected shape",
                 file=sys.stderr,
             )
-            if lineno == total_lines:
+            if lineno == last_nonblank_lineno:
                 dropped_last_line = True
             continue
 
@@ -142,7 +146,7 @@ def overflow_of(stage_metrics):
 def compute_delta(prev_metrics, cur_metrics, key):
     prev = prev_metrics.get(key) if prev_metrics else None
     cur = cur_metrics.get(key)
-    if prev is None or cur is None:
+    if not is_number(prev) or not is_number(cur):
         return None
     return cur - prev
 
@@ -167,7 +171,7 @@ def detect_regressions(
 
     prev_fmax = prev_metrics.get("fmax_mhz") if prev_metrics else None
     cur_fmax = cur_metrics.get("fmax_mhz")
-    if prev_fmax is not None and cur_fmax is not None and prev_fmax > 0:
+    if is_number(prev_fmax) and is_number(cur_fmax) and prev_fmax > 0:
         pct_drop = (prev_fmax - cur_fmax) / prev_fmax * 100.0
         if pct_drop > fmax_threshold_pct:
             regressions.append(
@@ -199,14 +203,18 @@ def best_ever(records, stage, key, better="lower"):
     return min(values) if better == "lower" else max(values)
 
 
+def is_number(val):
+    return isinstance(val, (int, float)) and not isinstance(val, bool)
+
+
 def fmt(val, fmt_str, missing="—"):
-    if not isinstance(val, (int, float)):
+    if not is_number(val):
         return missing
     return fmt_str.format(val)
 
 
 def fmt_delta(val, fmt_str, missing="—"):
-    if not isinstance(val, (int, float)):
+    if not is_number(val):
         return missing
     return fmt_str.format(val)
 
@@ -328,7 +336,7 @@ def render_html(records, stage, table_rows, label, out_path):
         return [
             (i, row["metrics"].get(key))
             for i, row in enumerate(table_rows)
-            if row["metrics"].get(key) is not None
+            if is_number(row["metrics"].get(key))
         ]
 
     def svg_for(key, title, color):
@@ -464,10 +472,6 @@ def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
     path = history_path(flow_util_dir, args.platform, args.design, args.tag)
     records, dropped_last_line = load_records(path)
 
-    if not records:
-        print(f"No history found at {path}")
-        sys.exit(0)
-
     if dropped_last_line:
         print(
             f"ERROR: history file {path} has a corrupt/truncated record and "
@@ -475,6 +479,10 @@ def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
             file=sys.stderr,
         )
         sys.exit(1)
+
+    if not records:
+        print(f"No history found at {path}")
+        sys.exit(0)
 
     stage = args.stage
     # best-ever and deltas are computed over the FULL history so that --last
@@ -532,15 +540,23 @@ def resolve_dirs(args):
         label = reports_dir
         if not args.platform or not args.design or not args.tag:
             parts = os.path.normpath(reports_dir).split(os.sep)
-            if len(parts) >= 4:
-                if parts[-4] != "reports":
+            dir_kind = "reports" if "reports" in parts else "logs"
+            if dir_kind in parts:
+                anchor = len(parts) - 1 - parts[::-1].index(dir_kind)
+                remainder = parts[anchor + 1 :]
+                if len(remainder) != 3:
                     raise SystemExit(
                         "error: --reports-dir "
                         f"{reports_dir!r} does not look like "
-                        ".../reports/<platform>/<design>/<tag> (the directory "
-                        "4 levels above the tag must be named 'reports'); "
-                        "pass --platform, --design, and --tag explicitly"
+                        f".../{dir_kind}/<platform>/<design>/<tag> (expected "
+                        "exactly platform/design/tag after the "
+                        f"'{dir_kind}' directory); pass --platform, --design, "
+                        "and --tag explicitly"
                     )
+                args.platform = args.platform or remainder[0]
+                args.design = args.design or remainder[1]
+                args.tag = args.tag or remainder[2]
+            elif len(parts) >= 3:
                 args.platform = args.platform or parts[-3]
                 args.design = args.design or parts[-2]
                 args.tag = args.tag or parts[-1]

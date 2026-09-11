@@ -809,3 +809,67 @@ exercised the old (buggy) `resolve_dirs`/`load_records` behavior directly —
 cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
 ```
 50 passed.
+
+### 2026-09-11 — Round-2 independent validator review: 5 remaining fixes to benchmark_dashboard.py
+
+A second, independent validator agent re-tested the fixes above end-to-end
+with real CLI runs and found five more real issues, all now fixed on this
+branch, `benchmark_dashboard.py` only:
+
+- **HIGH — `resolve_dirs`'s "4 levels up must be literally `reports`" check
+  was too strict, and its own error message's suggested workaround was
+  impossible.** `--platform` and `--reports-dir` are in a mutually-exclusive,
+  required argparse group, so telling a user hitting the error to "pass
+  `--platform`/`--design`/`--tag` explicitly" was a dead end for `--platform`.
+  Worse, it newly rejected previously-working inputs: a relative
+  `nangate45/ibex/base` path (no `reports` ancestor) or a bare CI artifact
+  dir like `/tmp/artifacts/nangate45/ibex/base` (no `reports` component at
+  all) now hard-failed. Fixed by locating the *last* literal `reports` (or
+  `logs`, mirroring whichever kind of dir is being resolved) path component
+  via search instead of a fixed offset. If found, exactly 3 components
+  (platform/design/tag) must follow it — this still catches the original
+  "one level too high" bug. If no `reports`/`logs` component exists anywhere
+  in the path, fall back to the prior permissive behavior (last 3 path
+  components) instead of hard-erroring, since there's no argparse-valid way
+  to override it in the `--reports-dir` case.
+- **MEDIUM — `compute_delta` still crashed on two non-numeric metric
+  values.** The `fmt`/`fmt_delta` hardening from round 1 didn't cover the
+  subtraction in `compute_delta` itself, so a history file with `"wns":
+  "n/a"` in two consecutive records raised an unhandled `TypeError` —
+  exiting 1 for the same reason a real regression exits 1, making corruption
+  indistinguishable from a genuine quality regression. `compute_delta` now
+  returns `None` unless both operands are real numbers. Audited and fixed
+  the same exposure in `detect_regressions`'s `prev_fmax > 0` comparison and
+  `render_html`'s point-series filtering (feeding `y_span = y_max - y_min`).
+- **MEDIUM — `dropped_last_line` detection was defeated by a trailing blank
+  line.** It keyed on `lineno == total_lines` (the last *physical* line), but
+  blank lines are skipped before that check runs, so a corrupt record
+  immediately followed by a blank line silently escaped detection — exactly
+  the gap round-1's fix #1 was meant to close. `load_records` now tracks the
+  last *non-blank* line number and compares against that instead.
+- **MEDIUM-LOW — `dropped_last_line`'s exit-1 check in `cmd_report` never
+  ran when history had zero valid records left after dropping corrupt
+  lines**, because the `if not records: ... sys.exit(0)` short-circuit ran
+  first — an all-garbage history file reported exit 0 ("No history found")
+  instead of flagging corruption. `cmd_report` now checks
+  `dropped_last_line` before the empty-records short-circuit.
+- **LOW — `fmt`/`fmt_delta` accepted `bool`** (since `bool` is an `int`
+  subclass in Python), rendering a stray JSON `true`/`false` as `1.000`/
+  `0.000` instead of `"—"`. Added a shared `is_number()` helper
+  (`isinstance(val, (int, float)) and not isinstance(val, bool)`) used by
+  `fmt`, `fmt_delta`, `compute_delta`, `detect_regressions`, and
+  `render_html`'s series filter.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`):** extended to 58 (from
+50), adding: a `--reports-dir` with no `reports` component and a relative
+3-component path both still resolving correctly (item 1); a two-record
+history where both records have non-numeric metrics not crashing
+`build_report_rows`/`print_report` (item 2); a corrupt-record-followed-by-
+blank-line history correctly flagged as `dropped_last_line` (item 3); an
+all-garbage history file exiting non-zero via the CLI (item 4); and a bool
+JSON value rendering as `"—"` in both `fmt` and `fmt_delta` (item 5).
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+58 passed.
