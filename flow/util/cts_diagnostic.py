@@ -50,6 +50,11 @@ import pr_metrics
 #   "<value> setup skew" — used as a fallback when the json is absent.
 # ---------------------------------------------------------------------------
 
+# Exit codes (see --help epilog / main() for the full scheme):
+EXIT_CLEAN = 0
+EXIT_FINDING = 1
+EXIT_USAGE_ERROR = 2
+
 CTS_LOG_NAME = "4_1_cts.log"
 CTS_JSON_NAME = "4_1_cts.json"
 CTS_RPT_NAME = "4_cts_final.rpt"
@@ -65,6 +70,10 @@ _RPT_HOLD_SKEW_RE = re.compile(r"([\d.]+)\s+hold skew")
 
 DEFAULT_CLIFF_THRESHOLD_NS = 0.05
 DEFAULT_BUFFER_RATIO_THRESHOLD = 0.5
+# TNS scales with design size (total over all violating endpoints), so unlike
+# WNS an absolute-ns threshold isn't meaningful across designs; a relative
+# (percentage) degradation vs. the CTS-stage TNS is used instead.
+DEFAULT_TNS_CLIFF_THRESHOLD_PCT = 20.0
 
 
 def parse_cts_log(log_path):
@@ -123,6 +132,15 @@ def parse_cts_skew_json(json_path):
     except (json.JSONDecodeError, OSError):
         return metrics
 
+    if not isinstance(data, dict):
+        print(
+            f"WARNING: {json_path} does not contain a JSON object at the top "
+            "level (got "
+            f"{type(data).__name__}); skipping CTS skew extraction from it.",
+            file=sys.stderr,
+        )
+        return metrics
+
     for key, val in data.items():
         if key.endswith("clock__skew__setup"):
             metrics["setup_skew"] = val
@@ -148,6 +166,25 @@ def parse_cts_skew_rpt(rpt_path):
     return metrics
 
 
+def derive_logs_dir(reports_dir):
+    """Best-effort sibling logs/ dir for a given reports_dir.
+
+    Replaces the "reports" path component with "logs" (matching ORFS'
+    flow/reports/<platform>/<design>/<tag> <-> flow/logs/<platform>/<design>/<tag>
+    layout) rather than doing a naive substring replace, which silently
+    no-ops when reports_dir doesn't contain the literal "/reports/" (e.g. a
+    relative path given from within the flow/ directory itself). Falls back
+    to a "logs" directory next to reports_dir if no "reports" component is
+    found at all.
+    """
+    abs_reports_dir = os.path.abspath(reports_dir)
+    parts = abs_reports_dir.split(os.sep)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] == "reports":
+            return os.sep.join(parts[:i] + ["logs"] + parts[i + 1 :])
+    return os.path.join(os.path.dirname(abs_reports_dir), "logs")
+
+
 def gather(reports_dir, logs_dir):
     """Collect P&R stage rows plus CTS structural metrics."""
     rows = pr_metrics.collect(reports_dir, logs_dir)
@@ -171,11 +208,15 @@ def buffer_per_sink(structural):
     return buffers / sinks
 
 
-def check_cliff(stage_map, threshold):
-    """Compare CTS-stage vs. Global-route-stage WNS and flag a cliff.
+def check_cliff(stage_map, threshold, tns_threshold_pct=DEFAULT_TNS_CLIFF_THRESHOLD_PCT):
+    """Compare CTS-stage vs. Global-route-stage WNS and TNS and flag a cliff.
 
-    WNS is negative-is-worse; a "cliff" is the WNS getting more negative
-    (worse) by more than `threshold` ns between CTS and Global route.
+    WNS and TNS are both negative-is-worse. A "cliff" is flagged if EITHER:
+      - WNS gets more negative (worse) by more than `threshold` ns, or
+      - TNS gets more negative (worse) by more than `tns_threshold_pct`
+        percent (relative to the CTS-stage TNS magnitude)
+    between CTS and Global route. TNS uses a relative threshold rather than
+    an absolute ns one because TNS magnitude scales with design size.
     """
     cts = stage_map.get(CTS_STAGE_NAME, {})
     grt = stage_map.get(GRT_STAGE_NAME, {})
@@ -185,11 +226,32 @@ def check_cliff(stage_map, threshold):
         return None
 
     drop = cts_wns - grt_wns
+    wns_detected = drop > threshold
+
+    cts_tns = cts.get("tns")
+    grt_tns = grt.get("tns")
+    tns_drop = None
+    tns_drop_pct = None
+    tns_detected = False
+    if cts_tns is not None and grt_tns is not None:
+        tns_drop = cts_tns - grt_tns
+        if cts_tns != 0:
+            tns_drop_pct = (tns_drop / abs(cts_tns)) * 100.0
+        else:
+            tns_drop_pct = float("inf") if tns_drop > 0 else 0.0
+        tns_detected = tns_drop_pct > tns_threshold_pct
+
     return {
         "cts_wns": cts_wns,
         "grt_wns": grt_wns,
         "drop": drop,
-        "detected": drop > threshold,
+        "wns_detected": wns_detected,
+        "cts_tns": cts_tns,
+        "grt_tns": grt_tns,
+        "tns_drop": tns_drop,
+        "tns_drop_pct": tns_drop_pct,
+        "tns_detected": tns_detected,
+        "detected": wns_detected or tns_detected,
     }
 
 
@@ -238,12 +300,26 @@ def print_report(structural, cliff, buffer_ratio_threshold, label):
             f"GRT WNS: {cliff['grt_wns']:+.3f} ns   "
             f"drop: {cliff['drop']:+.3f} ns"
         )
-        if cliff["detected"]:
+        if cliff["cts_tns"] is not None and cliff["grt_tns"] is not None:
             print(
-                "CLIFF DETECTED: WNS degraded by more than threshold between "
-                "CTS and Global route — parasitics from placement estimate "
-                "were optimistic relative to routed parasitics. Consider "
-                "POST_CTS_TCL=post_cts_timing_repair.tcl."
+                f"CTS TNS: {cliff['cts_tns']:+.3f} ns   "
+                f"GRT TNS: {cliff['grt_tns']:+.3f} ns   "
+                f"drop: {cliff['tns_drop']:+.3f} ns ({cliff['tns_drop_pct']:+.1f}%)"
+            )
+        else:
+            print("CTS TNS: —   GRT TNS: —   drop: — (need CTS and GRT tns)")
+
+        if cliff["detected"]:
+            triggers = []
+            if cliff["wns_detected"]:
+                triggers.append("WNS")
+            if cliff["tns_detected"]:
+                triggers.append("TNS")
+            print(
+                f"CLIFF DETECTED ({'/'.join(triggers)} degraded by more than "
+                "threshold) between CTS and Global route — parasitics from "
+                "placement estimate were optimistic relative to routed "
+                "parasitics. Consider POST_CTS_TCL=post_cts_timing_repair.tcl."
             )
         else:
             print("No CTS->GRT cliff detected.")
@@ -253,7 +329,13 @@ def print_report(structural, cliff, buffer_ratio_threshold, label):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="CTS quality diagnostic")
+    parser = argparse.ArgumentParser(
+        description="CTS quality diagnostic",
+        epilog="Exit codes: 0 = clean, 1 = finding detected (cliff and/or "
+        "over-buffering), 2 = usage/input error (bad args, missing "
+        "reports dir). An uncaught exception indicates a bug/crash.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--platform", help="Platform name (e.g. nangate45)")
     group.add_argument("--reports-dir", help="Direct path to reports directory")
@@ -284,6 +366,14 @@ def main():
         help=f"Buffers-per-sink ratio above which the design is flagged as "
         f"over-buffered (default: {DEFAULT_BUFFER_RATIO_THRESHOLD})",
     )
+    parser.add_argument(
+        "--tns-cliff-threshold",
+        type=float,
+        default=DEFAULT_TNS_CLIFF_THRESHOLD_PCT,
+        help=f"TNS degradation (percent, relative to CTS-stage TNS) between "
+        f"CTS and GRT that counts as a cliff (default: "
+        f"{DEFAULT_TNS_CLIFF_THRESHOLD_PCT})",
+    )
 
     args = parser.parse_args()
 
@@ -299,21 +389,30 @@ def main():
         label = f"{args.platform}/{args.design}/{args.tag}"
     else:
         reports_dir = args.reports_dir
-        logs_dir = args.logs_dir or reports_dir.replace("/reports/", "/logs/")
+        logs_dir = args.logs_dir or derive_logs_dir(reports_dir)
         label = reports_dir
 
     if not os.path.isdir(reports_dir):
         print(f"ERROR: reports directory not found: {reports_dir}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(EXIT_USAGE_ERROR)
+
+    if not os.path.isdir(logs_dir):
+        print(
+            f"WARNING: logs directory not found: {logs_dir} — structural CTS "
+            "metrics (buffer/sink counts, skew fallback) and log-based P&R "
+            "metrics will be unavailable; pass --logs-dir explicitly if this "
+            "is unexpected.",
+            file=sys.stderr,
+        )
 
     _, stage_map, structural = gather(reports_dir, logs_dir)
-    cliff = check_cliff(stage_map, args.cliff_threshold)
+    cliff = check_cliff(stage_map, args.cliff_threshold, args.tns_cliff_threshold)
 
     over_buffered, cliff_detected = print_report(
         structural, cliff, args.buffer_ratio_threshold, label
     )
 
-    sys.exit(1 if (over_buffered or cliff_detected) else 0)
+    sys.exit(EXIT_FINDING if (over_buffered or cliff_detected) else EXIT_CLEAN)
 
 
 if __name__ == "__main__":

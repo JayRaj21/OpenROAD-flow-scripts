@@ -778,3 +778,75 @@ Ran `python3 -m pytest flow/util/test_cts_diagnostic.py flow/util/test_loop_agen
 left for a future pass), and any structural stats beyond buffer/sink/skew (e.g. wire
 segment counts, fanout distribution histograms) since they weren't called for by the
 roadmap item and add parsing surface without a clear consumer yet.
+
+### 2026-09-11 — `cts_diagnostic.py` fixes from independent validator review
+
+An independent validator agent re-ran `cts_diagnostic.py` end-to-end against 17 real
+ORFS runs and cross-checked it against real TritonCTS source, and found four bugs
+(1 HIGH, 3 MEDIUM) in the code committed in the 2026-08-27 entry above. Fixed all
+four; left LOW-severity items and everything else untouched.
+
+- **HIGH — `check_cliff` used WNS only, missing real cliffs.** The module docstring
+  claims the tool compares "WNS/TNS between the CTS and Global route stages," but
+  `check_cliff` only ever looked at WNS. Validator's real-data repro:
+  nangate45/swerv had `dWNS = +0.040` (an *improvement*, so the old check reported
+  "No CTS->GRT cliff detected" and exited 0) while TNS went from -306.65 to -492.21
+  ns — a 60% degradation — same false-negative pattern reproduced on tinyRocket,
+  ariane133, jpeg. Fixed by extending `check_cliff` to also compare CTS-stage vs.
+  GRT-stage TNS, gated by a new `--tns-cliff-threshold` CLI flag (default **20%**).
+  TNS uses a *relative* (percentage-of-CTS-TNS) threshold rather than an absolute-ns
+  one like WNS, because TNS magnitude scales with design size (sum over all
+  violating endpoints) so a fixed ns threshold that's meaningful for one design is
+  meaningless for another; this is documented inline next to
+  `DEFAULT_TNS_CLIFF_THRESHOLD_PCT`. A cliff is now flagged if EITHER the WNS drop OR
+  the TNS drop exceeds its threshold, and `check_cliff`'s return dict carries
+  `wns_detected`/`tns_detected` separately so `print_report` can show which stat(s)
+  triggered (`CLIFF DETECTED (WNS/TNS degraded...)`) and prints both CTS/GRT WNS and
+  CTS/GRT TNS lines regardless of which triggered, so the user isn't left guessing
+  which metric to look at.
+- **MEDIUM — non-dict top-level JSON crashed with an uncaught `AttributeError`.**
+  `parse_cts_skew_json` only caught `(json.JSONDecodeError, OSError)`, but
+  `json.load` happily returns `None`/a list/a bare string/a number for input like
+  `null`, `[...]`, `"str"`, `3` — all valid JSON, none of which have `.items()`.
+  Validator reproduced a crash on `4_1_cts.json` containing `null`, which aborted
+  before the CLI printed *any* report section, losing already-parsed buffer/sink
+  data along with it. Fixed by checking `isinstance(data, dict)` after a successful
+  `json.load` and, if not, warning to stderr and returning an empty skew dict (same
+  code path as a JSON parse failure) instead of raising — `gather()`'s existing
+  `if not skew: skew = parse_cts_skew_rpt(...)` fallback then kicks in and the rest
+  of the report (buffer/sink/cliff) still prints normally.
+- **MEDIUM — `--reports-dir` without `--logs-dir` could silently produce an
+  all-blank report.** The old `logs_dir = args.logs_dir or
+  reports_dir.replace("/reports/", "/logs/")` is a silent no-op whenever
+  `reports_dir` doesn't contain the literal substring `/reports/` with slashes on
+  both sides — which is exactly what happens for a *relative* path given from
+  inside `flow/` (e.g. `reports/nangate45/ibex/base`, matching the tool's own cwd
+  assumptions), since that string starts with `reports/`, not `/reports/`. There was
+  also no `isdir` check on the derived `logs_dir`, unlike the existing check on
+  `reports_dir`. Fixed with a new `derive_logs_dir()` helper that splits the path
+  into components and replaces an exact `reports` path segment (searching from the
+  right) rather than doing a substring replace, falling back to a sibling `logs/`
+  directory next to `reports_dir` if no `reports` component exists at all; `main()`
+  now also does an `isdir` check on the resolved `logs_dir` and prints a `WARNING:`
+  to stderr (without hard-failing, since `reports_dir` alone can still yield a
+  partial report) when it's missing.
+- **MEDIUM — exit code 1 conflated three different situations.** A cliff/
+  over-buffering *finding*, a usage error (bad path), and an uncaught crash were all
+  indistinguishable at exit code 1, which a CI/loop-agent caller can't act on
+  differently. Adopted a distinct scheme, now documented in the `--help` epilog:
+  `EXIT_CLEAN = 0`, `EXIT_FINDING = 1` (cliff and/or over-buffering detected),
+  `EXIT_USAGE_ERROR = 2` (bad args / missing reports dir — matches argparse's own
+  default exit code for `parser.error()`, so the two usage-error paths are now
+  consistent with each other). Genuine crashes are left to propagate as an uncaught
+  exception rather than being folded into any of the above.
+
+**Tests:** extended `flow/util/test_cts_diagnostic.py` with: TNS-cliff-detected-when-
+WNS-looks-fine (mirrors the validator's real swerv numbers), TNS-within-threshold,
+TNS-missing (no false positive), TNS-zero-CTS-TNS edge case; non-dict JSON
+(`null`/list/scalar) not crashing `parse_cts_skew_json`, plus a `gather()`-level test
+confirming buffer/sink/skew-rpt-fallback data still comes through when the CTS json
+is `null`; `derive_logs_dir()` unit tests (exact-component replace, the relative-path
+no-substring repro case, and the no-`reports`-component fallback); and CLI-level
+subprocess tests asserting the three exit codes and the missing-logs-dir stderr
+warning. Ran `python3 -m pytest flow/util/test_cts_diagnostic.py -v` — all 35 tests
+pass.
