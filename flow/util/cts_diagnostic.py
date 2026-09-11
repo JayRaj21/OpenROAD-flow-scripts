@@ -54,6 +54,7 @@ import pr_metrics
 EXIT_CLEAN = 0
 EXIT_FINDING = 1
 EXIT_USAGE_ERROR = 2
+EXIT_INTERNAL_ERROR = 3
 
 CTS_LOG_NAME = "4_1_cts.log"
 CTS_JSON_NAME = "4_1_cts.json"
@@ -71,9 +72,19 @@ _RPT_HOLD_SKEW_RE = re.compile(r"([\d.]+)\s+hold skew")
 DEFAULT_CLIFF_THRESHOLD_NS = 0.05
 DEFAULT_BUFFER_RATIO_THRESHOLD = 0.5
 # TNS scales with design size (total over all violating endpoints), so unlike
-# WNS an absolute-ns threshold isn't meaningful across designs; a relative
-# (percentage) degradation vs. the CTS-stage TNS is used instead.
-DEFAULT_TNS_CLIFF_THRESHOLD_PCT = 20.0
+# WNS a pure absolute-ns threshold isn't meaningful across designs; a
+# relative (percentage) degradation vs. the CTS-stage TNS is used as the
+# primary signal. But on near-zero-baseline designs (e.g. a CTS TNS of
+# -0.001ns) that percentage blows up to hundreds/thousands of percent (or
+# infinite, when CTS TNS is exactly 0) for a numerically negligible
+# picosecond-scale change, so a cliff additionally requires the absolute
+# drop to clear a small ns floor. Calibrated against real ORFS runs under
+# flow/reports: nangate45/dynamic_node/base (+0.06ns, +8.6%) and
+# nangate45/jpeg/base (+5.34ns, +13.3%) are real cliffs that must clear both
+# bars; nangate45/aes/base (+0.01ns, "+inf%") is timing-clean noise that
+# must clear neither.
+DEFAULT_TNS_CLIFF_THRESHOLD_PCT = 5.0
+DEFAULT_TNS_CLIFF_THRESHOLD_ABS_NS = 0.03
 
 
 def parse_cts_log(log_path):
@@ -208,15 +219,25 @@ def buffer_per_sink(structural):
     return buffers / sinks
 
 
-def check_cliff(stage_map, threshold, tns_threshold_pct=DEFAULT_TNS_CLIFF_THRESHOLD_PCT):
+def check_cliff(
+    stage_map,
+    threshold,
+    tns_threshold_pct=DEFAULT_TNS_CLIFF_THRESHOLD_PCT,
+    tns_threshold_abs=DEFAULT_TNS_CLIFF_THRESHOLD_ABS_NS,
+):
     """Compare CTS-stage vs. Global-route-stage WNS and TNS and flag a cliff.
 
     WNS and TNS are both negative-is-worse. A "cliff" is flagged if EITHER:
       - WNS gets more negative (worse) by more than `threshold` ns, or
       - TNS gets more negative (worse) by more than `tns_threshold_pct`
-        percent (relative to the CTS-stage TNS magnitude)
-    between CTS and Global route. TNS uses a relative threshold rather than
-    an absolute ns one because TNS magnitude scales with design size.
+        percent (relative to the CTS-stage TNS magnitude) AND by more than
+        `tns_threshold_abs` ns
+    between CTS and Global route. TNS uses a relative threshold because TNS
+    magnitude scales with design size, but the percentage alone false-flags
+    near-zero-baseline designs (a CTS TNS of e.g. -0.001ns turns a
+    picosecond-scale, timing-clean wobble into a huge or infinite percent
+    swing), so an absolute-ns floor is required in addition to the
+    percentage bar.
     """
     cts = stage_map.get(CTS_STAGE_NAME, {})
     grt = stage_map.get(GRT_STAGE_NAME, {})
@@ -239,7 +260,7 @@ def check_cliff(stage_map, threshold, tns_threshold_pct=DEFAULT_TNS_CLIFF_THRESH
             tns_drop_pct = (tns_drop / abs(cts_tns)) * 100.0
         else:
             tns_drop_pct = float("inf") if tns_drop > 0 else 0.0
-        tns_detected = tns_drop_pct > tns_threshold_pct
+        tns_detected = tns_drop_pct > tns_threshold_pct and tns_drop > tns_threshold_abs
 
     return {
         "cts_wns": cts_wns,
@@ -328,12 +349,12 @@ def print_report(structural, cliff, buffer_ratio_threshold, label):
     return over_buffered, (cliff is not None and cliff["detected"])
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(
         description="CTS quality diagnostic",
         epilog="Exit codes: 0 = clean, 1 = finding detected (cliff and/or "
         "over-buffering), 2 = usage/input error (bad args, missing "
-        "reports dir). An uncaught exception indicates a bug/crash.",
+        "reports dir), 3 = internal error (unexpected exception/crash).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     group = parser.add_mutually_exclusive_group(required=True)
@@ -371,8 +392,19 @@ def main():
         type=float,
         default=DEFAULT_TNS_CLIFF_THRESHOLD_PCT,
         help=f"TNS degradation (percent, relative to CTS-stage TNS) between "
-        f"CTS and GRT that counts as a cliff (default: "
+        f"CTS and GRT that counts as a cliff; must be exceeded together "
+        f"with --tns-cliff-threshold-abs (default: "
         f"{DEFAULT_TNS_CLIFF_THRESHOLD_PCT})",
+    )
+    parser.add_argument(
+        "--tns-cliff-threshold-abs",
+        type=float,
+        default=DEFAULT_TNS_CLIFF_THRESHOLD_ABS_NS,
+        help=f"Minimum absolute TNS degradation (ns) between CTS and GRT "
+        f"required for a TNS cliff, in addition to --tns-cliff-threshold; "
+        f"guards against near-zero-baseline designs where a tiny ns change "
+        f"is a huge or infinite percentage (default: "
+        f"{DEFAULT_TNS_CLIFF_THRESHOLD_ABS_NS})",
     )
 
     args = parser.parse_args()
@@ -406,13 +438,28 @@ def main():
         )
 
     _, stage_map, structural = gather(reports_dir, logs_dir)
-    cliff = check_cliff(stage_map, args.cliff_threshold, args.tns_cliff_threshold)
+    cliff = check_cliff(
+        stage_map,
+        args.cliff_threshold,
+        args.tns_cliff_threshold,
+        args.tns_cliff_threshold_abs,
+    )
 
     over_buffered, cliff_detected = print_report(
         structural, cliff, args.buffer_ratio_threshold, label
     )
 
     sys.exit(EXIT_FINDING if (over_buffered or cliff_detected) else EXIT_CLEAN)
+
+
+def main():
+    try:
+        _main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"INTERNAL ERROR: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(EXIT_INTERNAL_ERROR)
 
 
 if __name__ == "__main__":

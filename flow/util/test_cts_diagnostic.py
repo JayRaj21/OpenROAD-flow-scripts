@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cts_diagnostic import (
     EXIT_CLEAN,
     EXIT_FINDING,
+    EXIT_INTERNAL_ERROR,
     EXIT_USAGE_ERROR,
     buffer_per_sink,
     check_cliff,
@@ -247,6 +248,68 @@ class TestCliffCheck(unittest.TestCase):
         self.assertTrue(result["detected"])
 
 
+class TestTnsCliffCalibration(unittest.TestCase):
+    """Regression tests pinned to real ORFS runs under flow/reports, found by
+    round-2 independent validator review of the default TNS thresholds."""
+
+    def test_jpeg_real_cliff_detected(self):
+        # nangate45/jpeg/base: CTS TNS -40.29 -> GRT TNS -45.63 (+5.34ns,
+        # +13.3%), a real cliff the old 20%-only default missed.
+        stage_map = {
+            "CTS": {"wns": -0.10, "tns": -40.29},
+            "Global route": {"wns": -0.11, "tns": -45.63},
+        }
+        result = check_cliff(stage_map, threshold=0.05)
+        self.assertTrue(result["tns_detected"])
+        self.assertTrue(result["detected"])
+
+    def test_dynamic_node_real_cliff_detected(self):
+        # nangate45/dynamic_node/base: CTS TNS -0.70 -> GRT TNS -0.76
+        # (+0.06ns, +8.6%), a real cliff the old 20%-only default missed.
+        stage_map = {
+            "CTS": {"wns": -0.18, "tns": -0.70},
+            "Global route": {"wns": -0.18, "tns": -0.76},
+        }
+        result = check_cliff(stage_map, threshold=0.05)
+        self.assertTrue(result["tns_detected"])
+        self.assertTrue(result["detected"])
+
+    def test_ariane133_real_cliff_still_detected(self):
+        # nangate45/ariane133/base: CTS TNS -479.61 -> GRT TNS -589.93
+        # (+110.32ns, +23.0%), the case the old 20% default did catch.
+        stage_map = {
+            "CTS": {"wns": -0.30, "tns": -479.61},
+            "Global route": {"wns": -0.35, "tns": -589.93},
+        }
+        result = check_cliff(stage_map, threshold=0.05)
+        self.assertTrue(result["tns_detected"])
+        self.assertTrue(result["detected"])
+
+    def test_aes_near_zero_baseline_not_flagged(self):
+        # nangate45/aes/base: CTS TNS 0.00 -> GRT TNS -0.01 (+0.01ns,
+        # "+inf%") — timing-clean noise, not a real cliff. The pure
+        # percentage check alone false-flags this; the absolute-ns floor
+        # must suppress it.
+        stage_map = {
+            "CTS": {"wns": 0.0, "tns": 0.0},
+            "Global route": {"wns": -0.0, "tns": -0.01},
+        }
+        result = check_cliff(stage_map, threshold=0.05)
+        self.assertFalse(result["tns_detected"])
+        self.assertFalse(result["detected"])
+
+    def test_near_zero_noise_variants_not_flagged(self):
+        for cts_tns, grt_tns in [(-0.001, -0.01), (-0.05, -0.08), (-0.02, -0.03)]:
+            with self.subTest(cts_tns=cts_tns, grt_tns=grt_tns):
+                stage_map = {
+                    "CTS": {"wns": -0.01, "tns": cts_tns},
+                    "Global route": {"wns": -0.01, "tns": grt_tns},
+                }
+                result = check_cliff(stage_map, threshold=0.05)
+                self.assertFalse(result["tns_detected"])
+                self.assertFalse(result["detected"])
+
+
 class TestPrintReportExitSignals(unittest.TestCase):
     def _run(self, structural, cliff, buffer_ratio_threshold=0.5):
         buf = io.StringIO()
@@ -383,7 +446,9 @@ class TestDeriveLogsDir(unittest.TestCase):
 
 
 class TestCliExitCodes(unittest.TestCase):
-    SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cts_diagnostic.py")
+    SCRIPT = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "cts_diagnostic.py"
+    )
 
     def _make_run(self, d, cliff_wns_drop=True):
         reports_dir = os.path.join(d, "reports")
@@ -448,6 +513,42 @@ class TestCliExitCodes(unittest.TestCase):
             text=True,
         )
         self.assertEqual(result.returncode, EXIT_USAGE_ERROR)
+
+    def test_unreadable_report_exits_with_distinct_internal_error_code(self):
+        # A genuine crash (e.g. PermissionError reading a report file) must
+        # exit a distinct code from EXIT_FINDING so an automated caller
+        # keying off exit code can tell "crash" apart from "cliff detected".
+        if os.geteuid() == 0:
+            self.skipTest("cannot exercise permission denial while running as root")
+        with tempfile.TemporaryDirectory() as d:
+            reports_dir = os.path.join(d, "reports")
+            logs_dir = os.path.join(d, "logs")
+            os.makedirs(reports_dir)
+            os.makedirs(logs_dir)
+            rpt_path = os.path.join(reports_dir, "4_cts_final.rpt")
+            _write(
+                rpt_path,
+                "tns max -0.02\nwns max -0.01\nworst slack max -0.01\n",
+            )
+            os.chmod(rpt_path, 0)
+            try:
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        self.SCRIPT,
+                        "--reports-dir",
+                        reports_dir,
+                        "--logs-dir",
+                        logs_dir,
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                os.chmod(rpt_path, 0o644)
+            self.assertEqual(result.returncode, EXIT_INTERNAL_ERROR)
+            self.assertNotEqual(EXIT_INTERNAL_ERROR, EXIT_FINDING)
+            self.assertIn("INTERNAL ERROR", result.stderr)
 
     def test_missing_logs_dir_warns_but_still_reports(self):
         with tempfile.TemporaryDirectory() as d:

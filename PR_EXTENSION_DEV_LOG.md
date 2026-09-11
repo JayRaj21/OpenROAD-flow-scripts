@@ -850,3 +850,78 @@ no-substring repro case, and the no-`reports`-component fallback); and CLI-level
 subprocess tests asserting the three exit codes and the missing-logs-dir stderr
 warning. Ran `python3 -m pytest flow/util/test_cts_diagnostic.py -v` — all 35 tests
 pass.
+
+### 2026-09-11 — `cts_diagnostic.py` fixes from round-2 independent validator review
+
+A round-2 independent validator re-ran the round-1-fixed tool against **all** real
+ORFS runs under `flow/reports` (58 platform/design/tag dirs present at the time,
+covering asap7/nangate45/sky130hd) rather than just the handful of designs the
+round-1 fixes were checked against, and found three more real issues:
+
+- **HIGH — `DEFAULT_TNS_CLIFF_THRESHOLD_PCT = 20.0` still missed real cliffs.**
+  Checked against the actual dataset: `nangate45/jpeg/base` (CTS TNS -40.29 -> GRT
+  TNS -45.63, a +13.3% degradation) and `nangate45/dynamic_node/base` (CTS TNS -0.70
+  -> GRT TNS -0.76, +8.6%) are both genuine CTS->GRT parasitic-underestimation
+  cliffs that the flat 20% bar let through silently (exit 0, "No CTS->GRT cliff
+  detected"). Only `nangate45/ariane133/base` (+23.0%) cleared the old bar, with
+  just 3 points of margin — the default was picked without being calibrated
+  against the dataset the bug was originally filed on.
+- **MEDIUM — new false-positive class on near-zero TNS baselines.** Verified on
+  real data: `nangate45/aes/base` has CTS TNS = 0.00, GRT TNS = -0.01 (a
+  10-picosecond-total design that is, for all practical purposes, timing-clean),
+  but the pure-percentage check computes `(0.01 / 0) * 100` as `+inf%` (guarded
+  only by `if cts_tns != 0`, with no absolute-magnitude floor) and flags it as a
+  cliff — exit 1 on a design with no real timing problem.
+- **MEDIUM — exit code 1 was ambiguous between "cliff detected" and "tool
+  crashed".** `EXIT_FINDING = 1` collides with CPython's default uncaught-exception
+  exit code, also 1, so an automated caller keying off exit code (e.g. the loop
+  agent) could not tell a genuine finding apart from, e.g., a `PermissionError`
+  reading a report file — even though the `--help` epilog implied the two were
+  distinguishable.
+- **MEDIUM — the round-1-fixed code failed CI's black check.** `.github/workflows/
+  black.yaml` pins `psf/black@...` (26.5.1); `check_cliff`'s def line and the test
+  file's `SCRIPT = os.path.join(...)` line were both over the line-length limit.
+
+**Fixes:**
+- Item 1+2 combined into one calibrated check rather than two independent fixes,
+  since a pure-percentage fix for item 1 (lowering the % bar) would have made item
+  2's false positive worse (any nonzero drop off a zero/near-zero baseline is
+  already "+inf%"). `check_cliff`'s TNS branch now requires **both**: the relative
+  drop to exceed `--tns-cliff-threshold` (percent, **new default 5.0%**, down from
+  20.0%) **and** the absolute drop to exceed a new `--tns-cliff-threshold-abs` (ns,
+  **new default 0.03 ns**) — `DEFAULT_TNS_CLIFF_THRESHOLD_ABS_NS` in
+  `cts_diagnostic.py`. The 0.03ns floor sits strictly between aes's noise-level
+  +0.01ns (not flagged) and dynamic_node's real +0.06ns (flagged); the 5.0% bar
+  sits strictly between dynamic_node's real +8.6% and the largest actually-clean
+  percentage in the dataset (none observed above 0%, i.e. there is no
+  non-degrading design whose percentage this could false-positive against).
+  Re-ran the check against all 58 real dirs under `flow/reports` (not just the
+  4 named designs) with the new defaults: jpeg, dynamic_node, and ariane133 are now
+  all correctly flagged; aes (nangate45) is correctly not flagged; every other
+  design's TNS cliff/no-cliff verdict is unchanged from before this fix (all were
+  either clear cliffs at >20% already, or non-degrading/improving TNS). `--tns-
+  cliff-threshold` and the new `--tns-cliff-threshold-abs` are both exposed as
+  separate CLI flags so either bar can be tuned independently per design class.
+- Item 3: split `main()` into an inner `_main()` (unchanged usage-error/finding/
+  clean logic, still calling `sys.exit(EXIT_USAGE_ERROR)` / `sys.exit(EXIT_FINDING)`
+  / `sys.exit(EXIT_CLEAN)` as before) and an outer `main()` that calls `_main()`
+  inside `try/except Exception`, re-raising `SystemExit` untouched (so the existing
+  exit codes 0/1/2 are unaffected) and printing `INTERNAL ERROR: <type>: <message>`
+  to stderr before `sys.exit(EXIT_INTERNAL_ERROR)` (new code, `= 3`) for anything
+  else. `--help` epilog updated to document all four exit codes.
+- Item 4: ran `python3 -m black flow/util/cts_diagnostic.py
+  flow/util/test_cts_diagnostic.py`; `cts_diagnostic.py` was already clean after
+  wrapping `check_cliff`'s signature across multiple lines during the item 1/2 fix,
+  `test_cts_diagnostic.py`'s `SCRIPT = os.path.join(...)` line was reformatted onto
+  three lines by black.
+
+**Tests:** added `TestTnsCliffCalibration` to `flow/util/test_cts_diagnostic.py`,
+pinned to the real jpeg/dynamic_node/ariane133/aes numbers above rather than
+synthetic ones (plus a `subTest`-parameterized near-zero-noise-variant case
+mirroring the validator's `-0.001->-0.01` / `-0.05->-0.08` / `-0.02->-0.03`
+examples), and a `TestCliExitCodes` subprocess test that `chmod 0`s a report file
+to force a real `PermissionError` (not a mocked one) and asserts the subprocess
+exits `EXIT_INTERNAL_ERROR` with `INTERNAL ERROR` on stderr, distinct from
+`EXIT_FINDING`. Ran `python3 -m pytest flow/util/test_cts_diagnostic.py -v` — all
+41 tests pass (35 prior + 6 new), no regressions. `python3 -m black --check
+flow/util/cts_diagnostic.py flow/util/test_cts_diagnostic.py` passes clean.
