@@ -2,9 +2,10 @@
 #
 # On-demand, single-instance ECO repair for loop_agent.py's eco_fix tool.
 # Loads an already-built stage database, applies ONE caller-specified fix
-# (resize / buffer insert / hold fix), measures timing before and after in
-# the same OpenROAD session, and writes the stage .odb back only if the
-# targeted metric improved and nothing else regressed.
+# (resize up/down or hold fix; buffer insert is implemented but disabled —
+# see eco_insert_buffer), measures timing before and after in the same
+# OpenROAD session, and writes the stage .odb back only if the targeted
+# metric improved and nothing else regressed.
 #
 # Extends the ::trepair namespace defined in timing_repair_common.tcl and
 # reuses its helpers (build_upsize_map, find_master, is_excluded).
@@ -197,8 +198,10 @@ proc eco_resize { inst_name direction target_cell parasitics_flag } {
     if { $new_master eq "" } {
       return [dict create status error kind resize msg "master not found: $target_cell"]
     }
-    if { ![terms_compatible [master_signal_terms $curr_master] \
-        [master_signal_terms $new_master]] } {
+    if {
+      ![terms_compatible [master_signal_terms $curr_master] \
+        [master_signal_terms $new_master]]
+    } {
       return [dict create status error kind resize msg \
         "incompatible swap: $target_cell has different signal terminals than \
 $curr_cell on $inst_name; not a legal drive-strength/footprint-compatible variant"]
@@ -494,8 +497,10 @@ proc eco_verdict { fix_type before after tol_wns tol_tns tol_hold tol_wns_hold }
 # every early-return path (a thrown error from a fatal-if-uncaught call)
 # writes the same clean JSON as the normal completion path.
 # -----------------------------------------------------------------------
-proc eco_write_result { json_out id status msg fix before after delta verdict targets \
-    odb_written } {
+proc eco_write_result {
+  json_out id status msg fix before after delta verdict targets
+  odb_written
+} {
   set line1 [format {"id":%s,"status":%s,"msg":%s} \
     [eco_json_str $id] [eco_json_str $status] [eco_json_str $msg]]
   set placement_warning ""
@@ -524,8 +529,10 @@ proc eco_write_result { json_out id status msg fix before after delta verdict ta
 # -----------------------------------------------------------------------
 # Orchestrator. Called once by the generated per-eco script.
 # -----------------------------------------------------------------------
-proc eco_run { json_out id odb_file stage fix_type target opt_cell opt_count \
-    tol_wns tol_tns tol_hold tol_wns_hold } {
+proc eco_run {
+  json_out id odb_file stage fix_type target opt_cell opt_count
+  tol_wns tol_tns tol_hold tol_wns_hold
+} {
   set status "error"
   set msg ""
   set fix [dict create kind "" inst "" from "" to ""]
@@ -605,8 +612,9 @@ all tested inputs (verified 2026-09-12); not safe to call."]
     } else {
       set verdict [eco_verdict $fix_type $before $after $tol_wns $tol_tns $tol_hold $tol_wns_hold]
       set d_wns [expr { [dict get $after wns] - [dict get $before wns] }]
-      set d_hold [expr { \
-        [dict get $after worst_hold_slack] - [dict get $before worst_hold_slack] }]
+      set d_hold [expr {
+        [dict get $after worst_hold_slack] - [dict get $before worst_hold_slack]
+      }]
       if { [dict get $before tns] eq "NA" || [dict get $after tns] eq "NA" } {
         set d_tns 0.0
       } else {

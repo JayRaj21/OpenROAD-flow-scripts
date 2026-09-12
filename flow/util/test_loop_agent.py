@@ -255,7 +255,9 @@ class TestWriteConfigParams(unittest.TestCase):
 class TestEcoFixValidation(unittest.TestCase):
     """impl_eco_fix rejects bad input before ever touching a subprocess."""
 
-    def _call(self, flow_dir, fix_type="resize_up", target="_412_", stage="cts", cell=""):
+    def _call(
+        self, flow_dir, fix_type="resize_up", target="_412_", stage="cts", cell=""
+    ):
         change_log = []
         eco_counter = itertools.count(1)
         result = impl_eco_fix(
@@ -396,7 +398,12 @@ class TestEcoFixGeneratedTcl(unittest.TestCase):
                 "id": "eco1",
                 "status": "applied",
                 "msg": "",
-                "fix": {"kind": "resize", "inst": "_412_", "from": "AND2_X1", "to": "AND2_X2"},
+                "fix": {
+                    "kind": "resize",
+                    "inst": "_412_",
+                    "from": "AND2_X1",
+                    "to": "AND2_X2",
+                },
                 "before": {
                     "wns": -0.031,
                     "tns": -1.204,
@@ -533,7 +540,12 @@ class TestEcoResultFormatter(unittest.TestCase):
         return {
             "status": "applied" if accepted else "rejected",
             "msg": "",
-            "fix": {"kind": "resize", "inst": "_412_", "from": "AND2_X1", "to": "AND2_X2"},
+            "fix": {
+                "kind": "resize",
+                "inst": "_412_",
+                "from": "AND2_X1",
+                "to": "AND2_X2",
+            },
             "before": {
                 "wns": -0.031,
                 "tns": -1.204,
@@ -576,7 +588,9 @@ class TestEcoResultFormatter(unittest.TestCase):
         self.assertIn("ACCEPTED", text)
 
     def test_fix_hold_rejected(self):
-        result = self._result(False, "worst_hold_slack", "no improvement in worst_hold_slack")
+        result = self._result(
+            False, "worst_hold_slack", "no improvement in worst_hold_slack"
+        )
         text = _format_eco_result("fix_hold", "_412_/D", "cts", result)
         self.assertIn("REJECTED", text)
         self.assertIn("worst_hold_slack", text)
@@ -628,14 +642,14 @@ class TestEcoRepairTclVerdict(unittest.TestCase):
     # -- swapMaster compatibility pre-check (terms_compatible) --
 
     def test_terms_compatible_matching_regardless_of_order(self):
-        out = self._run('puts [trepair::terms_compatible {A B ZN} {ZN B A}]')
+        out = self._run("puts [trepair::terms_compatible {A B ZN} {ZN B A}]")
         self.assertEqual(out.strip(), "1")
 
     def test_terms_compatible_rejects_mismatched_terminals(self):
         # e.g. a real NAND2_X4 (A B ZN) vs an explicit `cell` of INV_X4 (A ZN):
         # this is the exact incompatible-swap shape from the live-reproduced
         # bug report (resize_down NAND2-like inst to an INV-like cell).
-        out = self._run('puts [trepair::terms_compatible {A B ZN} {A ZN}]')
+        out = self._run("puts [trepair::terms_compatible {A B ZN} {A ZN}]")
         self.assertEqual(out.strip(), "0")
 
     # -- tns == "NA" rejection --

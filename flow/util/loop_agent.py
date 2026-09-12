@@ -4,7 +4,9 @@ P&R Closed-Loop Optimization Agent
 
 Observes stage-by-stage metrics, diagnoses timing failures, applies targeted
 ORFS parameter changes, re-runs the affected flow stages, and verifies
-improvement — without human intervention.
+improvement — without human intervention. For a single named instance or
+pin, eco_fix applies a narrow incremental repair directly to a built stage
+database instead of a full stage re-run.
 
 Builds on pr_metrics.py and the triage-agent system prompt. Tools give the
 model direct access to read metrics, queue parameter changes, and trigger
@@ -487,7 +489,16 @@ def _format_eco_result(fix_type, target, stage, result):
 
 
 def impl_eco_fix(
-    fix_type, target, stage, cell, platform, design, tag, flow_dir, change_log, eco_counter
+    fix_type,
+    target,
+    stage,
+    cell,
+    platform,
+    design,
+    tag,
+    flow_dir,
+    change_log,
+    eco_counter,
 ):
     if fix_type not in ECO_FIX_TYPES:
         return f"ERROR: '{fix_type}' is not a valid fix_type. Allowed: {sorted(ECO_FIX_TYPES)}"
@@ -507,7 +518,9 @@ def impl_eco_fix(
     # validation error.
     for name, value in (("target", target), ("cell", cell)):
         if value and (len(value) - len(value.rstrip("\\"))) % 2 == 1:
-            return f"ERROR: invalid {name} '{value}': ends in an odd number of backslashes"
+            return (
+                f"ERROR: invalid {name} '{value}': ends in an odd number of backslashes"
+            )
 
     if fix_type == "fix_hold" and "/" not in target:
         return "ERROR: fix_hold target must be a pin name (e.g. '_412_/D')"
