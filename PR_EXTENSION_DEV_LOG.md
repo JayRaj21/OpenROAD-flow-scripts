@@ -830,8 +830,9 @@ branch, `benchmark_dashboard.py` only:
   (platform/design/tag) must follow it — this still catches the original
   "one level too high" bug. If no `reports`/`logs` component exists anywhere
   in the path, fall back to the prior permissive behavior (last 3 path
-  components) instead of hard-erroring, since there's no argparse-valid way
-  to override it in the `--reports-dir` case.
+  components) instead of hard-erroring. (At the time, there was no
+  argparse-valid way to explicitly override the check in the
+  `--reports-dir` case — see the follow-up fix below.)
 - **MEDIUM — `compute_delta` still crashed on two non-numeric metric
   values.** The `fmt`/`fmt_delta` hardening from round 1 didn't cover the
   subtraction in `compute_delta` itself, so a history file with `"wns":
@@ -873,3 +874,30 @@ JSON value rendering as `"—"` in both `fmt` and `fmt_delta` (item 5).
 cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
 ```
 58 passed.
+
+### 2026-09-11 — Follow-up: make the strict-shape override actually reachable
+
+Round-2's fix still left a real usability gap: when the strict path-shape
+check does fire, its own suggested remediation ("pass `--platform`,
+`--design`, and `--tag` explicitly") was unreachable via the CLI, since
+`--platform` and `--reports-dir` lived in the same mutually-exclusive,
+required argparse group. Fixed by dropping that group — `--platform` and
+`--reports-dir` can now both be passed. `resolve_dirs` now checks
+`args.platform` (not just `args.reports_dir`) first: when `--platform` is
+given (with or without `--reports-dir`), it derives the path from
+platform/design/tag as before, bypassing path-shape validation entirely.
+Passing `--reports-dir` alone still goes through the shape check unchanged.
+Error messages were updated to point at this override instead of the
+now-fixed advice.
+
+**Tests:** added
+`test_record_cli_reports_dir_with_explicit_overrides_bypasses_shape_check`,
+exercising the previously-impossible override end-to-end via the CLI
+(not just `resolve_dirs()` in isolation): confirms plain `--reports-dir`
+one level too high still fails the shape check, and that adding
+`--platform`/`--design`/`--tag` alongside it now succeeds.
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+59 passed.
