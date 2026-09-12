@@ -20,8 +20,10 @@ Requirements:
 """
 
 import argparse
+import itertools
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -69,6 +71,36 @@ CONFIG_HOOK_PATHS = {
 # inject Make or shell syntax when written into config.mk or passed as a
 # KEY=value argv token to `make`.
 UNSAFE_VALUE_PATTERNS = ("$(", "${", "`", ";", "|", "&", "\n", "\r")
+
+# Stage database files eco_fix edits in place (relative to flow_dir)
+ECO_STAGE_ODB = {
+    "cts": "results/{p}/{d}/{t}/4_cts.odb",
+    "grt": "results/{p}/{d}/{t}/5_1_grt.odb",
+}
+
+# Docker-mounted path to the ECO repair script (matches HOOK_PATHS convention)
+ECO_SCRIPT_PATH = "/work/scripts/eco_repair.tcl"
+
+# Tolerances used to accept/reject an ECO (mirrors the loop's own
+# WNS>=0/TNS>=-0.05 closure rule). wns_hold is a looser, fix_hold-specific
+# WNS-regression tolerance: repairing a hold violation structurally trades
+# a small, bounded amount of setup slack (a few ps to tens of ps from the
+# inserted hold buffer's added delay) for hold closure. The generic wns
+# tolerance rejects that expected collateral cost as a regression, making
+# fix_hold nearly unusable; 0.01 ns is 10x the generic tolerance — large
+# enough to accept normal hold-fix collateral, still bounded enough to
+# catch a runaway hold fix that blows past it.
+ECO_TOLERANCES = {"wns": 0.001, "tns": 0.05, "hold": 0.001, "wns_hold": 0.01}
+
+# Instance/net/pin/cell names accepted for interpolation into generated Tcl
+ECO_NAME_RE = re.compile(r"^[A-Za-z0-9_./\[\]$:\\-]+$")
+
+# insert_buffer is NOT included: live-tested against openroad/orfs:latest
+# and confirmed to segfault the OpenROAD process itself (Signal 11 in
+# rsz::Resizer::insertBufferAfterDriver) on every input tried, regardless
+# of arguments. See eco_repair.tcl's eco_insert_buffer docstring and
+# PR_EXTENSION_DEV_LOG.md (2026-09-12 entry) for the full finding.
+ECO_FIX_TYPES = {"resize_up", "resize_down", "fix_hold"}
 
 # Stale ODB files to delete when forcing a stage re-run
 STAGE_STALE_FILES = {
@@ -156,6 +188,15 @@ POST_CTS_TCL, or POST_GLOBAL_ROUTE_TCL → run cts, then finish.
 (expensive — placement re-runs global place + resize + detail place).
 
 Budget: max 3 iterations. Call finish when done regardless of outcome.
+
+## eco_fix — targeted single-instance repair
+
+eco_fix is the cheap lever — prefer it over run_stage when the fix is a \
+single instance, net, or pin rather than a design-wide parameter change. It \
+edits the stage .odb in place, so any later run_stage call for that same or \
+an earlier stage discards the ECO — do ECOs last, after all run_stage calls, \
+then finish. eco_fix results are not visible in get_metrics until a \
+downstream run_stage finish call regenerates the reports.
 """
 
 # ---------------------------------------------------------------------------
@@ -222,6 +263,60 @@ TOOLS = [
                 },
             },
             "required": ["stage"],
+        },
+    },
+    {
+        "name": "eco_fix",
+        "description": (
+            "Apply ONE targeted incremental ECO fix to an already-built stage "
+            "database and verify it, without re-running a flow stage (seconds, "
+            "not minutes). You must name the exact instance or pin to fix; "
+            "this tool does not search for one. Timing is measured before "
+            "and after inside a single OpenROAD session; the change is written "
+            "back to the stage .odb only if the targeted metric improved and "
+            "no other metric regressed. If you don't know a target name, call "
+            "eco_fix once with any plausible target — the result always lists "
+            "instances on the worst setup paths under 'targets'. Only "
+            "resize_up, resize_down, and fix_hold are available; buffer "
+            "insertion is disabled (segfaults this OpenROAD build)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "fix_type": {
+                    "type": "string",
+                    "enum": ["resize_up", "resize_down", "fix_hold"],
+                    "description": (
+                        "resize_* swaps one instance to the next/previous drive "
+                        "strength; fix_hold repairs a hold-violating endpoint."
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": (
+                        "For resize_*: instance name (e.g. '_412_'). For "
+                        "fix_hold: endpoint pin name (e.g. '_412_/D')."
+                    ),
+                },
+                "stage": {
+                    "type": "string",
+                    "enum": ["cts", "grt"],
+                    "description": (
+                        "Which stage database to edit: 'cts' (4_cts.odb, "
+                        "placement parasitics) or 'grt' (5_1_grt.odb, "
+                        "global-route parasitics)."
+                    ),
+                },
+                "cell": {
+                    "type": "string",
+                    "description": (
+                        "Optional explicit library cell (target drive-strength "
+                        "variant for resize). Default: next/prev _X<N> drive. "
+                        "Not used for fix_hold."
+                    ),
+                },
+            },
+            "required": ["fix_type", "target", "stage"],
         },
     },
     {
@@ -350,6 +445,138 @@ def impl_run_stage(stage, platform, design, tag, pending_params, flow_dir, chang
     return tail
 
 
+def _format_eco_result(fix_type, target, stage, result):
+    verdict = result.get("verdict", {})
+    fix = result.get("fix", {})
+    before = result.get("before", {})
+    after = result.get("after", {})
+    delta = result.get("delta", {})
+
+    lines = [
+        f"status: {result.get('status')}  (verdict: "
+        f"{'ACCEPTED' if verdict.get('accepted') else 'REJECTED'} — "
+        f"{verdict.get('reason', '')})",
+    ]
+    if result.get("msg"):
+        lines.append(f"msg: {result['msg']}")
+    if fix.get("placement_warning"):
+        lines.append(f"placement_warning: {fix['placement_warning']}")
+    lines.append(
+        f"fix: {fix.get('kind', fix_type)} {fix.get('inst') or target} "
+        f"{fix.get('from', '')} -> {fix.get('to', '')}"
+    )
+
+    metrics = ("wns", "tns", "worst_hold_slack", "setup_viol_count", "hold_viol_count")
+    header = f"{'metric':<18} {'before':>12} {'after':>12} {'delta':>10}"
+    lines.append(header)
+    lines.append("-" * len(header))
+    for m in metrics:
+        b = before.get(m, "NA")
+        a = after.get(m, "NA")
+        d = delta.get(m, "")
+        lines.append(f"{m:<18} {str(b):>12} {str(a):>12} {str(d):>10}")
+
+    lines.append(f"odb_written: {result.get('odb_written', False)}")
+    targets = result.get("targets", [])
+    if targets:
+        lines.append("targets (worst setup paths):")
+        for t in targets:
+            lines.append(f"  {t.get('inst')}  ({t.get('cell')})  pin={t.get('pin')}")
+
+    return "\n".join(lines)
+
+
+def impl_eco_fix(
+    fix_type, target, stage, cell, platform, design, tag, flow_dir, change_log, eco_counter
+):
+    if fix_type not in ECO_FIX_TYPES:
+        return f"ERROR: '{fix_type}' is not a valid fix_type. Allowed: {sorted(ECO_FIX_TYPES)}"
+
+    if stage not in ECO_STAGE_ODB:
+        return f"ERROR: '{stage}' is not a valid eco_fix stage. Allowed: {sorted(ECO_STAGE_ODB)}"
+
+    if not ECO_NAME_RE.fullmatch(target or ""):
+        return f"ERROR: invalid target '{target}': contains disallowed characters"
+
+    if cell and not ECO_NAME_RE.fullmatch(cell):
+        return f"ERROR: invalid cell '{cell}': contains disallowed characters"
+
+    # A target/cell ending in an odd number of backslashes would escape the
+    # closing brace of the {...} it's interpolated into below, breaking the
+    # generated Tcl with an opaque "missing close-brace" instead of a clean
+    # validation error.
+    for name, value in (("target", target), ("cell", cell)):
+        if value and (len(value) - len(value.rstrip("\\"))) % 2 == 1:
+            return f"ERROR: invalid {name} '{value}': ends in an odd number of backslashes"
+
+    if fix_type == "fix_hold" and "/" not in target:
+        return "ERROR: fix_hold target must be a pin name (e.g. '_412_/D')"
+
+    odb_rel = ECO_STAGE_ODB[stage].format(p=platform, d=design, t=tag)
+    odb_path = os.path.join(flow_dir, odb_rel)
+    if not os.path.exists(odb_path):
+        return f"ERROR: {odb_path} not found — run that stage first."
+
+    eco_id = f"eco{next(eco_counter)}"
+    eco_dir = os.path.join(flow_dir, "objects", platform, design, tag, "eco")
+    os.makedirs(eco_dir, exist_ok=True)
+
+    tcl_path = os.path.join(eco_dir, f"{eco_id}.tcl")
+    json_path = os.path.join(eco_dir, f"{eco_id}.json")
+    if os.path.exists(json_path):
+        os.remove(json_path)
+
+    json_out_container = f"/work/objects/{platform}/{design}/{tag}/eco/{eco_id}.json"
+    odb_container = f"/work/{odb_rel}"
+
+    with open(tcl_path, "w") as f:
+        f.write(f"source {ECO_SCRIPT_PATH}\n")
+        f.write(
+            "trepair::eco_run "
+            f"{json_out_container} {eco_id} {odb_container} {stage} {fix_type} "
+            f"{{{target}}} {{{cell or ''}}} 0 "
+            f"{ECO_TOLERANCES['wns']} {ECO_TOLERANCES['tns']} {ECO_TOLERANCES['hold']} "
+            f"{ECO_TOLERANCES['wns_hold']}\n"
+        )
+
+    cmd = [
+        "util/docker_shell",
+        "make",
+        f"DESIGN_CONFIG=designs/{platform}/{design}/config.mk",
+        f"RUN_SCRIPT=/work/objects/{platform}/{design}/{tag}/eco/{eco_id}.tcl",
+        f"RUN_LOG_NAME_STEM={eco_id}",
+        "run",
+    ]
+
+    print(f"\n[loop-agent] $ {' '.join(cmd)}", flush=True)
+    try:
+        result = subprocess.run(
+            cmd, cwd=flow_dir, capture_output=True, text=True, timeout=900
+        )
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        return "ERROR: eco_fix run timed out after 15 minutes"
+
+    try:
+        with open(json_path) as f:
+            parsed = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        tail = output[-2000:] if len(output) > 2000 else output
+        return "ERROR: eco run produced no result\n" + tail
+
+    change_log.append(
+        {
+            "action": "eco_fix",
+            "fix_type": fix_type,
+            "target": target,
+            "stage": stage,
+            "result": parsed,
+        }
+    )
+
+    return _format_eco_result(fix_type, target, stage, parsed)
+
+
 # ---------------------------------------------------------------------------
 # Config write-back
 # ---------------------------------------------------------------------------
@@ -427,6 +654,7 @@ def run_loop(platform, design, tag, flow_dir):
     client = anthropic.Anthropic()
     pending_params = {}
     change_log = []
+    eco_counter = itertools.count(1)
     label = f"{platform}/{design}/{tag}"
 
     print(f"\nLoop agent — {label}")
@@ -503,6 +731,20 @@ def run_loop(platform, design, tag, flow_dir):
                     pending_params,
                     flow_dir,
                     change_log,
+                )
+
+            elif block.name == "eco_fix":
+                result = impl_eco_fix(
+                    inp["fix_type"],
+                    inp["target"],
+                    inp["stage"],
+                    inp.get("cell", ""),
+                    platform,
+                    design,
+                    tag,
+                    flow_dir,
+                    change_log,
+                    eco_counter,
                 )
 
             elif block.name == "finish":
