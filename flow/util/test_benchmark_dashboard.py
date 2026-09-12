@@ -311,6 +311,62 @@ class TestCliRecordAndReport(unittest.TestCase):
                 if os.path.isfile(history_file):
                     os.remove(history_file)
 
+    def test_record_cli_reports_dir_with_explicit_overrides_bypasses_shape_check(self):
+        util_dir = self._util_dir()
+        with tempfile.TemporaryDirectory() as tmp:
+            reports_dir = os.path.join(tmp, "flow", "reports", "nangate45", "ibex")
+            logs_dir = os.path.join(tmp, "flow", "logs", "nangate45", "ibex")
+            os.makedirs(reports_dir)
+            os.makedirs(logs_dir)
+            with open(os.path.join(reports_dir, "6_finish.rpt"), "w") as f:
+                f.write(
+                    "tns max -1.0\nwns max -0.10\nworst slack max -0.10\n"
+                    "fmax = 500.0\n"
+                )
+            history_file = os.path.join(
+                util_dir, "benchmark_history", "nangate45__ibex__override-tag.jsonl"
+            )
+            if os.path.isfile(history_file):
+                os.remove(history_file)
+            try:
+                # Plain --reports-dir is one directory level too high (no
+                # tag component) and is rejected by the strict shape check.
+                proc_fail = self._run(
+                    ["report", "--reports-dir", reports_dir],
+                    util_dir,
+                )
+                self.assertNotEqual(proc_fail.returncode, 0)
+                self.assertIn("does not look like", proc_fail.stderr)
+
+                # Explicit --platform/--design/--tag can now be combined
+                # with --reports-dir (argparse no longer rejects the
+                # combination) to override the derivation and bypass the
+                # shape check entirely.
+                proc = self._run(
+                    [
+                        "record",
+                        "--reports-dir",
+                        reports_dir,
+                        "--logs-dir",
+                        logs_dir,
+                        "--platform",
+                        "nangate45",
+                        "--design",
+                        "ibex",
+                        "--tag",
+                        "override-tag",
+                    ],
+                    util_dir,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertTrue(os.path.isfile(history_file))
+                records, _ = bd.load_records(history_file)
+                self.assertEqual(len(records), 1)
+                self.assertAlmostEqual(records[0]["stages"]["Finish"]["wns"], -0.10)
+            finally:
+                if os.path.isfile(history_file):
+                    os.remove(history_file)
+
     def test_report_exit_code_regression_vs_clean(self):
         util_dir = self._util_dir()
         with tempfile.TemporaryDirectory() as tmp:

@@ -508,9 +508,13 @@ def cmd_report(args, flow_dir, flow_util_dir, reports_dir, logs_dir, label):
 
 
 def add_common_args(parser, flow_dir_default):
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--platform", help="Platform name (e.g. nangate45)")
-    group.add_argument("--reports-dir", help="Direct path to reports directory")
+    parser.add_argument("--platform", help="Platform name (e.g. nangate45)")
+    parser.add_argument(
+        "--reports-dir",
+        help="Direct path to reports directory. May be combined with "
+        "--platform/--design/--tag to override path-derived values and "
+        "skip path-shape validation.",
+    )
 
     parser.add_argument("--design", help="Design name (required with --platform)")
     parser.add_argument("--tag", help="Tag / variant (default: base)", default=None)
@@ -523,18 +527,10 @@ def add_common_args(parser, flow_dir_default):
 
 
 def resolve_dirs(args):
-    if args.platform:
-        if not args.design:
-            raise SystemExit("--design is required when using --platform")
-        args.tag = args.tag or "base"
-        reports_dir = os.path.join(
-            args.flow_dir, "reports", args.platform, args.design, args.tag
-        )
-        logs_dir = os.path.join(
-            args.flow_dir, "logs", args.platform, args.design, args.tag
-        )
-        label = f"{args.platform}/{args.design}/{args.tag}"
-    else:
+    if not args.platform and not args.reports_dir:
+        raise SystemExit("error: one of --platform or --reports-dir is required")
+
+    if args.reports_dir:
         reports_dir = args.reports_dir
         logs_dir = args.logs_dir or reports_dir.replace("/reports/", "/logs/")
         label = reports_dir
@@ -551,7 +547,8 @@ def resolve_dirs(args):
                         f".../{dir_kind}/<platform>/<design>/<tag> (expected "
                         "exactly platform/design/tag after the "
                         f"'{dir_kind}' directory); pass --platform, --design, "
-                        "and --tag explicitly"
+                        "and --tag explicitly alongside --reports-dir to "
+                        "override path derivation"
                     )
                 args.platform = args.platform or remainder[0]
                 args.design = args.design or remainder[1]
@@ -566,9 +563,20 @@ def resolve_dirs(args):
                 "error: could not determine --platform/--design from "
                 f"--reports-dir {reports_dir!r} (need at least "
                 "<platform>/<design>/<tag> path components); pass "
-                "--platform and --design explicitly"
+                "--platform and --design explicitly alongside --reports-dir"
             )
         args.tag = args.tag or "base"
+    else:
+        if not args.design:
+            raise SystemExit("--design is required when using --platform")
+        args.tag = args.tag or "base"
+        reports_dir = os.path.join(
+            args.flow_dir, "reports", args.platform, args.design, args.tag
+        )
+        logs_dir = os.path.join(
+            args.flow_dir, "logs", args.platform, args.design, args.tag
+        )
+        label = f"{args.platform}/{args.design}/{args.tag}"
     return reports_dir, logs_dir, label
 
 
