@@ -720,6 +720,285 @@ append-only; pruning can be a follow-up if files get large), no cross-design agg
 dashboard (each `<platform>__<design>__<tag>` gets its own file/report, matching how
 `pr_metrics.py` is already scoped to one run at a time).
 
+---
+
+### 2026-08-27 — Multi-corner / multi-mode timing dashboard
+
+**What:** added an opt-in, additive per-corner timing breakdown on top of ORFS's
+existing multi-corner STA support (`flow/scripts/read_liberty.tcl` already reads
+liberty per corner via `define_corners`/`read_liberty -corner`), plus a Python
+dashboard to compare corners side by side.
+
+**Files:**
+- `flow/scripts/report_multicorner_timing.tcl` — new standalone proc
+  `report_multicorner_timing { stage when }`. Gated behind
+  `REPORT_MULTICORNER_TIMING` (unset/`0` = no-op, matching the
+  `SKIP_REPORT_METRICS`/`DETAILED_METRICS`/`CTS_SNAPSHOTS` opt-in pattern).
+  No-op when `CORNERS` has fewer than 2 entries. When enabled, loops
+  `$::env(CORNERS)` and, per corner, reads TNS/worst-slack via the
+  corner-scoped SWIG commands (`sta::find_scene`, `sta::total_negative_slack_scene_cmd`,
+  `sta::worst_slack_scene` — see correction below), derives WNS as
+  `min(0.0, worst_slack)`, and (if `REPORT_CLOCK_SKEW`) appends
+  `report_clock_skew -corner $corner`'s native output, into one file per
+  corner: `$::env(REPORTS_DIR)/${stage}_${when}_multicorner_${corner}.rpt` —
+  mirroring the existing single-corner `<stage>_<when>.rpt` naming from
+  `report_metrics.tcl`.
+- `flow/util/multicorner_dashboard.py` — CLI (`--platform`/`--design`/`--tag`/
+  `--flow-dir`, matching `pr_metrics.py`'s convention, plus `--stage` to pick
+  which stage's `*_multicorner_*.rpt` files to read, defaulting to the
+  highest-numbered stage found). Imports and reuses `pr_metrics.parse_rpt()`
+  for WNS/TNS/worst-slack (no reimplemented regexes) and adds a clock-skew
+  parser matching OpenSTA's real per-clock `"<value> setup|hold skew"` output.
+  Prints a table with corners as columns and a `"(worst)"` suffix marking the
+  worst corner per metric (most-negative for slack/TNS/WNS, largest-magnitude
+  for skew). Exits non-zero with a clear message if no matching multicorner
+  reports are found.
+- `flow/util/test_multicorner_dashboard.py` — unittest-based (style matches
+  `test_loop_agent.py`), synthetic `.rpt` fixtures in temp dirs, no
+  Docker/OpenSTA required. Covers file discovery/glob matching (including
+  underscore-containing corner names like `ss_0p9v_125c`), stage
+  auto-selection, `parse_rpt()` reuse, worst-corner selection, table
+  rendering, and three behavioral Tcl checks via `tclsh` subprocess: the
+  script sources without a syntax error; the single-corner no-op path writes
+  no files; and — critically — the 2+-corner code path itself, driven end to
+  end with the real `sta::*` commands stubbed to return known values,
+  asserting the written files parse back to the expected TNS/WNS/worst-slack/
+  clock-skew numbers.
+
+**Correction (same day, before commit landed clean):** an independent review
+caught that the first draft of `report_multicorner_timing.tcl` called
+`report_tns -corner`, `report_wns -corner`, and `report_worst_slack -corner`
+by analogy with `report_power -corner` — but never verified it against real
+OpenSTA source. That analogy was wrong and would have hard-crashed the flow
+the first time it ran with `REPORT_MULTICORNER_TIMING=1` and 2+ corners:
+`parse_key_args` rejects unknown flags, and none of those three commands
+declare `-corner`. Re-derived the fix by pulling the actual OpenSTA source at
+the exact commit ORFS's `tools/OpenROAD` submodule pins
+(`509913b1398b36eda23caa1f1f380167465dceee`, verified via
+`gh api repos/The-OpenROAD-Project/OpenROAD/contents/src?ref=...`), not
+upstream `master` blindly:
+  - `search/Search.tcl` confirms `report_tns`/`report_wns`/`report_worst_slack`
+    take only `[-min] [-max] [-digits digits]` — no `-corner`.
+  - `search/Search.i` exposes the real lower-level, corner-scoped commands
+    those procs are missing: `total_negative_slack_scene_cmd(Scene*, MinMax*)`,
+    `worst_slack_scene(Scene*, MinMax*)`, and `find_scene(const char*)` — and
+    OpenSTA's own test suite (`search/test/search_worst_slack_sta.tcl`,
+    `search/test/search_corner_skew.tcl`) uses exactly this pattern
+    (`sta::find_scene`, `sta::total_negative_slack_scene_cmd $scene max`,
+    `sta::worst_slack_scene $scene max`). The script now uses these instead.
+  - The review also flagged `report_clock_skew -corner` as a dead parameter.
+    On closer reading of `tcl/CmdArgs.tcl` this is actually **not** dead:
+    `report_clock_skew` passes its parsed `keys` array by reference into
+    `parse_scenes_or_all keys`, which explicitly reads `keys(-corner)` as a
+    documented `"compabibility 05/29/2025"` alias for `-scenes`. So
+    `report_clock_skew -corner $corner` is genuine and was kept — but its
+    real output format is a per-clock `"<value> setup|hold skew"` line, not
+    an aggregate "worst skew" line as the first draft's dashboard parser
+    assumed; `multicorner_dashboard.py`'s clock-skew regex and worst-corner
+    logic (largest magnitude, not most-negative) were rewritten to match.
+  - Also fixed: the corner-name regex in `multicorner_dashboard.py`
+    (`find_multicorner_reports`) excluded underscores, which would break on
+    real corner names like `ss_0p9v_125c`; broadened to allow them.
+  - Added the missing test that actually drives the 2+-corner Tcl branch
+    (`TestTclSyntax::test_proc_report_multicorner_timing_drives_two_corner_branch`)
+    by stubbing the real `sta::find_scene` / `sta::total_negative_slack_scene_cmd`
+    / `sta::worst_slack_scene` / `sta::format_time` commands and asserting on
+    the files it writes — this is the exact branch the wrong first draft
+    would have crashed in, and it had zero coverage before.
+
+**Tcl integration decision:** used the existing `HOOK_PATHS`/`CONFIG_HOOK_PATHS`
+mechanism (same pattern as `post_cts_timing_repair.tcl`) rather than a direct
+call site inside a stage script, so `report_metrics.tcl` and every stage
+script (`cts.tcl`, `global_route.tcl`, `final_outputs.tcl`, etc.) stay
+completely untouched — zero risk of regressing existing runs. **(Superseded
+2026-09-11, see below: wire `POST_CTS_TCL` to
+`report_multicorner_timing_cts.tcl` and `POST_GLOBAL_ROUTE_TCL` to
+`report_multicorner_timing_grt.tcl`, not the same file for both — the
+`REPORT_MULTICORNER_STAGE`/`REPORT_MULTICORNER_WHEN` env-var-based labelling
+described in this paragraph was removed.)** A design wires
+it in via e.g. `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing.tcl`
+plus `export REPORT_MULTICORNER_TIMING = 1`. Since a hook is only `source`d
+(no call-site args), the script reads optional `REPORT_MULTICORNER_STAGE`/
+`REPORT_MULTICORNER_WHEN` env vars (defaulting to `"4"`/`"cts final"`, tuned
+for `POST_CTS_TCL`) to label the output files, and also exposes
+`report_multicorner_timing { stage when }` for direct manual invocation after
+sourcing. Tradeoff: the hook-slot approach only fires at the specific point a
+hook already exists (post-CTS, post-GRT) — it cannot label an arbitrary
+stage/when pair without either wiring a hook per stage or a future direct
+call site in a stage script; this was deliberately left as future work to
+keep this change additive-only.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py
+flow/util/test_loop_agent.py -v` → 46 passed. Also manually exercised the CLI
+against hand-built fixture `.rpt` files reproducing OpenSTA's real `tns max` /
+`wns max` / `worst slack max` / per-clock `"<value> setup skew"` output
+format (including underscore corner names), confirming the table correctly
+renders and marks the worst corner. `black` applied to both new Python files.
+
+**Out of scope:** wiring `REPORT_MULTICORNER_TIMING` into an actual design's
+`config.mk` (needs a real multi-corner platform config to validate against
+live OpenSTA output); a direct stage-script call site as an alternative to
+the hook mechanism.
+
+---
+
+### 2026-09-11 — Fix two MEDIUM findings from independent validator review
+
+**Context:** an independent validator agent reproduced two MEDIUM-severity bugs
+end-to-end against the real OpenSTA source at the pinned `tools/OpenROAD`
+submodule commit (`509913b1398b36eda23caa1f1f380167465dceee`). No HIGHs were
+found on this branch; LOW-severity items were left alone per scope.
+
+**Finding 1 — nondeterministic `default_stage()` on a numeric-prefix tie
+(`flow/util/multicorner_dashboard.py`):** `default_stage()` collected stage
+labels into a `set` and broke ties on `sort_key` (numeric prefix only), so
+two labels sharing a prefix (e.g. `4_cts_final` vs.
+`4_cts_pre-repair-timing`, both left on disk because `REPORTS_DIR` is only
+swept by `make clean_cts`, not between incremental re-runs with a changed
+`REPORT_MULTICORNER_WHEN`) resolved by Python's hash-randomized set iteration
+order — i.e. by `PYTHONHASHSEED`. Same inputs, different dashboard on every
+invocation.
+
+**Fix:** `default_stage()` now builds a `{stage: max_mtime}` dict (not a set),
+sorts candidates by `(numeric_prefix, full_string)` — a fully deterministic
+key independent of hash order — and, when multiple labels still tie on the
+same numeric prefix, breaks the tie by picking the most-recently-modified
+one and prints a warning to stderr flagging that stale reports may be
+present.
+
+**Finding 2 — cross-invocation label/data stomping
+(`flow/scripts/report_multicorner_timing.tcl`):** the proc itself already
+took explicit `stage`/`when` arguments, so direct calls were never the
+problem. The bug was in the bottom "wired as a hook" block: it derived
+`stage`/`when` from `REPORT_MULTICORNER_STAGE`/`REPORT_MULTICORNER_WHEN`,
+which are Make/env variables — process-global for the whole flow run. Wiring
+this same file to both `POST_CTS_TCL` and `POST_GLOBAL_ROUTE_TCL` (as the
+file's own header comment suggested was supported) sources it twice in one
+interpreter with a single `export` visible to both sourcings, so the second
+invocation reused the first's label, truncating (`open $filename w`) and
+overwriting the first invocation's report under a now-mislabeled name.
+
+**Fix:** the hook-wiring block now tracks `::report_multicorner_invocation_num`
+and `::report_multicorner_seen_stages` — Tcl globals that persist across
+re-sourcing within the same interpreter (never `unset`) — so each successive
+sourcing in one session gets a distinct default label (`4`/"cts final", then
+`5`/"global route", ...), and an explicit env override that collides with a
+stage already seen earlier in the session is detected, warned about on
+stderr, and auto-adjusted instead of silently overwriting. Separately,
+inside `report_multicorner_timing` itself, the per-corner `open $filename w`
+truncate-and-create is now ordered *after* the `sta::find_scene` validity
+check (previously it ran first), so an unknown corner no longer leaves a
+0-byte file behind — a one-line reordering that incidentally also closes the
+related LOW-severity finding, per the plan's guidance to take that fix since
+it was free.
+
+**Tests (`flow/util/test_multicorner_dashboard.py`):** added
+`test_default_stage_tie_on_numeric_prefix_is_deterministic`,
+`test_default_stage_tie_deterministic_across_pythonhashseed` (re-invokes
+`default_stage()` in subprocesses under `PYTHONHASHSEED=0,1,42` and asserts
+identical output), and `test_default_stage_tie_warns_on_stderr`; plus
+`test_two_hook_sourcings_in_one_session_do_not_cross_contaminate`, which
+sources `report_multicorner_timing.tcl` twice in one `tclsh` process with the
+underlying timing data changed in between (mirroring `POST_CTS_TCL` =
+`POST_GLOBAL_ROUTE_TCL`) and asserts both `4_cts_final_multicorner_tt.rpt`
+and `5_global_route_multicorner_tt.rpt` exist with their own, uncontaminated
+data.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
+22 passed (was 18).
+
+---
+
+### 2026-09-11 — Round 2: the Finding-2 fix above was wrong; split into
+### per-stage hook files instead of in-process counters
+
+**Context:** the Finding 2 fix above (`::report_multicorner_invocation_num` /
+`::report_multicorner_seen_stages` Tcl globals persisting across re-sourcing
+"within the same interpreter") rested on an unverified assumption: that
+`POST_CTS_TCL` and `POST_GLOBAL_ROUTE_TCL`, when wired to the same file,
+source it twice in *one* interpreter session. Checking the actual ORFS
+Makefile / `flow.sh` shows this is false — `cts.tcl` and `global_route.tcl`
+each run as a **separate, fresh OpenROAD process**. So the counter/seen-set
+globals reset to empty on every hook firing and always pick the same
+first-slot default (`4`/"cts final") regardless of which hook actually
+fired. The round-1 fix did nothing; the original bug — a `POST_GLOBAL_ROUTE_TCL`
+firing silently overwriting the CTS report under a mislabeled `4_cts_final`
+name — was exactly as broken as before, and the header comment's claim of
+automatic same-interpreter handling was false.
+
+**Root cause:** there is no reliable way for a single hook file to
+introspect "what stage am I in" from a fresh process — no exposed getter
+for the current stage name, no argv/env variable carries it, and a
+Make-target-specific export can't work in single-process `flow.tcl`/
+bazel-orfs mode either. The only correct fix is to give each hook point its
+own file with a hardcoded identity, exactly like the existing
+`post_cts_timing_repair.tcl` / `post_grt_timing_repair.tcl` split (which
+share `timing_repair_common.tcl`).
+
+**Fix:**
+- **New file `flow/scripts/multicorner_timing_common.tcl`** — the actual
+  reporting logic (`report_multicorner_timing_enabled`, and
+  `report_multicorner_timing { stage when }` with its corner-iteration /
+  report-writing body), unchanged except the header comment's wiring
+  section and the removal of the false same-interpreter-fallback claim.
+- **New file `flow/scripts/report_multicorner_timing_cts.tcl`** — sources
+  `multicorner_timing_common.tcl`, then calls
+  `report_multicorner_timing 4 "cts final"` (the actual pre-existing
+  default for the CTS hook). Wired via
+  `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_cts.tcl`.
+- **New file `flow/scripts/report_multicorner_timing_grt.tcl`** — sources
+  `multicorner_timing_common.tcl`, then calls
+  `report_multicorner_timing 5 "global route"` (the actual pre-existing
+  default for the GRT hook). Wired via
+  `export POST_GLOBAL_ROUTE_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_grt.tcl`.
+- **Removed** `flow/scripts/report_multicorner_timing.tcl` entirely, along
+  with the `::report_multicorner_invocation_num` /
+  `::report_multicorner_seen_stages` global-tracking code and the
+  `REPORT_MULTICORNER_STAGE` / `REPORT_MULTICORNER_WHEN` env-var-based
+  label-guessing block — all dead weight once each hook file has a
+  hardcoded identity. `report_multicorner_timing { stage when }` itself
+  (the part that always took explicit arguments) is untouched.
+- Since each hook point is now a distinct file/process by construction,
+  the "two hooks in one interpreter session" scenario the header comment
+  used to warn about can no longer occur, so that warning was deleted
+  rather than reworded.
+- `flow/util/multicorner_dashboard.py`'s module docstring updated to
+  reference `multicorner_timing_common.tcl` /
+  `report_multicorner_timing_cts.tcl` / `report_multicorner_timing_grt.tcl`
+  instead of the removed single file. No functional change to
+  `multicorner_dashboard.py` — the round-1 `default_stage()` tie-break fix
+  and the `open`-after-`find_scene` reordering are untouched.
+
+**Tests (`flow/util/test_multicorner_dashboard.py`):**
+- `test_two_hook_sourcings_in_one_session_do_not_cross_contaminate` removed
+  — it tested an artificial single-interpreter double-sourcing scenario
+  that does not match ORFS's real per-stage-process model, so it validated
+  nothing about the actual bug.
+- Replaced with
+  `test_cts_and_grt_wrappers_in_separate_processes_do_not_collide`, which
+  runs `report_multicorner_timing_cts.tcl` and
+  `report_multicorner_timing_grt.tcl` in two **separate** `tclsh`
+  subprocess invocations (matching the real two-process ORFS model), each
+  with its own stubbed `sta::*` data, and asserts both produce correctly
+  labelled (`4_cts_final_multicorner_tt.rpt` / `5_global_route_multicorner_tt.rpt`),
+  non-colliding, independently-correct output files.
+- `test_tcl_script_is_syntactically_valid` split into
+  `test_common_script_is_syntactically_valid`,
+  `test_cts_wrapper_is_syntactically_valid`, and
+  `test_grt_wrapper_is_syntactically_valid`, one per new file.
+- `test_proc_report_multicorner_timing_drives_two_corner_branch` and
+  `test_proc_report_multicorner_timing_is_noop_for_single_corner` now
+  source `multicorner_timing_common.tcl` (still calling
+  `report_multicorner_timing` directly with explicit stage/when args, which
+  was always correct) instead of the removed single file.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
+24 passed (was 22; removed 1 artificial test, added 3: the two-process
+collision test plus per-file syntax checks for the common lib and each
+wrapper).
+
+---
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓
