@@ -1025,6 +1025,245 @@ wrapper).
 
 ---
 
+### 2026-08-27 — CTS quality diagnostic (`cts_diagnostic.py`)
+
+**Built:** `flow/util/cts_diagnostic.py`, a standalone CLI (same
+`--platform`/`--design`/`--tag`/`--flow-dir`/`--reports-dir`/`--logs-dir` convention as
+`pr_metrics.py`, and it imports and reuses `pr_metrics.collect()` for stage WNS rather
+than re-parsing report files itself). It reports:
+
+- **Clock buffers/inverters inserted** and **sink count**, parsed structurally out of
+  the CTS-stage log.
+- **Buffers-per-sink ratio** — an over-buffering proxy.
+- **Setup/hold clock skew**, when `REPORT_CLOCK_SKEW` data is present.
+- A **CTS→GRT cliff check**: pulls CTS-stage and Global-route-stage WNS from
+  `pr_metrics.collect()` and prints `CLIFF DETECTED:` if WNS worsens by more than
+  `--cliff-threshold` (default 0.05 ns) between the two stages — the quantitative
+  counterpart to the "CTS→GRT parasitic underestimation cliff" pattern that
+  `triage_agent.py` already describes in its LLM prompt context (lines ~60-84).
+
+Exits non-zero if a cliff is detected or if buffers-per-sink exceeds
+`--buffer-ratio-threshold` (default 0.5), so it can gate a pipeline/CI step; exits 0
+otherwise.
+
+**Grounding — nothing here was guessed; every log/report field was verified against
+a real, locally-generated ORFS run** (`flow/logs/nangate45/ibex/base/` and
+`flow/reports/nangate45/ibex/base/`, produced by an actual `clock_tree_synthesis` run
+in a local checkout). Note: `flow/logs` and `flow/reports` are gitignored build
+output — they are **not** committed to this repo, so these exact files are not
+present in `git log`/a clean checkout and a reader cannot reproduce the specific
+numbers below without running the flow themselves (e.g. `make cts` for
+`nangate45/ibex`). The grounding claim is about the log/report *format* (field names,
+line shapes, JSON keys), which is stable and inspectable in any ORFS run's output,
+not about these particular files being repo-tracked artifacts.
+
+- `flow/Makefile`'s `do-step(4_1_cts, ...)` call for the `cts` target, combined with
+  `flow/scripts/flow.sh` (`"$LOG_DIR/$1.log"`, `-metrics "$LOG_DIR/$1.json"`), confirms
+  the CTS-stage log is `4_1_cts.log` and its metrics snapshot is `4_1_cts.json` — not a
+  guessed name.
+- Inspecting the real `4_1_cts.log` showed TritonCTS emits exactly one
+  `[INFO CTS-0018]     Created N clock buffers.` line per clock net (the final,
+  cumulative buffer count for that net's H-tree — confirmed by cross-checking against
+  `TritonCTS found 3 clock nets.` and the 3 resulting `Created N clock buffers.` lines:
+  2, 143, 157), plus a separate `Total number of delay buffers: N` line for
+  latency-balancing buffers, and one `Sinks N` summary line per net (e.g. `Sinks 1100`
+  for `clk_i_regs`, which is exactly `995` initial sinks + `105` "Dummy loads inserted"
+  — confirming this is the post-balancing final sink count, not the pre-clustering
+  count reported earlier in the same log as `... has 995 sinks.`). The parser
+  deliberately anchors on the `]\s*Sinks\s+(\d+)\s*$` and `]\s*Leaf buffers\s+(\d+)\s*$`
+  forms (clean, single-purpose lines) rather than the more ambiguous
+  `Total number of sinks: N.` / `Number of sinks covered: N.` lines that appear during
+  intermediate H-tree construction, to avoid double-counting.
+- Skew: `report_metrics.tcl`'s `report_clock_skew_metric` / `report_clock_skew_metric
+  -hold` calls (gated by `REPORT_CLOCK_SKEW`, default `1` per `variables.yaml`) write
+  metrics into the stage `.json`; the real `4_1_cts.json` contains
+  `cts__clock__skew__setup` and `cts__clock__skew__hold` keys, confirmed by direct
+  inspection. The parser matches on key suffix so it survives the `cts__` stage prefix.
+  A text-based fallback (`parse_cts_skew_rpt`) also matches the `<value> setup skew`
+  line found in the real `4_cts_final.rpt`, for when a `.json` isn't available (e.g.
+  bazel-orfs consumers that only keep `.rpt`); note the `.rpt` text form only carries
+  setup skew since `cts.tcl`'s `report_clock_skew` call site doesn't pass `-hold`.
+- Ran `cts_diagnostic.py --reports-dir flow/reports/nangate45/ibex/base --logs-dir
+  flow/logs/nangate45/ibex/base` against that local (not committed, gitignored) ibex
+  run as a smoke test: 304 buffers, 2167 sinks, ratio 0.140, setup/hold skew ~0.025 ns,
+  no cliff (CTS WNS -0.010 ns vs. GRT WNS -0.000 ns) — exit code 0, as expected for a
+  healthy run. These specific numbers are from that local run only and are not
+  reproducible by re-running this exact command from a clean checkout; the 47-test
+  synthetic-fixture suite in `test_cts_diagnostic.py` is what's actually reproducible
+  and reviewable from the repo alone.
+
+**Thresholds:**
+- `--cliff-threshold` default **0.05 ns**: small enough to catch a real
+  parasitic-estimation regression, large enough to not fire on ordinary
+  run-to-run WNS noise between optimizer passes.
+- `--buffer-ratio-threshold` default **0.5**: the real ibex baseline measured 0.14
+  buffers/sink, so 0.5 leaves ~3.5x headroom above a known-healthy design before
+  flagging over-buffering — a heuristic sanity bound, not an EDA rule.
+
+**Tests:** `flow/util/test_cts_diagnostic.py` (unittest, no Docker/API, matches the
+house style of `test_loop_agent.py`) — synthetic log/json/rpt fixtures built from the
+verified real formats above; asserts computed buffer/sink/skew values, cliff
+detection/non-detection on crafted WNS sequences (including the case where GRT
+*improves* on CTS), buffer-ratio threshold triggering both ways, and an end-to-end
+`gather()` test combining a synthetic CTS `.rpt`, a GRT `.rpt`, and the CTS log/json.
+Ran `python3 -m pytest flow/util/test_cts_diagnostic.py flow/util/test_loop_agent.py -v`
+— all 47 tests pass (19 new + existing 28), plus 6 subtests.
+
+**Out of scope:** clock latency (target/source clock latency numbers are present in
+`.rpt` `report_checks` output but only for the single critical path, not tree-wide;
+left for a future pass), and any structural stats beyond buffer/sink/skew (e.g. wire
+segment counts, fanout distribution histograms) since they weren't called for by the
+roadmap item and add parsing surface without a clear consumer yet.
+
+### 2026-09-11 — `cts_diagnostic.py` fixes from independent validator review
+
+An independent validator agent re-ran `cts_diagnostic.py` end-to-end against 17 real
+ORFS runs and cross-checked it against real TritonCTS source, and found four bugs
+(1 HIGH, 3 MEDIUM) in the code committed in the 2026-08-27 entry above. Fixed all
+four; left LOW-severity items and everything else untouched.
+
+- **HIGH — `check_cliff` used WNS only, missing real cliffs.** The module docstring
+  claims the tool compares "WNS/TNS between the CTS and Global route stages," but
+  `check_cliff` only ever looked at WNS. Validator's real-data repro:
+  nangate45/swerv had `dWNS = +0.040` (an *improvement*, so the old check reported
+  "No CTS->GRT cliff detected" and exited 0) while TNS went from -306.65 to -492.21
+  ns — a 60% degradation — same false-negative pattern reproduced on tinyRocket,
+  ariane133, jpeg. Fixed by extending `check_cliff` to also compare CTS-stage vs.
+  GRT-stage TNS, gated by a new `--tns-cliff-threshold` CLI flag (default **20%**).
+  TNS uses a *relative* (percentage-of-CTS-TNS) threshold rather than an absolute-ns
+  one like WNS, because TNS magnitude scales with design size (sum over all
+  violating endpoints) so a fixed ns threshold that's meaningful for one design is
+  meaningless for another; this is documented inline next to
+  `DEFAULT_TNS_CLIFF_THRESHOLD_PCT`. A cliff is now flagged if EITHER the WNS drop OR
+  the TNS drop exceeds its threshold, and `check_cliff`'s return dict carries
+  `wns_detected`/`tns_detected` separately so `print_report` can show which stat(s)
+  triggered (`CLIFF DETECTED (WNS/TNS degraded...)`) and prints both CTS/GRT WNS and
+  CTS/GRT TNS lines regardless of which triggered, so the user isn't left guessing
+  which metric to look at.
+- **MEDIUM — non-dict top-level JSON crashed with an uncaught `AttributeError`.**
+  `parse_cts_skew_json` only caught `(json.JSONDecodeError, OSError)`, but
+  `json.load` happily returns `None`/a list/a bare string/a number for input like
+  `null`, `[...]`, `"str"`, `3` — all valid JSON, none of which have `.items()`.
+  Validator reproduced a crash on `4_1_cts.json` containing `null`, which aborted
+  before the CLI printed *any* report section, losing already-parsed buffer/sink
+  data along with it. Fixed by checking `isinstance(data, dict)` after a successful
+  `json.load` and, if not, warning to stderr and returning an empty skew dict (same
+  code path as a JSON parse failure) instead of raising — `gather()`'s existing
+  `if not skew: skew = parse_cts_skew_rpt(...)` fallback then kicks in and the rest
+  of the report (buffer/sink/cliff) still prints normally.
+- **MEDIUM — `--reports-dir` without `--logs-dir` could silently produce an
+  all-blank report.** The old `logs_dir = args.logs_dir or
+  reports_dir.replace("/reports/", "/logs/")` is a silent no-op whenever
+  `reports_dir` doesn't contain the literal substring `/reports/` with slashes on
+  both sides — which is exactly what happens for a *relative* path given from
+  inside `flow/` (e.g. `reports/nangate45/ibex/base`, matching the tool's own cwd
+  assumptions), since that string starts with `reports/`, not `/reports/`. There was
+  also no `isdir` check on the derived `logs_dir`, unlike the existing check on
+  `reports_dir`. Fixed with a new `derive_logs_dir()` helper that splits the path
+  into components and replaces an exact `reports` path segment (searching from the
+  right) rather than doing a substring replace, falling back to a sibling `logs/`
+  directory next to `reports_dir` if no `reports` component exists at all; `main()`
+  now also does an `isdir` check on the resolved `logs_dir` and prints a `WARNING:`
+  to stderr (without hard-failing, since `reports_dir` alone can still yield a
+  partial report) when it's missing.
+- **MEDIUM — exit code 1 conflated three different situations.** A cliff/
+  over-buffering *finding*, a usage error (bad path), and an uncaught crash were all
+  indistinguishable at exit code 1, which a CI/loop-agent caller can't act on
+  differently. Adopted a distinct scheme, now documented in the `--help` epilog:
+  `EXIT_CLEAN = 0`, `EXIT_FINDING = 1` (cliff and/or over-buffering detected),
+  `EXIT_USAGE_ERROR = 2` (bad args / missing reports dir — matches argparse's own
+  default exit code for `parser.error()`, so the two usage-error paths are now
+  consistent with each other). Genuine crashes are left to propagate as an uncaught
+  exception rather than being folded into any of the above.
+
+**Tests:** extended `flow/util/test_cts_diagnostic.py` with: TNS-cliff-detected-when-
+WNS-looks-fine (mirrors the validator's real swerv numbers), TNS-within-threshold,
+TNS-missing (no false positive), TNS-zero-CTS-TNS edge case; non-dict JSON
+(`null`/list/scalar) not crashing `parse_cts_skew_json`, plus a `gather()`-level test
+confirming buffer/sink/skew-rpt-fallback data still comes through when the CTS json
+is `null`; `derive_logs_dir()` unit tests (exact-component replace, the relative-path
+no-substring repro case, and the no-`reports`-component fallback); and CLI-level
+subprocess tests asserting the three exit codes and the missing-logs-dir stderr
+warning. Ran `python3 -m pytest flow/util/test_cts_diagnostic.py -v` — all 35 tests
+pass.
+
+### 2026-09-11 — `cts_diagnostic.py` fixes from round-2 independent validator review
+
+A round-2 independent validator re-ran the round-1-fixed tool against **all** real
+ORFS runs under `flow/reports` (58 platform/design/tag dirs present at the time,
+covering asap7/nangate45/sky130hd) rather than just the handful of designs the
+round-1 fixes were checked against, and found three more real issues:
+
+- **HIGH — `DEFAULT_TNS_CLIFF_THRESHOLD_PCT = 20.0` still missed real cliffs.**
+  Checked against the actual dataset: `nangate45/jpeg/base` (CTS TNS -40.29 -> GRT
+  TNS -45.63, a +13.3% degradation) and `nangate45/dynamic_node/base` (CTS TNS -0.70
+  -> GRT TNS -0.76, +8.6%) are both genuine CTS->GRT parasitic-underestimation
+  cliffs that the flat 20% bar let through silently (exit 0, "No CTS->GRT cliff
+  detected"). Only `nangate45/ariane133/base` (+23.0%) cleared the old bar, with
+  just 3 points of margin — the default was picked without being calibrated
+  against the dataset the bug was originally filed on.
+- **MEDIUM — new false-positive class on near-zero TNS baselines.** Verified on
+  real data: `nangate45/aes/base` has CTS TNS = 0.00, GRT TNS = -0.01 (a
+  10-picosecond-total design that is, for all practical purposes, timing-clean),
+  but the pure-percentage check computes `(0.01 / 0) * 100` as `+inf%` (guarded
+  only by `if cts_tns != 0`, with no absolute-magnitude floor) and flags it as a
+  cliff — exit 1 on a design with no real timing problem.
+- **MEDIUM — exit code 1 was ambiguous between "cliff detected" and "tool
+  crashed".** `EXIT_FINDING = 1` collides with CPython's default uncaught-exception
+  exit code, also 1, so an automated caller keying off exit code (e.g. the loop
+  agent) could not tell a genuine finding apart from, e.g., a `PermissionError`
+  reading a report file — even though the `--help` epilog implied the two were
+  distinguishable.
+- **MEDIUM — the round-1-fixed code failed CI's black check.** `.github/workflows/
+  black.yaml` pins `psf/black@...` (26.5.1); `check_cliff`'s def line and the test
+  file's `SCRIPT = os.path.join(...)` line were both over the line-length limit.
+
+**Fixes:**
+- Item 1+2 combined into one calibrated check rather than two independent fixes,
+  since a pure-percentage fix for item 1 (lowering the % bar) would have made item
+  2's false positive worse (any nonzero drop off a zero/near-zero baseline is
+  already "+inf%"). `check_cliff`'s TNS branch now requires **both**: the relative
+  drop to exceed `--tns-cliff-threshold` (percent, **new default 5.0%**, down from
+  20.0%) **and** the absolute drop to exceed a new `--tns-cliff-threshold-abs` (ns,
+  **new default 0.03 ns**) — `DEFAULT_TNS_CLIFF_THRESHOLD_ABS_NS` in
+  `cts_diagnostic.py`. The 0.03ns floor sits strictly between aes's noise-level
+  +0.01ns (not flagged) and dynamic_node's real +0.06ns (flagged); the 5.0% bar
+  sits strictly between dynamic_node's real +8.6% and the largest actually-clean
+  percentage in the dataset (none observed above 0%, i.e. there is no
+  non-degrading design whose percentage this could false-positive against).
+  Re-ran the check against all 58 real dirs under `flow/reports` (not just the
+  4 named designs) with the new defaults: jpeg, dynamic_node, and ariane133 are now
+  all correctly flagged; aes (nangate45) is correctly not flagged; every other
+  design's TNS cliff/no-cliff verdict is unchanged from before this fix (all were
+  either clear cliffs at >20% already, or non-degrading/improving TNS). `--tns-
+  cliff-threshold` and the new `--tns-cliff-threshold-abs` are both exposed as
+  separate CLI flags so either bar can be tuned independently per design class.
+- Item 3: split `main()` into an inner `_main()` (unchanged usage-error/finding/
+  clean logic, still calling `sys.exit(EXIT_USAGE_ERROR)` / `sys.exit(EXIT_FINDING)`
+  / `sys.exit(EXIT_CLEAN)` as before) and an outer `main()` that calls `_main()`
+  inside `try/except Exception`, re-raising `SystemExit` untouched (so the existing
+  exit codes 0/1/2 are unaffected) and printing `INTERNAL ERROR: <type>: <message>`
+  to stderr before `sys.exit(EXIT_INTERNAL_ERROR)` (new code, `= 3`) for anything
+  else. `--help` epilog updated to document all four exit codes.
+- Item 4: ran `python3 -m black flow/util/cts_diagnostic.py
+  flow/util/test_cts_diagnostic.py`; `cts_diagnostic.py` was already clean after
+  wrapping `check_cliff`'s signature across multiple lines during the item 1/2 fix,
+  `test_cts_diagnostic.py`'s `SCRIPT = os.path.join(...)` line was reformatted onto
+  three lines by black.
+
+**Tests:** added `TestTnsCliffCalibration` to `flow/util/test_cts_diagnostic.py`,
+pinned to the real jpeg/dynamic_node/ariane133/aes numbers above rather than
+synthetic ones (plus a `subTest`-parameterized near-zero-noise-variant case
+mirroring the validator's `-0.001->-0.01` / `-0.05->-0.08` / `-0.02->-0.03`
+examples), and a `TestCliExitCodes` subprocess test that `chmod 0`s a report file
+to force a real `PermissionError` (not a mocked one) and asserts the subprocess
+exits `EXIT_INTERNAL_ERROR` with `INTERNAL ERROR` on stderr, distinct from
+`EXIT_FINDING`. Ran `python3 -m pytest flow/util/test_cts_diagnostic.py -v` — all
+41 tests pass (35 prior + 6 new), no regressions. `python3 -m black --check
+flow/util/cts_diagnostic.py flow/util/test_cts_diagnostic.py` passes clean.
+
+---
+
 ### 2026-09-11 — Independent validator review: 7 fixes to benchmark_dashboard.py
 
 An independent validator agent re-ran the CI-gate scenarios end-to-end against
