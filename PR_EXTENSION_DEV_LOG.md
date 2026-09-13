@@ -664,6 +664,62 @@ Branch `pr-extension` → `master`.
 
 ---
 
+### 2026-08-27 — Regression / benchmark dashboard
+
+**Goal:** turn the single-run `pr_metrics.py` snapshot into a history that can catch
+regressions across runs/commits, usable both interactively and as a CI gate.
+
+**`flow/util/benchmark_dashboard.py`:** new module, two subcommands, argparse styled
+after `pr_metrics.py` (`--platform`/`--design`/`--tag` or `--reports-dir`/`--logs-dir`,
+same `--flow-dir` default). Imports `collect()` from `pr_metrics.py` rather than
+re-parsing reports/logs — that duplication (pr_metrics.py/triage_agent.py/loop_agent.py/
+compare_hook.sh all independently extracting the same metrics) was already flagged as a
+review issue, so this is strictly a history/regression layer on top of the existing
+parser. `pr_metrics.py` itself is untouched.
+
+- `record`: runs `collect()`, appends one JSON object (timestamp, `git rev-parse HEAD`,
+  platform/design/tag, per-stage metrics dict) as a line to
+  `flow/util/benchmark_history/<platform>__<design>__<tag>.jsonl`. JSONL + open-append
+  (`"a"` mode) was chosen specifically so a crash or concurrent writer can never
+  corrupt or rewrite prior history — each record is independent and the file is safe to
+  tail/grep.
+- `report`: reads the history file for a stage (default `Finish`), prints a table with
+  per-metric deltas vs. the previous record and `worse-than-best-*` flags vs. the
+  best-ever value across history. Regression detection compares only the latest record
+  against its immediate predecessor (not best-ever) against three configurable
+  thresholds — WNS worsening (`--wns-threshold`, default 0.01 ns), Fmax percentage drop
+  (`--fmax-threshold-pct`, default 1.0), GRT/GP overflow increase (`--overflow-threshold`,
+  default 0.001) — and exits 1 if any fire, 0 otherwise, so it drops straight into a CI
+  pipeline as a gate. Fewer than 2 records just prints the single row and exits 0.
+  `--html` additionally emits one self-contained HTML file (inline `<svg>` line charts
+  for WNS/Fmax/HPWL, inline `<style>`, no external JS/CSS/CDN/font references) so it
+  renders in an air-gapped CI runner.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`, unittest, 34 tests):** append-only
+behavior (multiple `record` calls never touch prior lines), delta/regression math on
+hand-built synthetic JSONL sequences (regression flagged/not-flagged at threshold
+boundaries for WNS/Fmax/overflow, best-ever flags, exit-code behavior via
+`build_report_rows`), a CLI subprocess test that runs `record` against a fake
+`flow/reports/.../6_finish.rpt` fixture and checks the written JSONL content, an
+HTML test asserting the output file is non-empty, contains `<svg>`/`<table>`, and has no
+`http(s)://` references (confirms it's genuinely offline-renderable), and
+`resolve_dirs()` tag-derivation tests (`--reports-dir` derives the tag from the path's
+last component when `--tag` isn't passed; an explicit `--tag` overrides derivation).
+Ran together with the existing suite:
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py test_loop_agent.py -v
+```
+62 passed (34 new + 28 existing), confirming no regression to `loop_agent.py`. Formatted
+both new files with `black` (26.5.1).
+
+**Left out of scope:** no Makefile/CI wiring to auto-invoke `record` after every flow
+run (roadmap says infra-only for this pass; wiring belongs with whichever CI workflow
+task consumes it), no retention/pruning policy for history files (JSONL is cheap and
+append-only; pruning can be a follow-up if files get large), no cross-design aggregate
+dashboard (each `<platform>__<design>__<tag>` gets its own file/report, matching how
+`pr_metrics.py` is already scoped to one run at a time).
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓
@@ -686,3 +742,162 @@ Branch `pr-extension` → `master`.
     (currently unit-tested only)
 16. **Second design**: run triage + loop on ibex or another design to validate generalization
 17. (Blocked on ML data) Congestion-feedback parameter tuner
+18. ~~Regression/benchmark dashboard (`benchmark_dashboard.py`)~~ ✓
+
+---
+
+### 2026-09-11 — Independent validator review: 7 fixes to benchmark_dashboard.py
+
+An independent validator agent re-ran the CI-gate scenarios end-to-end against
+`flow/util/benchmark_dashboard.py` and found seven ways the "gate" could report
+green (or crash) on a genuinely broken run. All seven are fixed on this branch,
+`benchmark_dashboard.py` only:
+
+- **HIGH — torn/corrupt newest line silently gated green.** `load_records` now
+  returns `(records, dropped_last_line)`; if the *most recent* physical line in
+  the history file was corrupt/malformed, `cmd_report` prints a clear
+  `stderr` error ("history file has a corrupt/truncated record and cannot be
+  safely compared") and exits 1, instead of silently comparing record N-2 vs
+  N-1 and reporting success.
+- **HIGH — empty latest-stage metrics gated green.** `detect_regressions` now
+  flags `{}`/missing metrics on the current record (when the previous record
+  had non-empty metrics for the same stage) as its own regression
+  ("stage produced no metrics — design may have failed to reach this stage"),
+  so `cmd_report` exits 1 instead of reporting a clean run when a design
+  stopped producing timing numbers for the requested stage.
+- **HIGH — `resolve_dirs` accepted a one-level-too-high `--reports-dir`.**
+  Previously any path with ≥3 components was silently sliced into
+  platform/design/tag, so pointing `--reports-dir` at a *design* directory
+  (missing the tag level) produced `platform='reports'` and a garbage history
+  file. `resolve_dirs` now checks that the component 4 levels above the
+  presumed tag is literally `"reports"`; if not, it raises a clear
+  `SystemExit` ("does not look like .../reports/<platform>/<design>/<tag>")
+  instead of proceeding.
+- **MEDIUM — non-dict/null JSON lines crashed with a raw traceback.**
+  `load_records` now validates each parsed line is a JSON object with the
+  expected shape (top-level dict; `stages`, if present, a dict whose values
+  are each a dict or `null`) and treats anything else as corrupt using the
+  same skip+warn+last-line-tracking path as a `JSONDecodeError`. `timestamp`
+  is now read defensively (`rec.get("timestamp") or "—"`) like `git_sha`
+  already was, and `build_report_rows`/`best_ever` guard against a `null`
+  nested stage value (`.get(stage) or {}`) instead of crashing on
+  `None.get(...)`.
+- **MEDIUM — non-numeric metric value crashed formatting.** `fmt`/`fmt_delta`
+  now render anything that isn't `int`/`float` (not just `None`) as `"—"`
+  instead of raising `ValueError` out of `str.format`.
+- **MEDIUM — `cmd_record` died with an unhandled traceback on a malformed
+  report.** The `collect()` call in `cmd_record` is now wrapped in
+  `try`/`except Exception`, printing a clear message naming the reports dir
+  and the underlying exception to `stderr` and exiting 1, rather than letting
+  a raw traceback surface. `pr_metrics.py` itself was not touched (shared
+  file, out of scope for this branch).
+- **MEDIUM — reader took no lock.** `load_records` now takes a shared lock
+  (`fcntl.flock(..., LOCK_SH)`) around the read, matching the exclusive lock
+  `append_record` already takes, so a reader can no longer observe a
+  partially-written record from a concurrent `record` invocation.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`):** extended to 50 (from 43),
+covering all seven fixes above, plus updated three pre-existing tests that
+exercised the old (buggy) `resolve_dirs`/`load_records` behavior directly —
+`test_reports_dir_derives_tag_from_path_when_not_passed` and
+`test_reports_dir_explicit_tag_overrides_path_derivation` now use a
+`--reports-dir` that actually has `reports/` in the right position, and all
+`bd.load_records(...)` call sites were updated to unpack the new
+`(records, dropped_last_line)` return.
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+50 passed.
+
+### 2026-09-11 — Round-2 independent validator review: 5 remaining fixes to benchmark_dashboard.py
+
+A second, independent validator agent re-tested the fixes above end-to-end
+with real CLI runs and found five more real issues, all now fixed on this
+branch, `benchmark_dashboard.py` only:
+
+- **HIGH — `resolve_dirs`'s "4 levels up must be literally `reports`" check
+  was too strict, and its own error message's suggested workaround was
+  impossible.** `--platform` and `--reports-dir` are in a mutually-exclusive,
+  required argparse group, so telling a user hitting the error to "pass
+  `--platform`/`--design`/`--tag` explicitly" was a dead end for `--platform`.
+  Worse, it newly rejected previously-working inputs: a relative
+  `nangate45/ibex/base` path (no `reports` ancestor) or a bare CI artifact
+  dir like `/tmp/artifacts/nangate45/ibex/base` (no `reports` component at
+  all) now hard-failed. Fixed by locating the *last* literal `reports` (or
+  `logs`, mirroring whichever kind of dir is being resolved) path component
+  via search instead of a fixed offset. If found, exactly 3 components
+  (platform/design/tag) must follow it — this still catches the original
+  "one level too high" bug. If no `reports`/`logs` component exists anywhere
+  in the path, fall back to the prior permissive behavior (last 3 path
+  components) instead of hard-erroring. (At the time, there was no
+  argparse-valid way to explicitly override the check in the
+  `--reports-dir` case — see the follow-up fix below.)
+- **MEDIUM — `compute_delta` still crashed on two non-numeric metric
+  values.** The `fmt`/`fmt_delta` hardening from round 1 didn't cover the
+  subtraction in `compute_delta` itself, so a history file with `"wns":
+  "n/a"` in two consecutive records raised an unhandled `TypeError` —
+  exiting 1 for the same reason a real regression exits 1, making corruption
+  indistinguishable from a genuine quality regression. `compute_delta` now
+  returns `None` unless both operands are real numbers. Audited and fixed
+  the same exposure in `detect_regressions`'s `prev_fmax > 0` comparison and
+  `render_html`'s point-series filtering (feeding `y_span = y_max - y_min`).
+- **MEDIUM — `dropped_last_line` detection was defeated by a trailing blank
+  line.** It keyed on `lineno == total_lines` (the last *physical* line), but
+  blank lines are skipped before that check runs, so a corrupt record
+  immediately followed by a blank line silently escaped detection — exactly
+  the gap round-1's fix #1 was meant to close. `load_records` now tracks the
+  last *non-blank* line number and compares against that instead.
+- **MEDIUM-LOW — `dropped_last_line`'s exit-1 check in `cmd_report` never
+  ran when history had zero valid records left after dropping corrupt
+  lines**, because the `if not records: ... sys.exit(0)` short-circuit ran
+  first — an all-garbage history file reported exit 0 ("No history found")
+  instead of flagging corruption. `cmd_report` now checks
+  `dropped_last_line` before the empty-records short-circuit.
+- **LOW — `fmt`/`fmt_delta` accepted `bool`** (since `bool` is an `int`
+  subclass in Python), rendering a stray JSON `true`/`false` as `1.000`/
+  `0.000` instead of `"—"`. Added a shared `is_number()` helper
+  (`isinstance(val, (int, float)) and not isinstance(val, bool)`) used by
+  `fmt`, `fmt_delta`, `compute_delta`, `detect_regressions`, and
+  `render_html`'s series filter.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`):** extended to 58 (from
+50), adding: a `--reports-dir` with no `reports` component and a relative
+3-component path both still resolving correctly (item 1); a two-record
+history where both records have non-numeric metrics not crashing
+`build_report_rows`/`print_report` (item 2); a corrupt-record-followed-by-
+blank-line history correctly flagged as `dropped_last_line` (item 3); an
+all-garbage history file exiting non-zero via the CLI (item 4); and a bool
+JSON value rendering as `"—"` in both `fmt` and `fmt_delta` (item 5).
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+58 passed.
+
+### 2026-09-11 — Follow-up: make the strict-shape override actually reachable
+
+Round-2's fix still left a real usability gap: when the strict path-shape
+check does fire, its own suggested remediation ("pass `--platform`,
+`--design`, and `--tag` explicitly") was unreachable via the CLI, since
+`--platform` and `--reports-dir` lived in the same mutually-exclusive,
+required argparse group. Fixed by dropping that group — `--platform` and
+`--reports-dir` can now both be passed. `resolve_dirs` now checks
+`args.platform` (not just `args.reports_dir`) first: when `--platform` is
+given (with or without `--reports-dir`), it derives the path from
+platform/design/tag as before, bypassing path-shape validation entirely.
+Passing `--reports-dir` alone still goes through the shape check unchanged.
+Error messages were updated to point at this override instead of the
+now-fixed advice.
+
+**Tests:** added
+`test_record_cli_reports_dir_with_explicit_overrides_bypasses_shape_check`,
+exercising the previously-impossible override end-to-end via the CLI
+(not just `resolve_dirs()` in isolation): confirms plain `--reports-dir`
+one level too high still fails the shape check, and that adding
+`--platform`/`--design`/`--tag` alongside it now succeeds.
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+59 passed.
