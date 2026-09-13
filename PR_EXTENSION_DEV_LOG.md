@@ -664,6 +664,341 @@ Branch `pr-extension` → `master`.
 
 ---
 
+### 2026-08-27 — Regression / benchmark dashboard
+
+**Goal:** turn the single-run `pr_metrics.py` snapshot into a history that can catch
+regressions across runs/commits, usable both interactively and as a CI gate.
+
+**`flow/util/benchmark_dashboard.py`:** new module, two subcommands, argparse styled
+after `pr_metrics.py` (`--platform`/`--design`/`--tag` or `--reports-dir`/`--logs-dir`,
+same `--flow-dir` default). Imports `collect()` from `pr_metrics.py` rather than
+re-parsing reports/logs — that duplication (pr_metrics.py/triage_agent.py/loop_agent.py/
+compare_hook.sh all independently extracting the same metrics) was already flagged as a
+review issue, so this is strictly a history/regression layer on top of the existing
+parser. `pr_metrics.py` itself is untouched.
+
+- `record`: runs `collect()`, appends one JSON object (timestamp, `git rev-parse HEAD`,
+  platform/design/tag, per-stage metrics dict) as a line to
+  `flow/util/benchmark_history/<platform>__<design>__<tag>.jsonl`. JSONL + open-append
+  (`"a"` mode) was chosen specifically so a crash or concurrent writer can never
+  corrupt or rewrite prior history — each record is independent and the file is safe to
+  tail/grep.
+- `report`: reads the history file for a stage (default `Finish`), prints a table with
+  per-metric deltas vs. the previous record and `worse-than-best-*` flags vs. the
+  best-ever value across history. Regression detection compares only the latest record
+  against its immediate predecessor (not best-ever) against three configurable
+  thresholds — WNS worsening (`--wns-threshold`, default 0.01 ns), Fmax percentage drop
+  (`--fmax-threshold-pct`, default 1.0), GRT/GP overflow increase (`--overflow-threshold`,
+  default 0.001) — and exits 1 if any fire, 0 otherwise, so it drops straight into a CI
+  pipeline as a gate. Fewer than 2 records just prints the single row and exits 0.
+  `--html` additionally emits one self-contained HTML file (inline `<svg>` line charts
+  for WNS/Fmax/HPWL, inline `<style>`, no external JS/CSS/CDN/font references) so it
+  renders in an air-gapped CI runner.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`, unittest, 34 tests):** append-only
+behavior (multiple `record` calls never touch prior lines), delta/regression math on
+hand-built synthetic JSONL sequences (regression flagged/not-flagged at threshold
+boundaries for WNS/Fmax/overflow, best-ever flags, exit-code behavior via
+`build_report_rows`), a CLI subprocess test that runs `record` against a fake
+`flow/reports/.../6_finish.rpt` fixture and checks the written JSONL content, an
+HTML test asserting the output file is non-empty, contains `<svg>`/`<table>`, and has no
+`http(s)://` references (confirms it's genuinely offline-renderable), and
+`resolve_dirs()` tag-derivation tests (`--reports-dir` derives the tag from the path's
+last component when `--tag` isn't passed; an explicit `--tag` overrides derivation).
+Ran together with the existing suite:
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py test_loop_agent.py -v
+```
+62 passed (34 new + 28 existing), confirming no regression to `loop_agent.py`. Formatted
+both new files with `black` (26.5.1).
+
+**Left out of scope:** no Makefile/CI wiring to auto-invoke `record` after every flow
+run (roadmap says infra-only for this pass; wiring belongs with whichever CI workflow
+task consumes it), no retention/pruning policy for history files (JSONL is cheap and
+append-only; pruning can be a follow-up if files get large), no cross-design aggregate
+dashboard (each `<platform>__<design>__<tag>` gets its own file/report, matching how
+`pr_metrics.py` is already scoped to one run at a time).
+
+---
+
+### 2026-08-27 — Multi-corner / multi-mode timing dashboard
+
+**What:** added an opt-in, additive per-corner timing breakdown on top of ORFS's
+existing multi-corner STA support (`flow/scripts/read_liberty.tcl` already reads
+liberty per corner via `define_corners`/`read_liberty -corner`), plus a Python
+dashboard to compare corners side by side.
+
+**Files:**
+- `flow/scripts/report_multicorner_timing.tcl` — new standalone proc
+  `report_multicorner_timing { stage when }`. Gated behind
+  `REPORT_MULTICORNER_TIMING` (unset/`0` = no-op, matching the
+  `SKIP_REPORT_METRICS`/`DETAILED_METRICS`/`CTS_SNAPSHOTS` opt-in pattern).
+  No-op when `CORNERS` has fewer than 2 entries. When enabled, loops
+  `$::env(CORNERS)` and, per corner, reads TNS/worst-slack via the
+  corner-scoped SWIG commands (`sta::find_scene`, `sta::total_negative_slack_scene_cmd`,
+  `sta::worst_slack_scene` — see correction below), derives WNS as
+  `min(0.0, worst_slack)`, and (if `REPORT_CLOCK_SKEW`) appends
+  `report_clock_skew -corner $corner`'s native output, into one file per
+  corner: `$::env(REPORTS_DIR)/${stage}_${when}_multicorner_${corner}.rpt` —
+  mirroring the existing single-corner `<stage>_<when>.rpt` naming from
+  `report_metrics.tcl`.
+- `flow/util/multicorner_dashboard.py` — CLI (`--platform`/`--design`/`--tag`/
+  `--flow-dir`, matching `pr_metrics.py`'s convention, plus `--stage` to pick
+  which stage's `*_multicorner_*.rpt` files to read, defaulting to the
+  highest-numbered stage found). Imports and reuses `pr_metrics.parse_rpt()`
+  for WNS/TNS/worst-slack (no reimplemented regexes) and adds a clock-skew
+  parser matching OpenSTA's real per-clock `"<value> setup|hold skew"` output.
+  Prints a table with corners as columns and a `"(worst)"` suffix marking the
+  worst corner per metric (most-negative for slack/TNS/WNS, largest-magnitude
+  for skew). Exits non-zero with a clear message if no matching multicorner
+  reports are found.
+- `flow/util/test_multicorner_dashboard.py` — unittest-based (style matches
+  `test_loop_agent.py`), synthetic `.rpt` fixtures in temp dirs, no
+  Docker/OpenSTA required. Covers file discovery/glob matching (including
+  underscore-containing corner names like `ss_0p9v_125c`), stage
+  auto-selection, `parse_rpt()` reuse, worst-corner selection, table
+  rendering, and three behavioral Tcl checks via `tclsh` subprocess: the
+  script sources without a syntax error; the single-corner no-op path writes
+  no files; and — critically — the 2+-corner code path itself, driven end to
+  end with the real `sta::*` commands stubbed to return known values,
+  asserting the written files parse back to the expected TNS/WNS/worst-slack/
+  clock-skew numbers.
+
+**Correction (same day, before commit landed clean):** an independent review
+caught that the first draft of `report_multicorner_timing.tcl` called
+`report_tns -corner`, `report_wns -corner`, and `report_worst_slack -corner`
+by analogy with `report_power -corner` — but never verified it against real
+OpenSTA source. That analogy was wrong and would have hard-crashed the flow
+the first time it ran with `REPORT_MULTICORNER_TIMING=1` and 2+ corners:
+`parse_key_args` rejects unknown flags, and none of those three commands
+declare `-corner`. Re-derived the fix by pulling the actual OpenSTA source at
+the exact commit ORFS's `tools/OpenROAD` submodule pins
+(`509913b1398b36eda23caa1f1f380167465dceee`, verified via
+`gh api repos/The-OpenROAD-Project/OpenROAD/contents/src?ref=...`), not
+upstream `master` blindly:
+  - `search/Search.tcl` confirms `report_tns`/`report_wns`/`report_worst_slack`
+    take only `[-min] [-max] [-digits digits]` — no `-corner`.
+  - `search/Search.i` exposes the real lower-level, corner-scoped commands
+    those procs are missing: `total_negative_slack_scene_cmd(Scene*, MinMax*)`,
+    `worst_slack_scene(Scene*, MinMax*)`, and `find_scene(const char*)` — and
+    OpenSTA's own test suite (`search/test/search_worst_slack_sta.tcl`,
+    `search/test/search_corner_skew.tcl`) uses exactly this pattern
+    (`sta::find_scene`, `sta::total_negative_slack_scene_cmd $scene max`,
+    `sta::worst_slack_scene $scene max`). The script now uses these instead.
+  - The review also flagged `report_clock_skew -corner` as a dead parameter.
+    On closer reading of `tcl/CmdArgs.tcl` this is actually **not** dead:
+    `report_clock_skew` passes its parsed `keys` array by reference into
+    `parse_scenes_or_all keys`, which explicitly reads `keys(-corner)` as a
+    documented `"compabibility 05/29/2025"` alias for `-scenes`. So
+    `report_clock_skew -corner $corner` is genuine and was kept — but its
+    real output format is a per-clock `"<value> setup|hold skew"` line, not
+    an aggregate "worst skew" line as the first draft's dashboard parser
+    assumed; `multicorner_dashboard.py`'s clock-skew regex and worst-corner
+    logic (largest magnitude, not most-negative) were rewritten to match.
+  - Also fixed: the corner-name regex in `multicorner_dashboard.py`
+    (`find_multicorner_reports`) excluded underscores, which would break on
+    real corner names like `ss_0p9v_125c`; broadened to allow them.
+  - Added the missing test that actually drives the 2+-corner Tcl branch
+    (`TestTclSyntax::test_proc_report_multicorner_timing_drives_two_corner_branch`)
+    by stubbing the real `sta::find_scene` / `sta::total_negative_slack_scene_cmd`
+    / `sta::worst_slack_scene` / `sta::format_time` commands and asserting on
+    the files it writes — this is the exact branch the wrong first draft
+    would have crashed in, and it had zero coverage before.
+
+**Tcl integration decision:** used the existing `HOOK_PATHS`/`CONFIG_HOOK_PATHS`
+mechanism (same pattern as `post_cts_timing_repair.tcl`) rather than a direct
+call site inside a stage script, so `report_metrics.tcl` and every stage
+script (`cts.tcl`, `global_route.tcl`, `final_outputs.tcl`, etc.) stay
+completely untouched — zero risk of regressing existing runs. **(Superseded
+2026-09-11, see below: wire `POST_CTS_TCL` to
+`report_multicorner_timing_cts.tcl` and `POST_GLOBAL_ROUTE_TCL` to
+`report_multicorner_timing_grt.tcl`, not the same file for both — the
+`REPORT_MULTICORNER_STAGE`/`REPORT_MULTICORNER_WHEN` env-var-based labelling
+described in this paragraph was removed.)** A design wires
+it in via e.g. `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing.tcl`
+plus `export REPORT_MULTICORNER_TIMING = 1`. Since a hook is only `source`d
+(no call-site args), the script reads optional `REPORT_MULTICORNER_STAGE`/
+`REPORT_MULTICORNER_WHEN` env vars (defaulting to `"4"`/`"cts final"`, tuned
+for `POST_CTS_TCL`) to label the output files, and also exposes
+`report_multicorner_timing { stage when }` for direct manual invocation after
+sourcing. Tradeoff: the hook-slot approach only fires at the specific point a
+hook already exists (post-CTS, post-GRT) — it cannot label an arbitrary
+stage/when pair without either wiring a hook per stage or a future direct
+call site in a stage script; this was deliberately left as future work to
+keep this change additive-only.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py
+flow/util/test_loop_agent.py -v` → 46 passed. Also manually exercised the CLI
+against hand-built fixture `.rpt` files reproducing OpenSTA's real `tns max` /
+`wns max` / `worst slack max` / per-clock `"<value> setup skew"` output
+format (including underscore corner names), confirming the table correctly
+renders and marks the worst corner. `black` applied to both new Python files.
+
+**Out of scope:** wiring `REPORT_MULTICORNER_TIMING` into an actual design's
+`config.mk` (needs a real multi-corner platform config to validate against
+live OpenSTA output); a direct stage-script call site as an alternative to
+the hook mechanism.
+
+---
+
+### 2026-09-11 — Fix two MEDIUM findings from independent validator review
+
+**Context:** an independent validator agent reproduced two MEDIUM-severity bugs
+end-to-end against the real OpenSTA source at the pinned `tools/OpenROAD`
+submodule commit (`509913b1398b36eda23caa1f1f380167465dceee`). No HIGHs were
+found on this branch; LOW-severity items were left alone per scope.
+
+**Finding 1 — nondeterministic `default_stage()` on a numeric-prefix tie
+(`flow/util/multicorner_dashboard.py`):** `default_stage()` collected stage
+labels into a `set` and broke ties on `sort_key` (numeric prefix only), so
+two labels sharing a prefix (e.g. `4_cts_final` vs.
+`4_cts_pre-repair-timing`, both left on disk because `REPORTS_DIR` is only
+swept by `make clean_cts`, not between incremental re-runs with a changed
+`REPORT_MULTICORNER_WHEN`) resolved by Python's hash-randomized set iteration
+order — i.e. by `PYTHONHASHSEED`. Same inputs, different dashboard on every
+invocation.
+
+**Fix:** `default_stage()` now builds a `{stage: max_mtime}` dict (not a set),
+sorts candidates by `(numeric_prefix, full_string)` — a fully deterministic
+key independent of hash order — and, when multiple labels still tie on the
+same numeric prefix, breaks the tie by picking the most-recently-modified
+one and prints a warning to stderr flagging that stale reports may be
+present.
+
+**Finding 2 — cross-invocation label/data stomping
+(`flow/scripts/report_multicorner_timing.tcl`):** the proc itself already
+took explicit `stage`/`when` arguments, so direct calls were never the
+problem. The bug was in the bottom "wired as a hook" block: it derived
+`stage`/`when` from `REPORT_MULTICORNER_STAGE`/`REPORT_MULTICORNER_WHEN`,
+which are Make/env variables — process-global for the whole flow run. Wiring
+this same file to both `POST_CTS_TCL` and `POST_GLOBAL_ROUTE_TCL` (as the
+file's own header comment suggested was supported) sources it twice in one
+interpreter with a single `export` visible to both sourcings, so the second
+invocation reused the first's label, truncating (`open $filename w`) and
+overwriting the first invocation's report under a now-mislabeled name.
+
+**Fix:** the hook-wiring block now tracks `::report_multicorner_invocation_num`
+and `::report_multicorner_seen_stages` — Tcl globals that persist across
+re-sourcing within the same interpreter (never `unset`) — so each successive
+sourcing in one session gets a distinct default label (`4`/"cts final", then
+`5`/"global route", ...), and an explicit env override that collides with a
+stage already seen earlier in the session is detected, warned about on
+stderr, and auto-adjusted instead of silently overwriting. Separately,
+inside `report_multicorner_timing` itself, the per-corner `open $filename w`
+truncate-and-create is now ordered *after* the `sta::find_scene` validity
+check (previously it ran first), so an unknown corner no longer leaves a
+0-byte file behind — a one-line reordering that incidentally also closes the
+related LOW-severity finding, per the plan's guidance to take that fix since
+it was free.
+
+**Tests (`flow/util/test_multicorner_dashboard.py`):** added
+`test_default_stage_tie_on_numeric_prefix_is_deterministic`,
+`test_default_stage_tie_deterministic_across_pythonhashseed` (re-invokes
+`default_stage()` in subprocesses under `PYTHONHASHSEED=0,1,42` and asserts
+identical output), and `test_default_stage_tie_warns_on_stderr`; plus
+`test_two_hook_sourcings_in_one_session_do_not_cross_contaminate`, which
+sources `report_multicorner_timing.tcl` twice in one `tclsh` process with the
+underlying timing data changed in between (mirroring `POST_CTS_TCL` =
+`POST_GLOBAL_ROUTE_TCL`) and asserts both `4_cts_final_multicorner_tt.rpt`
+and `5_global_route_multicorner_tt.rpt` exist with their own, uncontaminated
+data.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
+22 passed (was 18).
+
+---
+
+### 2026-09-11 — Round 2: the Finding-2 fix above was wrong; split into
+### per-stage hook files instead of in-process counters
+
+**Context:** the Finding 2 fix above (`::report_multicorner_invocation_num` /
+`::report_multicorner_seen_stages` Tcl globals persisting across re-sourcing
+"within the same interpreter") rested on an unverified assumption: that
+`POST_CTS_TCL` and `POST_GLOBAL_ROUTE_TCL`, when wired to the same file,
+source it twice in *one* interpreter session. Checking the actual ORFS
+Makefile / `flow.sh` shows this is false — `cts.tcl` and `global_route.tcl`
+each run as a **separate, fresh OpenROAD process**. So the counter/seen-set
+globals reset to empty on every hook firing and always pick the same
+first-slot default (`4`/"cts final") regardless of which hook actually
+fired. The round-1 fix did nothing; the original bug — a `POST_GLOBAL_ROUTE_TCL`
+firing silently overwriting the CTS report under a mislabeled `4_cts_final`
+name — was exactly as broken as before, and the header comment's claim of
+automatic same-interpreter handling was false.
+
+**Root cause:** there is no reliable way for a single hook file to
+introspect "what stage am I in" from a fresh process — no exposed getter
+for the current stage name, no argv/env variable carries it, and a
+Make-target-specific export can't work in single-process `flow.tcl`/
+bazel-orfs mode either. The only correct fix is to give each hook point its
+own file with a hardcoded identity, exactly like the existing
+`post_cts_timing_repair.tcl` / `post_grt_timing_repair.tcl` split (which
+share `timing_repair_common.tcl`).
+
+**Fix:**
+- **New file `flow/scripts/multicorner_timing_common.tcl`** — the actual
+  reporting logic (`report_multicorner_timing_enabled`, and
+  `report_multicorner_timing { stage when }` with its corner-iteration /
+  report-writing body), unchanged except the header comment's wiring
+  section and the removal of the false same-interpreter-fallback claim.
+- **New file `flow/scripts/report_multicorner_timing_cts.tcl`** — sources
+  `multicorner_timing_common.tcl`, then calls
+  `report_multicorner_timing 4 "cts final"` (the actual pre-existing
+  default for the CTS hook). Wired via
+  `export POST_CTS_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_cts.tcl`.
+- **New file `flow/scripts/report_multicorner_timing_grt.tcl`** — sources
+  `multicorner_timing_common.tcl`, then calls
+  `report_multicorner_timing 5 "global route"` (the actual pre-existing
+  default for the GRT hook). Wired via
+  `export POST_GLOBAL_ROUTE_TCL = $(SCRIPTS_DIR)/report_multicorner_timing_grt.tcl`.
+- **Removed** `flow/scripts/report_multicorner_timing.tcl` entirely, along
+  with the `::report_multicorner_invocation_num` /
+  `::report_multicorner_seen_stages` global-tracking code and the
+  `REPORT_MULTICORNER_STAGE` / `REPORT_MULTICORNER_WHEN` env-var-based
+  label-guessing block — all dead weight once each hook file has a
+  hardcoded identity. `report_multicorner_timing { stage when }` itself
+  (the part that always took explicit arguments) is untouched.
+- Since each hook point is now a distinct file/process by construction,
+  the "two hooks in one interpreter session" scenario the header comment
+  used to warn about can no longer occur, so that warning was deleted
+  rather than reworded.
+- `flow/util/multicorner_dashboard.py`'s module docstring updated to
+  reference `multicorner_timing_common.tcl` /
+  `report_multicorner_timing_cts.tcl` / `report_multicorner_timing_grt.tcl`
+  instead of the removed single file. No functional change to
+  `multicorner_dashboard.py` — the round-1 `default_stage()` tie-break fix
+  and the `open`-after-`find_scene` reordering are untouched.
+
+**Tests (`flow/util/test_multicorner_dashboard.py`):**
+- `test_two_hook_sourcings_in_one_session_do_not_cross_contaminate` removed
+  — it tested an artificial single-interpreter double-sourcing scenario
+  that does not match ORFS's real per-stage-process model, so it validated
+  nothing about the actual bug.
+- Replaced with
+  `test_cts_and_grt_wrappers_in_separate_processes_do_not_collide`, which
+  runs `report_multicorner_timing_cts.tcl` and
+  `report_multicorner_timing_grt.tcl` in two **separate** `tclsh`
+  subprocess invocations (matching the real two-process ORFS model), each
+  with its own stubbed `sta::*` data, and asserts both produce correctly
+  labelled (`4_cts_final_multicorner_tt.rpt` / `5_global_route_multicorner_tt.rpt`),
+  non-colliding, independently-correct output files.
+- `test_tcl_script_is_syntactically_valid` split into
+  `test_common_script_is_syntactically_valid`,
+  `test_cts_wrapper_is_syntactically_valid`, and
+  `test_grt_wrapper_is_syntactically_valid`, one per new file.
+- `test_proc_report_multicorner_timing_drives_two_corner_branch` and
+  `test_proc_report_multicorner_timing_is_noop_for_single_corner` now
+  source `multicorner_timing_common.tcl` (still calling
+  `report_multicorner_timing` directly with explicit stage/when args, which
+  was always correct) instead of the removed single file.
+
+**Testing:** `python3 -m pytest flow/util/test_multicorner_dashboard.py -v` →
+24 passed (was 22; removed 1 artificial test, added 3: the two-process
+collision test plus per-file syntax checks for the common lib and each
+wrapper).
+
+---
+
 ## Planned Next Steps
 
 1. ~~Implement `pr_metrics.py`~~ ✓
@@ -686,6 +1021,7 @@ Branch `pr-extension` → `master`.
     (currently unit-tested only)
 16. **Second design**: run triage + loop on ibex or another design to validate generalization
 17. (Blocked on ML data) Congestion-feedback parameter tuner
+18. ~~Regression/benchmark dashboard (`benchmark_dashboard.py`)~~ ✓
 
 ---
 
@@ -925,3 +1261,161 @@ exits `EXIT_INTERNAL_ERROR` with `INTERNAL ERROR` on stderr, distinct from
 `EXIT_FINDING`. Ran `python3 -m pytest flow/util/test_cts_diagnostic.py -v` — all
 41 tests pass (35 prior + 6 new), no regressions. `python3 -m black --check
 flow/util/cts_diagnostic.py flow/util/test_cts_diagnostic.py` passes clean.
+
+---
+
+### 2026-09-11 — Independent validator review: 7 fixes to benchmark_dashboard.py
+
+An independent validator agent re-ran the CI-gate scenarios end-to-end against
+`flow/util/benchmark_dashboard.py` and found seven ways the "gate" could report
+green (or crash) on a genuinely broken run. All seven are fixed on this branch,
+`benchmark_dashboard.py` only:
+
+- **HIGH — torn/corrupt newest line silently gated green.** `load_records` now
+  returns `(records, dropped_last_line)`; if the *most recent* physical line in
+  the history file was corrupt/malformed, `cmd_report` prints a clear
+  `stderr` error ("history file has a corrupt/truncated record and cannot be
+  safely compared") and exits 1, instead of silently comparing record N-2 vs
+  N-1 and reporting success.
+- **HIGH — empty latest-stage metrics gated green.** `detect_regressions` now
+  flags `{}`/missing metrics on the current record (when the previous record
+  had non-empty metrics for the same stage) as its own regression
+  ("stage produced no metrics — design may have failed to reach this stage"),
+  so `cmd_report` exits 1 instead of reporting a clean run when a design
+  stopped producing timing numbers for the requested stage.
+- **HIGH — `resolve_dirs` accepted a one-level-too-high `--reports-dir`.**
+  Previously any path with ≥3 components was silently sliced into
+  platform/design/tag, so pointing `--reports-dir` at a *design* directory
+  (missing the tag level) produced `platform='reports'` and a garbage history
+  file. `resolve_dirs` now checks that the component 4 levels above the
+  presumed tag is literally `"reports"`; if not, it raises a clear
+  `SystemExit` ("does not look like .../reports/<platform>/<design>/<tag>")
+  instead of proceeding.
+- **MEDIUM — non-dict/null JSON lines crashed with a raw traceback.**
+  `load_records` now validates each parsed line is a JSON object with the
+  expected shape (top-level dict; `stages`, if present, a dict whose values
+  are each a dict or `null`) and treats anything else as corrupt using the
+  same skip+warn+last-line-tracking path as a `JSONDecodeError`. `timestamp`
+  is now read defensively (`rec.get("timestamp") or "—"`) like `git_sha`
+  already was, and `build_report_rows`/`best_ever` guard against a `null`
+  nested stage value (`.get(stage) or {}`) instead of crashing on
+  `None.get(...)`.
+- **MEDIUM — non-numeric metric value crashed formatting.** `fmt`/`fmt_delta`
+  now render anything that isn't `int`/`float` (not just `None`) as `"—"`
+  instead of raising `ValueError` out of `str.format`.
+- **MEDIUM — `cmd_record` died with an unhandled traceback on a malformed
+  report.** The `collect()` call in `cmd_record` is now wrapped in
+  `try`/`except Exception`, printing a clear message naming the reports dir
+  and the underlying exception to `stderr` and exiting 1, rather than letting
+  a raw traceback surface. `pr_metrics.py` itself was not touched (shared
+  file, out of scope for this branch).
+- **MEDIUM — reader took no lock.** `load_records` now takes a shared lock
+  (`fcntl.flock(..., LOCK_SH)`) around the read, matching the exclusive lock
+  `append_record` already takes, so a reader can no longer observe a
+  partially-written record from a concurrent `record` invocation.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`):** extended to 50 (from 43),
+covering all seven fixes above, plus updated three pre-existing tests that
+exercised the old (buggy) `resolve_dirs`/`load_records` behavior directly —
+`test_reports_dir_derives_tag_from_path_when_not_passed` and
+`test_reports_dir_explicit_tag_overrides_path_derivation` now use a
+`--reports-dir` that actually has `reports/` in the right position, and all
+`bd.load_records(...)` call sites were updated to unpack the new
+`(records, dropped_last_line)` return.
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+50 passed.
+
+### 2026-09-11 — Round-2 independent validator review: 5 remaining fixes to benchmark_dashboard.py
+
+A second, independent validator agent re-tested the fixes above end-to-end
+with real CLI runs and found five more real issues, all now fixed on this
+branch, `benchmark_dashboard.py` only:
+
+- **HIGH — `resolve_dirs`'s "4 levels up must be literally `reports`" check
+  was too strict, and its own error message's suggested workaround was
+  impossible.** `--platform` and `--reports-dir` are in a mutually-exclusive,
+  required argparse group, so telling a user hitting the error to "pass
+  `--platform`/`--design`/`--tag` explicitly" was a dead end for `--platform`.
+  Worse, it newly rejected previously-working inputs: a relative
+  `nangate45/ibex/base` path (no `reports` ancestor) or a bare CI artifact
+  dir like `/tmp/artifacts/nangate45/ibex/base` (no `reports` component at
+  all) now hard-failed. Fixed by locating the *last* literal `reports` (or
+  `logs`, mirroring whichever kind of dir is being resolved) path component
+  via search instead of a fixed offset. If found, exactly 3 components
+  (platform/design/tag) must follow it — this still catches the original
+  "one level too high" bug. If no `reports`/`logs` component exists anywhere
+  in the path, fall back to the prior permissive behavior (last 3 path
+  components) instead of hard-erroring. (At the time, there was no
+  argparse-valid way to explicitly override the check in the
+  `--reports-dir` case — see the follow-up fix below.)
+- **MEDIUM — `compute_delta` still crashed on two non-numeric metric
+  values.** The `fmt`/`fmt_delta` hardening from round 1 didn't cover the
+  subtraction in `compute_delta` itself, so a history file with `"wns":
+  "n/a"` in two consecutive records raised an unhandled `TypeError` —
+  exiting 1 for the same reason a real regression exits 1, making corruption
+  indistinguishable from a genuine quality regression. `compute_delta` now
+  returns `None` unless both operands are real numbers. Audited and fixed
+  the same exposure in `detect_regressions`'s `prev_fmax > 0` comparison and
+  `render_html`'s point-series filtering (feeding `y_span = y_max - y_min`).
+- **MEDIUM — `dropped_last_line` detection was defeated by a trailing blank
+  line.** It keyed on `lineno == total_lines` (the last *physical* line), but
+  blank lines are skipped before that check runs, so a corrupt record
+  immediately followed by a blank line silently escaped detection — exactly
+  the gap round-1's fix #1 was meant to close. `load_records` now tracks the
+  last *non-blank* line number and compares against that instead.
+- **MEDIUM-LOW — `dropped_last_line`'s exit-1 check in `cmd_report` never
+  ran when history had zero valid records left after dropping corrupt
+  lines**, because the `if not records: ... sys.exit(0)` short-circuit ran
+  first — an all-garbage history file reported exit 0 ("No history found")
+  instead of flagging corruption. `cmd_report` now checks
+  `dropped_last_line` before the empty-records short-circuit.
+- **LOW — `fmt`/`fmt_delta` accepted `bool`** (since `bool` is an `int`
+  subclass in Python), rendering a stray JSON `true`/`false` as `1.000`/
+  `0.000` instead of `"—"`. Added a shared `is_number()` helper
+  (`isinstance(val, (int, float)) and not isinstance(val, bool)`) used by
+  `fmt`, `fmt_delta`, `compute_delta`, `detect_regressions`, and
+  `render_html`'s series filter.
+
+**Tests (`flow/util/test_benchmark_dashboard.py`):** extended to 58 (from
+50), adding: a `--reports-dir` with no `reports` component and a relative
+3-component path both still resolving correctly (item 1); a two-record
+history where both records have non-numeric metrics not crashing
+`build_report_rows`/`print_report` (item 2); a corrupt-record-followed-by-
+blank-line history correctly flagged as `dropped_last_line` (item 3); an
+all-garbage history file exiting non-zero via the CLI (item 4); and a bool
+JSON value rendering as `"—"` in both `fmt` and `fmt_delta` (item 5).
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+58 passed.
+
+### 2026-09-11 — Follow-up: make the strict-shape override actually reachable
+
+Round-2's fix still left a real usability gap: when the strict path-shape
+check does fire, its own suggested remediation ("pass `--platform`,
+`--design`, and `--tag` explicitly") was unreachable via the CLI, since
+`--platform` and `--reports-dir` lived in the same mutually-exclusive,
+required argparse group. Fixed by dropping that group — `--platform` and
+`--reports-dir` can now both be passed. `resolve_dirs` now checks
+`args.platform` (not just `args.reports_dir`) first: when `--platform` is
+given (with or without `--reports-dir`), it derives the path from
+platform/design/tag as before, bypassing path-shape validation entirely.
+Passing `--reports-dir` alone still goes through the shape check unchanged.
+Error messages were updated to point at this override instead of the
+now-fixed advice.
+
+**Tests:** added
+`test_record_cli_reports_dir_with_explicit_overrides_bypasses_shape_check`,
+exercising the previously-impossible override end-to-end via the CLI
+(not just `resolve_dirs()` in isolation): confirms plain `--reports-dir`
+one level too high still fails the shape check, and that adding
+`--platform`/`--design`/`--tag` alongside it now succeeds.
+
+```bash
+cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
+```
+59 passed.
