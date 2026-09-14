@@ -131,22 +131,85 @@ exceed 0.5°C ΔT — short of the "at least 2 of 3" goal criterion.
 degeneracy per the plan's rationale) came in at ΔT=0.05°C, barely above
 `asap7/gcd`'s literal 0.0°C and `asap7/riscv32i` (with SRAM macros) only
 reached ΔT=0.43°C — still under the 0.5°C bar. All three asap7 thermal maps
-sit in a ~110.0–110.4°C band. This suggests the `MIN_CELL_UM=5.0` HotSpot
-grid-floor issue documented in the 2026-08-27 entry for `asap7/gcd`'s 9µm
-die is not resolved simply by picking a bigger *cell-count* design — asap7's
-physical die sizes for these designs are apparently still small/dense enough
-(7nm node, high utilization) to hit the same effective-resolution floor.
+sit in a ~110.0–110.4°C band.
+
+**Correction (2026-09-14, later same day — validator finding): the
+`MIN_CELL_UM=5.0` grid-resolution-floor explanation originally written here
+was falsified and has been removed.** Three runs against the real
+`3_place.odb` files (`util/docker_shell` + `openroad/orfs-ml:latest`) show
+grid resolution has no effect on the asap7 flatness: `asap7/aes` at the
+shipped `MIN_CELL_UM=5.0` (10x10 grid) gives ΔT=0.05°C, and forcing
+`MIN_CELL_UM=2.5` (20x20 grid, 4x more blocks) gives the identical
+ΔT=0.05°C; meanwhile a `nangate45/aes` run forced onto a *coarser* 9x9 grid
+than asap7/aes still resolves ΔT=3.3°C (vs. 3.47°C at its native 50x50 grid).
+A 9x9 grid clearly resolves a multi-degree gradient fine, so a resolution
+floor cannot explain asap7's flatness.
+
+**Actual root cause:** `run_hotspot()` in `extract_thermal_labels.py`
+invokes `hotspot` with no `-c` package config, so HotSpot's built-in default
+package geometry (~0.15mm silicon thickness, cm-scale spreader/heatsink) is
+applied to *every* design regardless of its actual die size. asap7 dies in
+this batch are 51-73µm across — three orders of magnitude smaller than the
+default package's cm-scale heatsink and ~3x *thinner* than they are wide in
+the wrong direction (the default silicon layer alone is ~2-3x the die's
+lateral extent), so lateral spreading resistance is negligible and the die
+is rendered effectively isothermal under any power distribution, no matter
+how much detail the power map has. This was confirmed directly by holding
+placement and power distribution fixed and scaling only the physical die
+extent, at constant power density and constant grid:
+
+| Die extent | 51µm | 255µm | 510µm | 1021µm |
+|---|---|---|---|---|
+| ΔT | 0.05°C | 1.2°C | 4.7°C | 14.9°C |
+
+Same cells, same power distribution, same grid — ΔT scales with absolute
+die size against the fixed default package model, not with the design's
+spatial power variation. **This means the thermal-label dataset collected
+in this entry largely encodes die size, not spatial power distribution,
+across all 12 samples** (asap7 51-73µm dies → 0.05-0.43°C; nangate45 250µm
+dies → 1.8-4.04°C; sky130hd 475µm dies → 4.71-6.52°C — the ΔT ranking tracks
+die size almost exactly). This is a data-quality caveat that must travel
+with the dataset as a whole, not just an asap7-specific footnote: a future
+cross-design thermal model trained on this data risks learning die size
+rather than real thermal physics.
+
 Two nangate45 and one sky130hd sample (gcd variants: 0.05, 0.05, 0.14°C)
-also came in under 0.5°C, consistent with the known-degenerate small/simple
-`gcd` pattern already flagged for `asap7/gcd` — not a new issue, just the
-same small-die effect recurring on other PDKs' `gcd`.
+also came in under 0.5°C, consistent with the same die-size effect — the
+`gcd` variants are simply the smallest dies on each PDK in this batch, not a
+separate issue.
+
+**`asap7/gcd`'s sample (`asap7_gcd_thermal_labels.npz`) is a degenerate
+constant, not just "low ΔT", and should be excluded from training.**
+`_adaptive_hotspot_grid()` in `extract_thermal_labels.py` computes
+`max(1, int(min_dim_um / MIN_CELL_UM))` with no lower-bound guard; for
+`asap7/gcd`'s 9µm die this silently resolves to a 1x1 HotSpot grid
+(confirmed live in the extraction log: `using 1×1 HotSpot grid`). The saved
+sample is a single HotSpot block bilinearly upsampled to 64x64 — both
+`power_grid` and `thermal_map` in the `.npz` are literally constant
+(`min == max`: `8.0587e-4` for `power_grid`, `110.0`°C for `thermal_map`,
+everywhere). This is qualitatively different from the other low-ΔT
+samples, which at least have a spatially varying (if low-amplitude)
+power/thermal map — `asap7/gcd` carries zero spatial information at all.
+
+**Follow-up needed (out of scope for this data-collection task, not fixed
+here):** two real bugs in `extract_thermal_labels.py` explain both findings
+above — (1) `run_hotspot()` never passes a per-die `-c` package config to
+`hotspot`, so the fixed default package geometry dominates ΔT for any die
+far from cm-scale (i.e. every die in this dataset), and (2)
+`_adaptive_hotspot_grid()` has no lower bound on grid size, letting
+small-enough dies silently collapse to a 1x1 grid. Neither was touched in
+this entry — that file was out of scope for this task per its plan
+constraints. A dedicated fix-and-re-extract pass (scaling the HotSpot
+package config to each die's physical extent, and enforcing a minimum grid
+size) is needed before the thermal dataset can be trusted for cross-design
+modeling.
 
 **Full per-design table (worst-case IR-drop, thermal ΔT):**
 
 | Design | Worst-case IR-drop | Thermal ΔT (°C) |
 |---|---|---|
 | nangate45/gcd | 0.534 mV | 0.050 |
-| asap7/gcd | 103.68 mV | 0.000 |
+| asap7/gcd | 103.68 mV | 0.000 (degenerate constant, see above) |
 | sky130hd/gcd | 0.412 mV | 0.139 |
 | sky130hd/riscv32i | 0.588 mV | 6.52 |
 | nangate45/dynamic_node | 1.008 mV | 2.65 |
@@ -162,10 +225,15 @@ same small-die effect recurring on other PDKs' `gcd`.
 IR-drop data matching prior baselines; the dataset now spans 36 `.npz`
 files (up from 18) with a genuine cross-PDK, macro-inclusive sample set.
 The thermal-ΔT success criterion (>=10/12 designs, >=2/3 asap7 samples)
-was **not met** — this is a real finding about the asap7 HotSpot grid
-resolution limitation, not an extraction failure, and needs a follow-up
-decision (larger-die asap7 design, or revisiting `MIN_CELL_UM`) rather than
-being chased further within this data-collection task's constraints.
+was **not met** — not because of an extraction failure, but because
+`extract_thermal_labels.py`'s `run_hotspot()` applies a fixed default
+package geometry regardless of die size (see correction above), which makes
+the 12 collected thermal labels largely a function of die size rather than
+power distribution, and `asap7/gcd`'s sample is additionally a degenerate
+1x1-grid constant. This needs the dedicated `extract_thermal_labels.py`
+fix-and-re-extract pass described above before the thermal dataset is
+usable for cross-design modeling, rather than being chased further within
+this data-collection task's constraints.
 
 No `git status` changes outside this file — `results/`, `logs/`,
 `objects/`, and `data/*.npz` remain gitignored as expected.
