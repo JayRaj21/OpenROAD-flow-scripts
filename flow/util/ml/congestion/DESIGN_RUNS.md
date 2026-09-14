@@ -73,6 +73,103 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-14 — 12-design real routed dataset (6 baseline re-routes + 6 new: asap7/nangate45/sky130hd)
+
+Executed the planned expansion from 6 to 12 real routed designs across all
+three PDKs, per the cheapest-first order plan. All 12 `make finish` runs
+(`openroad/orfs:latest`) completed with `rc=0` in ~56 minutes total (far
+under the 5-7h estimate — no design in this batch was large/slow enough to
+approach the estimate; `nangate45/jpeg`, the largest at 68k stdcells, took
+~11.5 minutes). Order run: nangate45/gcd, asap7/gcd, sky130hd/gcd,
+sky130hd/riscv32i, nangate45/dynamic_node, asap7/riscv32i, nangate45/aes,
+asap7/aes, sky130hd/aes, nangate45/ibex, nangate45/tinyRocket,
+nangate45/jpeg. No fallback substitutions were needed — all 12 primary
+picks routed cleanly, including both macro-bearing designs
+(asap7/riscv32i with fakeram7 SRAM, nangate45/tinyRocket with fakeram45
+SRAM), the first macro designs in this dataset.
+
+**Extraction:** `extract_thermal_batch.sh` (`openroad/orfs-ml:latest`,
+`--timeout 3600`) → 24/24 passed, 0 failed (features + thermal for all 12,
+auto-discovered via `find results -name 3_place.odb`, no allowlist edits).
+`extract_irdrop_batch.sh` (`openroad/orfs:latest`, `--timeout 3600`, no
+`--voltage` flag — per-design liberty/voltage resolved automatically via
+`make print-LIB_FILES print-PWR_NETS_VOLTAGES`) → 12/12 passed. Manually
+inspected the raw docker command lines logged for the two macro designs to
+confirm the `/work/${lib#*/flow/}` liberty-path remap resolved correctly:
+`asap7/riscv32i` picked up `/work/platforms/asap7/lib/NLDM/fakeram7_256x32.lib`
+(a real on-disk file) alongside the 5 standard-cell libs, and
+`nangate45/tinyRocket` picked up `/work/designs/nangate45/tinyRocket/fakeram45_{1024x32,64x32}.lib`
+(symlinks into `platforms/nangate45/lib/`) — both resolved to real files,
+not mangled paths, and both extractions logged `[OK]` with no errors.
+
+**Verification:** `find flow/results -name 6_final.odb | wc -l` = 12, each
+with sibling `6_final.spef` and `3_place.odb` confirmed present.
+`ls flow/util/ml/congestion/data/*.npz | wc -l` = 36. Value-sanity script
+(adapted only for this numpy version's `np.ptp(a)` vs. the now-removed
+`a.ptp()` method — no functional change to the check) found no NaN/Inf and
+no unexpected all-zero arrays; the only `ALLZERO` flags were `macro_density`
+for the 10 non-macro designs, which is correct (and its *absence* on
+`asap7_riscv32i`/`nangate45_tinyRocket` confirms macro detection worked).
+`python3 util/ml/congestion/tests/test_models.py -v` → 20/20 pass (`OK`,
+exit 0), unchanged as expected (synthetic-data regression guard only).
+
+**IR-drop worst-case matches the previously-documented baseline almost
+exactly** — a good confirmation the toolchain/environment is unchanged
+since the 2026-08-27 entry: nangate45 gcd 0.534mV / dynamic_node 1.008mV /
+ibex 3.057mV / aes 4.985mV (baseline: 0.53/1.01/3.06/4.99mV); sky130hd gcd
+0.412mV (baseline 0.41mV); asap7 gcd 103.68mV (baseline 103.68mV, exact).
+All new samples' IR-drop landed in the platform-expected magnitude bands
+(asap7 tens–150mV, nangate45 sub-mV to ~9mV, sky130hd sub-mV) and
+`voltage_map` stayed at-or-below nominal supply per platform in every case.
+
+**Thermal ΔT criterion NOT met — reporting, not silently patching (out of
+scope: no changes to `extract_thermal_labels.py`, no `MIN_CELL_UM` tuning
+per plan constraints).** Only 7 of 12 designs have thermal peak-to-peak
+> 0.5°C, short of the ">= 10 of 12" target, and **0 of the 3 asap7 samples**
+exceed 0.5°C ΔT — short of the "at least 2 of 3" goal criterion.
+`asap7/aes` (14,321 stdcells, chosen specifically to break the flat-map
+degeneracy per the plan's rationale) came in at ΔT=0.05°C, barely above
+`asap7/gcd`'s literal 0.0°C and `asap7/riscv32i` (with SRAM macros) only
+reached ΔT=0.43°C — still under the 0.5°C bar. All three asap7 thermal maps
+sit in a ~110.0–110.4°C band. This suggests the `MIN_CELL_UM=5.0` HotSpot
+grid-floor issue documented in the 2026-08-27 entry for `asap7/gcd`'s 9µm
+die is not resolved simply by picking a bigger *cell-count* design — asap7's
+physical die sizes for these designs are apparently still small/dense enough
+(7nm node, high utilization) to hit the same effective-resolution floor.
+Two nangate45 and one sky130hd sample (gcd variants: 0.05, 0.05, 0.14°C)
+also came in under 0.5°C, consistent with the known-degenerate small/simple
+`gcd` pattern already flagged for `asap7/gcd` — not a new issue, just the
+same small-die effect recurring on other PDKs' `gcd`.
+
+**Full per-design table (worst-case IR-drop, thermal ΔT):**
+
+| Design | Worst-case IR-drop | Thermal ΔT (°C) |
+|---|---|---|
+| nangate45/gcd | 0.534 mV | 0.050 |
+| asap7/gcd | 103.68 mV | 0.000 |
+| sky130hd/gcd | 0.412 mV | 0.139 |
+| sky130hd/riscv32i | 0.588 mV | 6.52 |
+| nangate45/dynamic_node | 1.008 mV | 2.65 |
+| asap7/riscv32i | 140.04 mV | 0.434 |
+| nangate45/aes | 4.985 mV | 3.468 |
+| asap7/aes | 148.24 mV | 0.050 |
+| sky130hd/aes | 0.513 mV | 4.71 |
+| nangate45/ibex | 3.057 mV | 4.04 |
+| nangate45/tinyRocket | 1.370 mV | 1.80 |
+| nangate45/jpeg | 8.821 mV | 2.16 |
+
+**Net result:** 12/12 designs routed and extracted successfully with clean
+IR-drop data matching prior baselines; the dataset now spans 36 `.npz`
+files (up from 18) with a genuine cross-PDK, macro-inclusive sample set.
+The thermal-ΔT success criterion (>=10/12 designs, >=2/3 asap7 samples)
+was **not met** — this is a real finding about the asap7 HotSpot grid
+resolution limitation, not an extraction failure, and needs a follow-up
+decision (larger-die asap7 design, or revisiting `MIN_CELL_UM`) rather than
+being chased further within this data-collection task's constraints.
+
+No `git status` changes outside this file — `results/`, `logs/`,
+`objects/`, and `data/*.npz` remain gitignored as expected.
+
 ### 2026-08-27 (later) — `no-mistakes` validation of the asap7 LIB_FILES fix; path move `flow/ml/` → `flow/util/ml/`
 
 Ran the `no-mistakes` gate pipeline (review/test/document/lint/push/PR/CI)
