@@ -73,6 +73,193 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-15 — Laplacian smoothness loss, re-evaluated on the corrected 12-design dataset (LODO, seed-averaged)
+
+**Why this re-run was needed.** The three prior Laplacian comparisons
+(n=3, n=4, n=6 below) flip sign across sample sizes and are each a single
+unseeded pooled 70/15/15 split — at n≤6 that degenerates to a 1-sample val
+set, and `split_thermal_dataset`'s val subset was also silently augmented
+(random flips), so "best val loss" was a noisy, optimistically-biased,
+non-reproducible number. None of those three results is trustworthy evidence
+either way.
+
+**New harness: `training/laplacian_sweep.py`** (new file only; no edits to
+`train_thermal.py`, `thermal_dataset.py`, `models/unet.py`, `models/heads.py`,
+or `data_collection/*`). Imports `train_thermal._loss`/`_laplacian` directly
+so the sweep measures the exact shipped penalty. Runs leave-one-design-out
+(LODO, 12 folds, primary) and leave-one-PDK-out (LOPO, 3 folds, secondary)
+protocols, with explicit `torch.manual_seed`/`np.random.seed` per run, a
+separate `augment=False` held-out `ThermalDataset` instance for evaluation
+(the training instance stays `augment=True`), and the plain-MSE final-epoch
+value as the headline metric (`heldout_mse_final`) — best-epoch numbers are
+recorded (`heldout_mse_best_epoch`) but never headlined, since selecting the
+epoch that minimises held-out loss is selection-on-the-eval-set. Model,
+optimizer (AdamW, `lr=1e-3`, `weight_decay=1e-4`), scheduler
+(`CosineAnnealingLR`), and grad-clip (1.0) all match `train_thermal.py`
+exactly. `--analyze` mode re-cuts the tables from the saved JSON without
+retraining.
+
+**Stage A (timing + convergence probe).** One λ=0 fold on GPU (`cuda` was
+available in this environment, contrary to the plan's CPU-only assumption):
+120 epochs took 3.8s. `train_mse_final` dropped from 0.0653 (epoch 1) to a
+0.010–0.020 plateau over the last 20 epochs — well converged, not the
+1-gradient-step-per-epoch regime of the historical 15/20/25-epoch runs.
+Given <60s/run, seeds were raised from 3 to 5 per the plan's stated
+surplus-compute priority (seeds over extra λ values).
+
+**Reproducibility gate caught a real bug — but the fix is partial, and the
+original verification of it didn't exercise the case that still fails.**
+The first full run of the sweep did not reproduce `heldout_mse_final` to
+3 s.f. on a same-seed rerun (0.03973 vs 0.02670) — cuDNN's default
+nondeterministic algorithm selection, not incomplete seeding of the RNGs
+that were actually seeded. `torch.backends.cudnn.deterministic = True` /
+`torch.backends.cudnn.benchmark = False` were set inside `_run_one`, and
+the original rerun check (at λ=0) then reproduced exactly
+(0.03393132612109184 both times) — but a later independent re-verification
+found this only holds at **λ=0**: 60/60 λ=0 reruns were bit-exact, but at
+λ=0.1 only 48/60 were, with individual-run deviations up to ~10% (isolated
+example: `asap7/aes`, λ=0.1, seed 3, repeated 4× gave 0.023202/0.023168/
+0.023168/0.023202). Root cause is more specific than the code comment
+states: `cudnn.deterministic`/`benchmark=False` do not fully pin cuDNN's
+algorithm-selection heuristic (which remains sensitive to GPU
+workspace/memory state, more so for the larger λ>0 backward graph); the
+complete fix would be `torch.use_deterministic_algorithms(True)` plus
+`CUBLAS_WORKSPACE_CONFIG=:4096:8`, not yet applied here. **This does not
+change the verdict below** — an independent full-grid re-run (180 runs,
+fresh seeds/process) reproduced every aggregate statistic exactly
+(λ=0.01 mean/median Δ, wins, Wilcoxon p all identical to 5 d.p.; λ=0.1's
+mean Δ moved 0.7%), because the per-run ULP-level perturbation averages
+out across 5 seeds × 12 folds. It does mean the "reproducibility: confirmed
+exact" claim above should be read as scoped to λ=0, not as validating
+determinism at every λ tested.
+
+**Stage B (real sweep).** LODO: 12 folds × 3 λ (0, 0.01, 0.1) × 5 seeds = 180
+runs. LOPO: 3 folds × 2 λ (0, 0.1) × 5 seeds = 30 runs. Total 210 runs,
+~13 minutes wall time on GPU (~3.5s/run) — the plan's 4–11h CPU estimate did
+not apply once GPU was confirmed available; no parallelisation or λ=0.01
+cut was needed.
+
+**LODO results (n=12, primary):**
+
+| Design | λ=0 | λ=0.01 | λ=0.1 | Δ(0.01−0) | Δ(0.1−0) |
+|---|---|---|---|---|---|
+| asap7/aes | 0.04144±0.01019 | 0.03219±0.00305 | 0.03457±0.00588 | −0.00924 | −0.00687 |
+| asap7/gcd | 0.06963±0.00752 | 0.06837±0.02614 | 0.06576±0.01765 | −0.00127 | −0.00387 |
+| asap7/riscv32i | 0.21290±0.17235 | 0.16757±0.18960 | 0.12662±0.04367 | −0.04532 | −0.08628 |
+| nangate45/aes | 0.00883±0.00319 | 0.00863±0.00463 | 0.01053±0.00406 | −0.00020 | +0.00170 |
+| nangate45/dynamic_node | 0.02898±0.01243 | 0.02768±0.01404 | 0.02300±0.00585 | −0.00130 | −0.00598 |
+| nangate45/gcd | 0.05622±0.02133 | 0.04305±0.01711 | 0.04434±0.01400 | −0.01317 | −0.01188 |
+| nangate45/ibex | 0.04418±0.00869 | 0.03944±0.01326 | 0.03973±0.01262 | −0.00473 | −0.00445 |
+| nangate45/jpeg | 0.10879±0.02540 | 0.08910±0.02186 | 0.07929±0.01171 | −0.01969 | −0.02949 |
+| nangate45/tinyRocket | 0.11237±0.02668 | 0.10070±0.02149 | 0.09196±0.02010 | −0.01166 | −0.02041 |
+| sky130hd/aes | 0.06229±0.02128 | 0.04771±0.00983 | 0.05478±0.02777 | −0.01458 | −0.00751 |
+| sky130hd/gcd | 0.07632±0.03493 | 0.06596±0.01664 | 0.08578±0.04196 | −0.01036 | +0.00946 |
+| sky130hd/riscv32i | 0.02370±0.01118 | 0.03162±0.01746 | 0.04180±0.01895 | +0.00791 | +0.01809 |
+
+**Aggregate (n=12):** λ=0.01: mean Δ=−0.01030, median Δ=−0.00980,
+11/12 wins, Wilcoxon p=0.00488. λ=0.1: mean Δ=−0.01229, median Δ=−0.00642,
+9/12 wins, Wilcoxon p=0.09229.
+
+**Confound check:** Spearman ρ(Δ, contrast) = 0.2727 (p=0.3911) at λ=0.01,
+0.2378 (p=0.4568) at λ=0.1 — not large or significant, so not the die-size
+confound seen previously. Strata agree in sign at both λ: PDK breakdown
+nangate45/asap7/sky130hd all negative mean Δ at both λ except sky130hd at
+λ=0.1 (+0.00668, n=3, small and noisy); upsampled (n=5) vs native (n=7) both
+negative at both λ (upsampled larger in magnitude: −0.0159/−0.0199 vs
+−0.0063/−0.0069).
+
+**n=11 sensitivity (`asap7/gcd` excluded):** λ=0.01: mean Δ=−0.01112,
+median Δ=−0.01036, 10/11 wins, p=0.00684. λ=0.1: mean Δ=−0.01306,
+median Δ=−0.00687, 8/11 wins, p=0.12305. Same pattern as n=12 — excluding
+`asap7/gcd` does not flip anything.
+
+**Seed-noise floor (λ=0):** mean per-design sd across seeds = 0.02960.
+Two honesty notes on this number, since it is the sole criterion λ=0.01
+fails: (1) it is a **per-run** sd, compared against a difference of
+**5-seed means** — the matching noise scale for a 5-seed mean is
+sd/√5≈0.01324 (or, paired, sd·√(2/5)≈0.01872), under which λ=0.01's
+~0.010 effect would be closer to the boundary rather than clearly below
+it. (2) Almost half of the 0.02960 (48.5%) comes from a single design,
+`asap7/riscv32i` (sd=0.17235, visible in the table above); excluding it
+the mean sd drops to 0.01662. Neither point overturns the verdict —
+re-run independently with the SEM framing and per-design sd instead of
+the mean floor, 0 of 12 designs have |Δ| exceeding their own seed sd — but
+the "indistinguishable" call rests on this one threshold, not a wide
+margin, and both properties should travel with it rather than being
+implied to be a clean, uncontroversial cutoff.
+
+**LOPO (secondary, die-size stress test, n=3, λ∈{0,0.1} only), mean held-out
+MSE over 5 seeds:** nangate45 0.0675→0.0611, asap7 0.1529→0.1530 (flat),
+sky130hd 0.0588→0.0558. Directionally consistent with LODO (λ=0.1 slightly
+lower in 2/3 PDKs, flat in the third) but n=3 folds is far too small to
+support its own verdict; reported as a consistency check, not a second
+finding.
+
+**Verdict, applying the plan's pre-registered §9 criteria exactly (both
+n=12 and n=11 agree — no discrepancy to headline):**
+
+- λ=0.01: median Δ<0 ✓, 11/12 (10/11) wins ✓, Wilcoxon p<0.05 ✓, sign
+  consistent in both strata and all 3 PDK groups ✓ — but mean/median |Δ|
+  (~0.010) is **below** the λ=0 seed-noise floor (0.0296). The "helps"
+  criterion requires the effect to clear the noise floor; it does not.
+- λ=0.1: Wilcoxon p=0.09229 (n=12) / 0.12305 (n=11) fails the p<0.05 bar
+  outright, and |Δ| is also below the noise floor.
+- Neither λ meets the "confounded" bar either (ρ not large/significant,
+  strata don't disagree in sign).
+
+**→ Indistinguishable at n=12 (and n=11) for both λ=0.01 and λ=0.1.** The
+λ=0.01 result is statistically significant by Wilcoxon and directionally
+unanimous across PDK/stratum splits, but its magnitude does not exceed the
+measured seed-to-seed noise floor, so per the plan's pre-registered bar it
+cannot be called "helps." This retires the contaminated n=6 "2.7× worse"
+number and the n=3/n=4 sign-flip: properly paired and seed-averaged at
+n=12, there is no reliable harm either — λ=0.1's point estimate is a
+smaller improvement than λ=0.01's, not the substantial regression the n=6
+entry reported.
+
+**Honest limits (stated regardless of outcome, per the plan):** a paired
+test at n=12 floors around p≈0.0005 and only reliably detects large,
+consistent effects; the 12 designs are not fully independent (6 nangate45,
+recurring design names across PDKs), so effective n<12 and the p-values
+above are optimistic; each LODO training fold spans ~104× contrast, so this
+result is about λ for a model that is partly learning die size, not a clean
+verdict on the physical prior in general. This sweep does not settle the
+technique — it replaces three unreliable numbers with one properly paired,
+converged, seed-averaged "indistinguishable" result.
+
+**Verification performed:**
+- Smoke test (`--folds nangate45_gcd_base --lambdas 0 --seeds 0 --epochs 2`):
+  exit 0, one run record with `wall_s`.
+- Design metadata reproduced the documented table exactly: `asap7/gcd`
+  ptp=0.4100/contrast=0.0045/corr=0.6320, `nangate45/aes`
+  ptp=43.4886/contrast=0.4688/corr=0.6716 (matches 43.489/0.4688/0.6716).
+- Upsampling detector: `distinct_values` did **not** cleanly partition into
+  the documented 5 coarse-grid designs vs. the other 7 (e.g.
+  `nangate45/jpeg`=1229 and `sky130hd/aes`=1877 are low despite being native
+  64×64 designs; `asap7/riscv32i`=4078 is high despite being coarse-grid).
+  Per the plan's fallback instruction, the stratification used the
+  hard-coded documented list (`UPSAMPLED_KEYS`) instead of `distinct_values`.
+- Convergence: confirmed in Stage A above.
+- No regression: `tests/test_models.py -v` → 20/20 `ok`, exit 0.
+- Reproducibility: failed once (cuDNN nondeterminism), partially fixed —
+  confirmed exact at λ=0, still ~10%-deviation-on-individual-runs possible
+  at λ=0.1 (root cause and full fix identified but not applied); verdict
+  unaffected since it averages over 5 seeds — see above.
+
+**Files:** new `training/laplacian_sweep.py` only; `.gitignore` gained
+`flow/util/ml/congestion/experiments/` (was previously untracked by no
+rule, now explicit); this entry. `experiments/laplacian_sweep.json` (210 run
+records) and `experiments/laplacian_sweep_summary.md` are gitignored
+artifacts, not committed.
+
+**Non-conclusion / non-goal, as scoped:** no checkpoint from this sweep
+ships; no changes to the shipped `train_thermal.py` defaults. If a
+production decision on `--laplacian-weight` is needed, this result says
+"either is fine, leave at the current default (0.0, off)" absent a reason
+to prefer the mild λ=0.01 smoothing.
+
+---
+
 ### 2026-09-14 (later) — HotSpot package-scaling fix, re-extraction, and calibration finding
 
 **The fix, in `extract_thermal_labels.py`:** the root cause identified in the
