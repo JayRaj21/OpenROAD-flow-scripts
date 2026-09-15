@@ -79,9 +79,10 @@ MIN_CELL_UM = 5.0
 # eliminate the near-total isothermal collapse the unscaled HotSpot default
 # package produced at small die sizes. It does NOT make the normalized
 # thermal pattern scale-invariant: per DESIGN_RUNS.md's calibration sweep,
-# relative contrast still grows faster-than-linearly with die extent (a
-# ~52x range from 9µm to 102µm), and the smallest shipped die (asap7/gcd,
-# 8.98µm) produces only ~0.24-0.41°C peak-to-peak, not 1-20°C.
+# relative contrast still grows faster-than-linearly with die extent (measured
+# ~0.0210/0.1118/0.2844/0.5646 at 9/25/51/102µm, a ~27x range over an 11x
+# extent range), and the smallest shipped die (asap7/gcd, 8.98µm) produces
+# only ~0.24°C peak-to-peak, not 1-20°C.
 CHIP_THICKNESS_FRAC = 0.02
 T_CHIP_MIN_M = 1e-7  # floor on t_chip (0.1 µm), a numerical-safety-only
 # floor (prevents zero/negative thickness for pathological micro-dies), not
@@ -260,7 +261,8 @@ def hotspot_package_args(
     power map should produce a similar normalized thermal pattern at any
     die size. In practice this is only partially achieved (see
     DESIGN_RUNS.md's calibration sweep: relative contrast still grows
-    faster-than-linearly with die extent, a ~52x range from 9-102µm). All
+    faster-than-linearly with die extent, measured ~0.0210/0.1118/0.2844/
+    0.5646 at 9/25/51/102µm, a ~27x range over an 11x extent range). All
     geometry (chip thickness, spreader, sink) scales with the die; r_convec
     is the one non-geometric knob, set from total power so it contributes
     exactly TARGET_MEAN_RISE_K to mean die temperature rise — it does not
@@ -272,7 +274,7 @@ def hotspot_package_args(
     normalization: min-max removes absolute magnitude but preserves
     relative shape/sharpness, and sharpness itself is what varies with die
     size here (normalized-map correlation between the smallest and largest
-    calibration extents drops to 0.89, not ~1.0). Do not assume pooling
+    calibration extents drops to ~0.77, not ~1.0). Do not assume pooling
     across die sizes is safe without accounting for this.
     """
     l_eq = np.sqrt(die_w_m * die_h_m)

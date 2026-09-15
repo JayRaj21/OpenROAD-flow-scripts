@@ -115,13 +115,19 @@ sweep:
 | Die extent | 9µm | 25µm | 51µm | 102µm |
 |---|---|---|---|---|
 | grid used | 8 | 8 | 10 | 20 |
-| relative contrast | 0.0121 | 0.0825 | 0.2844 | 0.5646 |
+| relative contrast | 0.0210 | 0.1118 | 0.2844 | 0.5646 |
 
-Contrast grows ~47x over this 11x extent range, and it is worse — not
-better — below 51µm than above it: the original 51-1021µm-only sweep (kept
-below for reference) found "only" a ~9x range because it never tested the
-regime the fix actually targeted (the dataset's smallest real die,
-`asap7/gcd` at 8.98µm). The original 51-1021µm sweep, for reference:
+(Values shown are post-`T_CHIP_MIN_M` fix, i.e. with the 0.1µm numerical
+floor rather than the original 1µm clamp — see the `T_CHIP_MIN_M` section
+below. The clamped values were 0.0121/0.0825 at 9/25µm; the fix itself
+widens rather than narrows the small-die contrast, so this does not change
+the qualitative conclusion.)
+
+Contrast grows ~27x over this 11x extent range (0.5646/0.0210), and it is
+worse — not better — below 51µm than above it: the original 51-1021µm-only
+sweep (kept below for reference) found "only" a ~9x range because it never
+tested the regime the fix actually targeted (the dataset's smallest real
+die, `asap7/gcd` at 8.98µm). The original 51-1021µm sweep, for reference:
 
 | Die extent | 51µm | 255µm | 510µm | 1021µm |
 |---|---|---|---|---|
@@ -270,9 +276,15 @@ it) came back. Run inside Docker:
 ```bash
 export OR_IMAGE=openroad/orfs-ml:latest
 util/docker_shell python3 /work/util/ml/congestion/tests/thermal_scale_check.py \
-    [--extents-um 51,255,510,1021] [--grid 32] [--power-density 10.0]
+    [--extents-um 9,25,51,255,510,1021] [--grid 32] [--power-density 10.0]
 ```
-Re-run it after any future change to `hotspot_package_args()` /
+The default `--extents-um` now includes 9µm (the dataset's actual smallest
+die). This matters: at 51µm and above, `_adaptive_hotspot_grid()`'s
+`MIN_HOTSPOT_GRID` floor is never the binding constraint, so a sweep
+confined to 51-1021µm cannot detect a `MIN_HOTSPOT_GRID` regression — it
+would report identical metrics with or without the floor. Always include
+at least one extent below ~40µm when checking for that specific
+regression. Re-run it after any future change to `hotspot_package_args()` /
 `CHIP_THICKNESS_FRAC` / `MIN_HOTSPOT_GRID` / `MIN_CELL_UM` / `T_CHIP_MIN_M`;
 its exit code is now a real regression signal (0 = no isothermal-collapse
 regression detected, 1 = regression), not an unconditional FAIL.

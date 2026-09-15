@@ -17,8 +17,8 @@ dies.
 Known physical result (see DESIGN_RUNS.md): under a physically realistic
 package model, relative contrast is NOT scale-invariant and grows
 faster-than-linearly with die extent, worse at small extents than large
-ones (e.g. 9/25/51/102um -> contrast ~0.012/0.083/0.297/0.627, a ~52x
-range over an 11x extent range). Because of this, a hardcoded
+ones (measured: 9/25/51/102um -> contrast ~0.0210/0.1118/0.2844/0.5646,
+a ~27x range over an 11x extent range). Because of this, a hardcoded
 correlation>0.99 / contrast-deviation<=25% PASS/FAIL bar is not
 achievable and would always report FAIL regardless of whether the code
 is healthy. This script therefore does not assert pass/fail; it prints
@@ -29,11 +29,20 @@ the smallest extent must be non-degenerate (not collapsed toward 0),
 which is the old bug's signature this script was originally written to
 catch.
 
-Dependency-light: numpy + the `hotspot` binary only (no openroad/torch).
+The default --extents-um deliberately includes a sub-40um point (9um):
+at extents at or above ~40um, _adaptive_hotspot_grid()'s MIN_HOTSPOT_GRID
+floor is never the binding constraint (die_um/MIN_CELL_UM already exceeds
+it), so a run confined to 51/255/510/1021um cannot detect a MIN_HOTSPOT_GRID
+regression — it would silently pass even with the floor removed. Always
+include at least one extent below 40um when using this script to check
+for that regression.
+
+Dependency-light: numpy, scipy (bilinear zoom for cross-grid comparison),
+and the `hotspot` binary (no openroad/torch).
 
 Run inside Docker (requires openroad/orfs-ml:latest):
   python3 util/ml/congestion/tests/thermal_scale_check.py \\
-      [--extents-um 51,255,510,1021] [--grid 32] [--power-density 10.0]
+      [--extents-um 9,25,51,255,510,1021] [--grid 32] [--power-density 10.0]
 """
 
 import argparse
@@ -67,7 +76,7 @@ DEGENERATE_CONTRAST_MIN = 1e-3
 
 def _parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--extents-um", default="51,255,510,1021")
+    ap.add_argument("--extents-um", default="9,25,51,255,510,1021")
     ap.add_argument(
         "--grid",
         type=int,
@@ -116,7 +125,9 @@ def main():
 
     args = _parse_args()
     target_grid = args.grid
-    extents_um = [float(x) for x in args.extents_um.split(",")]
+    # Sorted ascending: the correlation reference and the regression guard
+    # both assume extents_um[0] is the smallest extent.
+    extents_um = sorted(float(x) for x in args.extents_um.split(","))
 
     rows = []
     norm_maps = []  # each upsampled to target_grid x target_grid for comparison
