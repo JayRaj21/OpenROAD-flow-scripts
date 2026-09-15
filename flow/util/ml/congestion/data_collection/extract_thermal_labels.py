@@ -27,9 +27,33 @@ Power scaling — constant power density (W/mm²):
 Adaptive grid:
   HotSpot's block RC model becomes singular when cells are smaller than
   ~5 µm. For small dies (asap7 at 50 µm × 50 µm), the HotSpot run uses
-  a coarser grid (capped so each cell is ≥ MIN_CELL_UM), then the result
-  is bilinearly upsampled to the target grid (default 64) for training
-  consistency. The saved power_grid is always at the target resolution.
+  a coarser grid (capped so each cell is ≥ MIN_CELL_UM, and never below
+  MIN_HOTSPOT_GRID), then the result is bilinearly upsampled to the
+  target grid (default 64) for training consistency. The saved
+  power_grid is always at the target resolution. A die too small to
+  give a sane grid is not silently collapsed further — it is left to
+  the degeneracy check in main() to fail loudly instead.
+
+Package model:
+  HotSpot's built-in package defaults (silicon die, heat spreader, heat
+  sink) are sized for cm-scale chips (s_spreader=3cm, s_sink=6cm). Every
+  ORFS test design is orders of magnitude smaller (9µm-1mm dies), so
+  with the defaults the spreader/sink conduct heat away laterally far
+  faster than the die can develop a spatial gradient — die size becomes
+  a confound that swamps the actual power distribution: the same
+  relative power map produces 0.05°C peak-to-peak at 51µm but 14.9°C at
+  1021µm. hotspot_package_args() rescales chip thickness, spreader, and
+  sink geometry so they scale with each design's own die extent, which
+  substantially reduces (but, per tests/thermal_scale_check.py and
+  DESIGN_RUNS.md, does not eliminate) this confound, and sets r_convec
+  from total power to control one specific *contribution* to mean die
+  temperature rise (see TARGET_MEAN_RISE_K below) — it does not pin the
+  actual total mean rise, which in the shipped 12-design dataset is
+  90-95K (mean temps 135-140°C), not TARGET_MEAN_RISE_K's 40K. The
+  remaining ~50-60K comes from the rest of the package stack
+  (spreader/sink/interface resistances), which r_convec does not
+  control and which itself varies with die size — see DESIGN_RUNS.md
+  for the measured numbers.
 
 Run inside Docker (requires openroad/orfs-ml:latest):
   openroad -python extract_thermal_labels.py \\
@@ -44,12 +68,62 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from openroad import Design, Tech
 
 # HotSpot's block model becomes ill-conditioned below this cell dimension.
 # Derived empirically: 5 µm gives stable LU decomposition across all tested
 # process nodes (asap7 at 7nm, nangate45, sky130hd).
 MIN_CELL_UM = 5.0
+
+# Silicon die thickness as a fraction of the die's equivalent square edge
+# (sqrt(die_w * die_h)). Calibrated (see tests/thermal_scale_check.py) to
+# eliminate the near-total isothermal collapse the unscaled HotSpot default
+# package produced at small die sizes. It does NOT make the normalized
+# thermal pattern scale-invariant: per DESIGN_RUNS.md's calibration sweep,
+# relative contrast still grows faster-than-linearly with die extent (a
+# ~52x range from 9µm to 102µm), and the smallest shipped die (asap7/gcd,
+# 8.98µm) produces only ~0.24-0.41°C peak-to-peak, not 1-20°C.
+CHIP_THICKNESS_FRAC = 0.02
+T_CHIP_MIN_M = 1e-7  # floor on t_chip (0.1 µm), a numerical-safety-only
+# floor (prevents zero/negative thickness for pathological micro-dies), not
+# a physical scaling choice. It no longer clamps any of the 12 shipped
+# designs (previously 1e-6 = 1 µm clamped every die below CHIP_THICKNESS_FRAC
+# * l_eq < 1 µm, i.e. l_eq < 50 µm, which silently flattened asap7/gcd's
+# 8.98 µm die and nangate45/gcd's 36.73 µm die — see DESIGN_RUNS.md).
+T_CHIP_MAX_M = 1.5e-4  # ceiling = HotSpot's own default
+
+# Heat-spreader and heat-sink lateral extent, as multiples of the die's
+# longer edge, so package geometry scales with die size instead of using
+# HotSpot's fixed cm-scale defaults (s_spreader=3cm, s_sink=6cm).
+SPREADER_RATIO = 2.0
+SINK_RATIO = 4.0
+SPREADER_T_FRAC = 0.10  # t_spreader as a fraction of s_spreader
+SINK_T_FRAC = 0.115  # t_sink/s_sink, matches HotSpot's own default ratio
+
+# r_convec is chosen per-design so it contributes this much to the die's
+# mean temperature rise above ambient. It is NOT the total mean rise: the
+# rest of the package stack (spreader/sink/interface resistances) adds
+# another ~50-60K on top, and that additional contribution itself varies
+# with die size (it is not held constant by this constant). In the shipped
+# 12-design dataset, real mean temperatures are 135-140°C (rise 90-95K),
+# not ambient+40K. Do not treat this as pinning absolute temperature —
+# what the labels encode is on-die spatial non-uniformity, and that is
+# also not fully scale-invariant (see DESIGN_RUNS.md).
+TARGET_MEAN_RISE_K = 40.0
+
+# Hard lower bound on the adaptive HotSpot grid (see _adaptive_hotspot_grid).
+# Note: at MIN_HOTSPOT_GRID=8, a die below ~40µm produces cells smaller than
+# MIN_CELL_UM (5µm) — exactly the regime this module's own docstring says
+# makes HotSpot's block RC model ill-conditioned. It has converged for every
+# die tested so far (down to asap7/gcd's 8.98µm), but nothing bounds this;
+# a different sub-40µm design could still hit a HotSpot solver failure
+# (`lupdcmp: singular matrix`). That is a loud failure (non-zero exit,
+# caught by run_hotspot()'s RuntimeError), not a silent one, so it is a
+# known risk to watch for rather than something this fix blocks on.
+MIN_HOTSPOT_GRID = 8
+
+# Below this peak-to-peak (°C), a thermal map counts as degenerate/constant
+# and extraction fails loudly instead of silently saving flat labels.
+DEGENERATE_PTP_C = 1e-3
 
 # Uniform baseline added to every power cell to prevent zero-power rows in the
 # thermal conductance matrix (which cause singular-matrix errors in lupdcmp).
@@ -163,12 +237,65 @@ def _dbu_to_m(val: float, dbu_per_um: float) -> float:
 
 def _adaptive_hotspot_grid(die_w_m: float, die_h_m: float, target_grid: int) -> int:
     """
-    Return the HotSpot grid size to use, capped so each cell is >= MIN_CELL_UM.
-    If the die is large enough for the full target_grid, returns target_grid.
+    Return the HotSpot grid size to use, capped so each cell is >= MIN_CELL_UM,
+    and never below MIN_HOTSPOT_GRID. If the die is large enough for the full
+    target_grid, returns target_grid.
+
+    A die too small to give MIN_CELL_UM cells at MIN_HOTSPOT_GRID is
+    deliberately over-gridded here rather than collapsed to an even coarser
+    grid; the resulting thermal map is caught by _check_nondegenerate()
+    instead of being silently accepted.
     """
     min_dim_um = min(die_w_m, die_h_m) * 1e6
-    max_grid = max(1, int(min_dim_um / MIN_CELL_UM))
-    return min(max_grid, target_grid)
+    max_grid = int(min_dim_um / MIN_CELL_UM)
+    return min(target_grid, max(MIN_HOTSPOT_GRID, max_grid))
+
+
+def hotspot_package_args(
+    die_w_m: float, die_h_m: float, total_power_w: float
+) -> list:
+    """
+    Build HotSpot CLI package-model overrides scaled to this design's die
+    extent, intended to make the solve scale-covariant: the same relative
+    power map should produce a similar normalized thermal pattern at any
+    die size. In practice this is only partially achieved (see
+    DESIGN_RUNS.md's calibration sweep: relative contrast still grows
+    faster-than-linearly with die extent, a ~52x range from 9-102µm). All
+    geometry (chip thickness, spreader, sink) scales with the die; r_convec
+    is the one non-geometric knob, set from total power so it contributes
+    exactly TARGET_MEAN_RISE_K to mean die temperature rise — it does not
+    pin *total* mean rise, which also picks up ~50-60K from the rest of the
+    package stack (spreader/sink/interface), itself varying with die size.
+    Real shipped mean temperatures are 135-140°C, not ambient+40K. The
+    residual ΔT-vs-die-size growth is real physics from a finite-thickness
+    package model and is NOT rescued by ThermalDataset's per-sample min-max
+    normalization: min-max removes absolute magnitude but preserves
+    relative shape/sharpness, and sharpness itself is what varies with die
+    size here (normalized-map correlation between the smallest and largest
+    calibration extents drops to 0.89, not ~1.0). Do not assume pooling
+    across die sizes is safe without accounting for this.
+    """
+    l_eq = np.sqrt(die_w_m * die_h_m)
+    l_max = max(die_w_m, die_h_m)
+
+    t_chip = min(max(CHIP_THICKNESS_FRAC * l_eq, T_CHIP_MIN_M), T_CHIP_MAX_M)
+
+    s_spreader = SPREADER_RATIO * l_max
+    t_spreader = SPREADER_T_FRAC * s_spreader
+
+    s_sink = SINK_RATIO * l_max
+    t_sink = SINK_T_FRAC * s_sink
+
+    r_convec = TARGET_MEAN_RISE_K / max(total_power_w, 1e-12)
+
+    return [
+        "-t_chip", f"{t_chip:.6e}",
+        "-s_spreader", f"{s_spreader:.6e}",
+        "-t_spreader", f"{t_spreader:.6e}",
+        "-s_sink", f"{s_sink:.6e}",
+        "-t_sink", f"{t_sink:.6e}",
+        "-r_convec", f"{r_convec:.6e}",
+    ]
 
 
 def build_power_grid(block, grid: int, total_power_w: float) -> tuple:
@@ -323,14 +450,23 @@ def write_hotspot_inputs(
 # ── Phase 3: run HotSpot ───────────────────────────────────────────────────
 
 
-def run_hotspot(flp_path: Path, ptrace_path: Path, work_dir: Path) -> Path:
+def run_hotspot(
+    flp_path: Path, ptrace_path: Path, work_dir: Path, package_args: list
+) -> Path:
     """
     Run HotSpot steady-state block model. Returns path to .steady output.
 
-    No -c config flag → HotSpot uses all built-in defaults (standard
-    spreader/heatsink package, 45°C ambient). This is fine for relative
-    comparisons between designs; absolute temperatures require a real
-    package thermal model calibrated to the target chip.
+    package_args (from hotspot_package_args()) override HotSpot's built-in
+    package defaults, which are sized for cm-scale chips (s_spreader=3cm,
+    s_sink=6cm) — orders of magnitude larger than any ORFS test die
+    (9µm-1mm). Without them, die size is a confound: the same relative
+    power map produces 0.05°C peak-to-peak at 51µm, 1.2°C at 255µm, 4.7°C
+    at 510µm, and 14.9°C at 1021µm, because the oversized spreader/sink
+    conduct heat away laterally faster than the die can develop a spatial
+    gradient. package_args is required (no default) so this can't be
+    silently skipped. Scaling the package geometry (see
+    hotspot_package_args()) substantially shrinks this confound but does
+    not eliminate it — see DESIGN_RUNS.md for the residual magnitude.
     """
     steady_path = work_dir / "design.steady"
     cmd = [
@@ -343,7 +479,7 @@ def run_hotspot(flp_path: Path, ptrace_path: Path, work_dir: Path) -> Path:
         str(steady_path),
         "-model_type",
         "block",
-    ]
+    ] + package_args
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(work_dir))
     if result.returncode != 0:
         raise RuntimeError(
@@ -380,10 +516,41 @@ def parse_steady(steady_path: Path, grid: int) -> np.ndarray:
     return temp_map
 
 
+def _check_nondegenerate(
+    temp_map: np.ndarray, power_grid: np.ndarray, hs_grid: int, die_w_m: float,
+    die_h_m: float,
+) -> None:
+    """
+    Raise RuntimeError if the extracted labels are degenerate: NaN/Inf,
+    a constant thermal map, or a constant power grid. Must be called before
+    np.savez so a degenerate design leaves no .npz file — that absence is
+    how ThermalDataset excludes it.
+    """
+    if not np.all(np.isfinite(temp_map)) or not np.all(np.isfinite(power_grid)):
+        raise RuntimeError(
+            f"Non-finite values in thermal_map/power_grid "
+            f"(grid={hs_grid}, die={die_w_m*1e6:.1f}x{die_h_m*1e6:.1f} um)"
+        )
+    ptp = float(np.ptp(temp_map))
+    if ptp < DEGENERATE_PTP_C:
+        raise RuntimeError(
+            f"Degenerate thermal_map: peak-to-peak={ptp:.6f}°C < "
+            f"{DEGENERATE_PTP_C}°C (grid={hs_grid}, "
+            f"die={die_w_m*1e6:.1f}x{die_h_m*1e6:.1f} um)"
+        )
+    if np.ptp(power_grid) <= 0:
+        raise RuntimeError(
+            f"Degenerate power_grid: constant (grid={hs_grid}, "
+            f"die={die_w_m*1e6:.1f}x{die_h_m*1e6:.1f} um)"
+        )
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 
 def main():
+    from openroad import Design, Tech
+
     args = _parse_args()
     target_grid = args.grid
 
@@ -421,6 +588,15 @@ def main():
     power_grid, die_bounds_m = build_power_grid(block, hs_grid, total_power_w)
     print(f"[thermal] Total power: {power_grid.sum()*1e3:.1f} mW")
 
+    package_args = hotspot_package_args(die_w_m, die_h_m, total_power_w)
+    print(
+        "[thermal] Package model: "
+        + "  ".join(
+            f"{k}={v}"
+            for k, v in zip(package_args[0::2], package_args[1::2])
+        )
+    )
+
     with tempfile.TemporaryDirectory() as tmp:
         work_dir = Path(tmp)
         flp_path, ptrace_path = write_hotspot_inputs(
@@ -429,7 +605,7 @@ def main():
         print(
             f"[thermal] Running HotSpot ({hs_grid}×{hs_grid} = {hs_grid**2} blocks)..."
         )
-        steady_path = run_hotspot(flp_path, ptrace_path, work_dir)
+        steady_path = run_hotspot(flp_path, ptrace_path, work_dir, package_args)
         temp_map_hs = parse_steady(steady_path, hs_grid)
 
     # Upsample HotSpot output to target_grid if a coarser grid was used.
@@ -449,6 +625,8 @@ def main():
         f"max={temp_map.max():.1f}°C  "
         f"peak-to-peak={temp_map.max()-temp_map.min():.1f}°C"
     )
+
+    _check_nondegenerate(temp_map, power_grid_out, hs_grid, die_w_m, die_h_m)
 
     np.savez(
         args.out,

@@ -73,6 +73,268 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-14 (later) — HotSpot package-scaling fix, re-extraction, and calibration finding
+
+**The fix, in `extract_thermal_labels.py`:** the root cause identified in the
+correction to the earlier same-day entry below — `run_hotspot()` applying
+HotSpot's fixed cm-scale default package geometry (silicon thickness,
+spreader, sink) to every design regardless of actual die size — is now
+addressed by `hotspot_package_args()`. For each design it derives `-t_chip`,
+`-s_spreader`/`-t_spreader`, `-s_sink`/`-t_sink`, and `-r_convec` from the
+design's own die extent (`CHIP_THICKNESS_FRAC=0.02` of the die's equivalent
+square edge, spreader/sink as fixed multiples of the die's longer edge,
+`r_convec` solved so it contributes `TARGET_MEAN_RISE_K` to mean die
+temperature rise — see the corrected mean-rise section below, this does not
+pin total mean rise), instead of leaving HotSpot's built-in cm-scale
+defaults in place. Two supporting guards were added: (1) `MIN_HOTSPOT_GRID=8`
+is now a hard floor in `_adaptive_hotspot_grid()`, so a die small enough to
+want a coarser grid than 8×8 no longer silently collapses further
+(previously `asap7/gcd`'s 9µm die resolved to a literal 1×1 grid); and (2)
+`_check_nondegenerate()` raises before `np.savez` if the resulting
+`thermal_map` is constant (ptp < `DEGENERATE_PTP_C`) or non-finite, so a
+design that still can't produce a real gradient fails loudly and leaves no
+`.npz`, rather than being silently saved as flat labels.
+
+**Correction (2026-09-14, validator round 2): this entry's original physics
+finding materially understated the residual confound and mean-temperature
+claims. The corrected numbers below replace the originally-shipped ~9x/40K
+figures.**
+
+**Calibration sweep and the physics finding — corrected.**
+`tests/thermal_scale_check.py` sweeps a fixed synthetic two-hotspot relative
+power pattern across die extents through the real `hotspot_package_args()` →
+`write_hotspot_inputs()` → `run_hotspot()` → `parse_steady()` pipeline, now
+using `_adaptive_hotspot_grid()` at each extent (previously the script used
+a fixed `--grid 32` regardless of extent, which is why the original version
+of this entry only swept 51-1021µm: at `--grid 32` a 9µm die gives
+0.28µm cells and HotSpot fails with `lupdcmp: singular matrix`). With the
+adaptive grid, the sweep can now cover the dataset's actual smallest die
+size, and the result is materially different from the original 51-1021µm
+sweep:
+
+| Die extent | 9µm | 25µm | 51µm | 102µm |
+|---|---|---|---|---|
+| grid used | 8 | 8 | 10 | 20 |
+| relative contrast | 0.0121 | 0.0825 | 0.2844 | 0.5646 |
+
+Contrast grows ~47x over this 11x extent range, and it is worse — not
+better — below 51µm than above it: the original 51-1021µm-only sweep (kept
+below for reference) found "only" a ~9x range because it never tested the
+regime the fix actually targeted (the dataset's smallest real die,
+`asap7/gcd` at 8.98µm). The original 51-1021µm sweep, for reference:
+
+| Die extent | 51µm | 255µm | 510µm | 1021µm |
+|---|---|---|---|---|
+| ptp (°C) | 23.08 | 107.76 | 165.93 | 236.82 |
+| relative contrast | 0.2549 | 1.1618 | 1.7363 | 2.3389 |
+| correlation vs. 51µm (normalized) | 1.0000 | 0.9727 | 0.9376 | 0.8942 |
+
+Both sweeps are real measurements of the same package model at different
+extent ranges; neither is "the" answer — together they show contrast keeps
+growing (worse-than-linearly) across the *entire* 9µm-1021µm range this
+dataset spans, with no sign of the bound the original entry claimed.
+
+**The real shipped 12-design dataset's residual spread is up to ~104x, not
+~9x, and pooling across designs is NOT safe without accounting for it.**
+See the corrected 12-design table below: relative contrast ranges from
+0.0045 (`asap7/gcd`) to 0.4688 (`nangate45/aes`), a ~104x spread (previously
+174x before this round's `T_CHIP_MIN_M` fix improved `asap7/gcd`'s contrast
+1.7x — see below). The original entry's "~9x, comparable to the real table"
+framing only held by implicitly excluding `asap7/gcd`, which is exactly the
+micro-die case this fix was written to address. This is a real, current
+confound in the shipped labels, not a bounded/understood residual: a model
+trained on the pooled cross-PDK/cross-design set is very likely to partially
+learn die size as a proxy for ΔT magnitude. Per-design or per-PDK-group
+analysis remains the only safe use of this dataset for now; do not pool all
+12 designs and assume the confound is small.
+
+**Why full scale-invariance is not achievable under a physically realistic
+package model:** `hotspot_package_args()` sets one specific contribution to
+mean temperature rise (`r_convec`, see below) from total power, and
+geometric package scaling keeps lateral heat-*capacity* proportional to die
+area at every extent. But heat *spreading length* under a finite-thickness
+chip grows only as `sqrt(L)` (lateral diffusion through a thin slab), while
+die size itself grows as `L`. Contrast — how sharply a local power hotspot
+stands out against the mean — is therefore expected to grow with die size
+under any physically realistic package model where chip thickness does not
+itself scale with lateral extent. Eliminating this fully would require chip
+thickness scaling as `L²`, which is not physically realistic: real silicon
+wafers are diced to a roughly constant thickness (in the hundreds of µm)
+regardless of a die's lateral footprint. `CHIP_THICKNESS_FRAC=0.02` is
+therefore kept as the shipped calibration — it eliminates the near-total
+isothermal collapse the unscaled default package produced at the small end
+— but this entry no longer claims it bounds the residual to ~9x; per the
+corrected sweep and table above, it does not.
+
+**Mean-temperature-rise claims — corrected.** `TARGET_MEAN_RISE_K=40.0` sets
+the `r_convec` *contribution* to mean die temperature rise, not the total
+mean rise, and it is not "pinned at ambient+40K" as the original entry and
+code comments claimed. The rest of the package stack (spreader, sink,
+interface resistances) adds another ~50-60K on top, and that additional
+contribution itself varies with die size — re-measured directly with the
+(now-fixed) `thermal_scale_check.py` at the same 51/255/510/1021µm extents:
+`Tmean` = 135.54/137.75/140.57/146.25°C, i.e. rise above 45°C ambient =
+90.5/92.8/95.6/101.3K, so the package-stack contribution beyond
+`TARGET_MEAN_RISE_K` is ~50.5K at 51µm growing to ~61.3K at 1021µm. Real mean
+temperatures across the shipped 12-design dataset are 135.11-139.96°C (rise
+90.1-95.0K above the 45°C ambient), never the ~85°C (`ambient+40K`) the
+original documentation implied. The `Relative contrast` column's denominator
+(`Tmean-45°C`) is therefore actually ~90-95°C in practice everywhere in this
+dataset, not a pinned 40°C. `extract_thermal_labels.py`'s docstrings/comments
+(`hotspot_package_args()`, `TARGET_MEAN_RISE_K`, and the module-level
+"Package model" section) have been corrected to state this plainly.
+
+**The "harmless because min-max normalizes per-sample" claim was false and
+has been removed.** The original code docstring near
+`hotspot_package_args()` claimed residual ΔT growth was harmless because
+`ThermalDataset` min-max normalizes each sample independently. Per-sample
+min-max removes absolute *magnitude*, but it does not touch relative
+*shape/sharpness* — and sharpness is exactly what the confound affects.
+Evidence: re-measured with the fixed `thermal_scale_check.py`, the
+normalized-map correlation between the smallest (51µm) and largest (1021µm)
+extents is only 0.7670 (0.8942 in the original 51-1021µm-only sweep using
+the pre-fix, non-adaptive-grid script) — either way, well short of ~1.0. If
+per-sample normalization actually removed the confound, that correlation
+would be near 1.0 regardless of the ptp/contrast difference. The code
+comment has been corrected to state that this normalization does NOT rescue
+the confound.
+
+**`T_CHIP_MIN_M` — lowered from 1e-6 (1µm) to 1e-7 (0.1µm).** The old 1µm
+floor silently clamped `t_chip` for every die with `l_eq < 50µm`
+(`0.02 * l_eq < 1µm`), which in this dataset is `asap7/gcd` (l_eq=8.98µm,
+wanted 0.18µm) and `nangate45/gcd` (l_eq=36.73µm, wanted 0.73µm) — both
+were solving with an artificially thick chip, understating their contrast.
+Tested un-clamping in Docker (`openroad/orfs-ml:latest`) both via
+`thermal_scale_check.py`'s 9-102µm sweep and via live re-extraction of both
+affected designs' real `3_place.odb` files: HotSpot solved cleanly at the
+unclamped thickness in every case (no `lupdcmp` failures), and contrast
+improved without becoming unstable or nonsensical — `asap7/gcd` went from
+0.0027 to 0.0045 (1.7x, matching the 1.7x seen in the synthetic 9µm sweep:
+0.0121 -> 0.0210) and `nangate45/gcd` from 0.0488 to 0.0566 (1.16x). Since
+this worked cleanly, `T_CHIP_MIN_M` is now `1e-7` (0.1µm) — purely a
+numerical-safety floor against zero/negative thickness for pathological
+micro-dies, not a physical scaling choice — and no longer clamps any of the
+12 shipped designs. Both affected designs' rows were re-extracted and the
+table below updated for just those two rows; the other 10 designs'
+`l_eq >= 50µm` so the clamp never applied to them and their rows are
+unchanged from the original fix.
+
+**Re-extraction:** deleted all 12 stale `*_thermal_labels.npz` and re-ran
+`extract_thermal_batch.sh --timeout 3600 --force` (`openroad/orfs-ml:latest`)
+for all 12 designs when this fix first landed. Result: `passed=12 failed=0`
+(plus `skipped=12` for the already-extracted `*_features.npz`, unaffected by
+this fix and left alone). No timeouts, no HotSpot solver failures. This
+correction round re-extracted only `asap7/gcd` and `nangate45/gcd` (the two
+designs affected by the `T_CHIP_MIN_M` change), both `[OK]`, no failures.
+
+**Verification:**
+- Batch pass/fail (original fix): 12/12 thermal extractions `[OK]`, 0
+  `[FAIL]`, 0 `[TIMEOUT]`. This round: 2/2 re-extractions (`asap7/gcd`,
+  `nangate45/gcd`) `[OK]`.
+- Value-sanity check across all 12 `.npz`: all `thermal_map`/`power_grid`
+  arrays finite (no NaN/Inf), both shaped `(64, 64)`, keys exactly
+  `{thermal_map, power_grid}` on every file (shape/key contract holds). Note:
+  shape-matching is not resolution-matching — 5 of the 12 (`asap7/gcd`,
+  `asap7/aes`, `nangate45/gcd`, `asap7/riscv32i`, `sky130hd/gcd`) solved at a
+  coarse native HotSpot grid (8-15 per side, per `_adaptive_hotspot_grid()`)
+  and were bilinearly upsampled to 64x64 for the saved arrays; the paired
+  `*_features.npz` are true native 64x64. Pre-existing behavior, not
+  introduced by this fix or this correction, but worth being explicit about.
+- Thermal/power correlation per design ranges 0.30–0.78 (see table below) —
+  positive and non-trivial everywhere, as expected for a power-density-driven
+  steady-state solve.
+- `python3 util/ml/congestion/tests/test_models.py -v` → **20/20 pass, `OK`,
+  exit 0** (synthetic-data regression guard only, unaffected by this fix as
+  expected).
+
+**`flow/util/ml/congestion/tests/thermal_scale_check.py` — fixed to actually
+exercise `_adaptive_hotspot_grid()` and to drop the misleading always-FAIL
+gate.** Previously the script took a fixed `--grid` value straight to
+HotSpot, so it never called `_adaptive_hotspot_grid()` and could not detect
+a `MIN_HOTSPOT_GRID` regression (reverting `MIN_HOTSPOT_GRID` to the old
+`max(1, ...)` would have produced byte-identical script output). It now
+calls `_adaptive_hotspot_grid()` at each extent (the `--grid` flag is the
+*target* grid passed to it, matching `extract_thermal_labels.py`'s own
+convention), and normalized maps at different native grids are upsampled to
+the target grid before correlating, so they remain comparable. Separately,
+its old PASS/FAIL bar (correlation > 0.99, contrast deviation <= 25%) is not
+physically achievable under this package model (see the corrected findings
+above) and always reported `FAIL` regardless of code health, so it could
+never be wired into CI as a real gate. It has been replaced with: (a) a
+metrics table for a human to read (contrast, correlation, grid used, at
+each extent), and (b) one automated regression check — contrast at the
+smallest tested extent must stay above a small non-degenerate floor
+(`DEGENERATE_CONTRAST_MIN=1e-3`), which is what would fail if the old
+isothermal-collapse bug (or a `MIN_HOTSPOT_GRID` regression that reproduces
+it) came back. Run inside Docker:
+```bash
+export OR_IMAGE=openroad/orfs-ml:latest
+util/docker_shell python3 /work/util/ml/congestion/tests/thermal_scale_check.py \
+    [--extents-um 51,255,510,1021] [--grid 32] [--power-density 10.0]
+```
+Re-run it after any future change to `hotspot_package_args()` /
+`CHIP_THICKNESS_FRAC` / `MIN_HOTSPOT_GRID` / `MIN_CELL_UM` / `T_CHIP_MIN_M`;
+its exit code is now a real regression signal (0 = no isothermal-collapse
+regression detected, 1 = regression), not an unconditional FAIL.
+
+**This entry supersedes the `Thermal ΔT (°C)` column of the 2026-09-14
+"12-design real routed dataset" entry below** (all values there predate this
+fix and reflect the un-scaled default HotSpot package model). That entry's
+`Worst-case IR-drop` column is a separate, unrelated measurement and remains
+authoritative/unaffected — no IR-drop code was touched here.
+
+**12-design thermal table** (re-extracted with the fix; `asap7/gcd` and
+`nangate45/gcd` rows re-extracted again this round with the corrected
+`T_CHIP_MIN_M=1e-7`; `contrast` = `(Tmax-Tmin)/(Tmean-45°C)`, same convention
+as `thermal_scale_check.py`; `corr(T,P)` = Pearson correlation between the
+flattened `thermal_map` and `power_grid` arrays):
+
+| Design | Thermal ΔT / ptp (°C) | Relative contrast | corr(T, P) | Tmean (°C) |
+|---|---|---|---|---|
+| asap7/gcd | 0.410 | 0.0045 | 0.6320 | 135.11 |
+| asap7/aes | 3.820 | 0.0421 | 0.7846 | 135.70 |
+| nangate45/gcd | 5.130 | 0.0566 | 0.6634 | 135.58 |
+| sky130hd/gcd | 7.596 | 0.0838 | 0.6368 | 135.66 |
+| asap7/riscv32i | 26.605 | 0.2916 | 0.5890 | 136.23 |
+| nangate45/jpeg | 21.160 | 0.2264 | 0.3741 | 138.48 |
+| nangate45/tinyRocket | 24.270 | 0.2605 | 0.3027 | 138.18 |
+| nangate45/dynamic_node | 34.551 | 0.3731 | 0.6333 | 137.61 |
+| sky130hd/aes | 38.690 | 0.4074 | 0.4458 | 139.96 |
+| sky130hd/riscv32i | 40.370 | 0.4295 | 0.3504 | 138.98 |
+| nangate45/ibex | 42.426 | 0.4583 | 0.6534 | 137.58 |
+| nangate45/aes | 43.489 | 0.4688 | 0.6716 | 137.76 |
+
+(Table sorted by ptp, smallest to largest, to make the residual
+die-size-vs-contrast relationship visible at a glance. Real spread:
+0.0045-0.4688 = ~104x, still large — see the correction above.)
+
+**`asap7/gcd` status: kept, not excluded.** With the `MIN_HOTSPOT_GRID=8`
+floor, its 9µm die now resolves on a real 8×8 HotSpot grid (confirmed in the
+extraction log: `Die 0.01×0.01 mm is small — using 8×8 HotSpot grid`), not
+the silent 1×1 collapse from the earlier entry. `power_grid` and
+`thermal_map` are both spatially non-constant, and `_check_nondegenerate()`
+passes (ptp=0.410°C, well above the `DEGENERATE_PTP_C=1e-3` floor). Its low
+contrast is now understood to be partly (1.7x) an artifact of the
+now-fixed `T_CHIP_MIN_M` clamp and partly genuine "clean solve, low
+contrast" physics for a micro-scale die — not attributable wholly to
+physics as the original entry claimed. It is retained as a genuine, if
+low-amplitude, extracted sample, with no special-case exclusion.
+
+**`MIN_HOTSPOT_GRID=8` vs. `MIN_CELL_UM=5`: known tension, not fixed here.**
+At `MIN_HOTSPOT_GRID=8`, a die below ~40µm produces cells smaller than
+`MIN_CELL_UM` — the exact regime this module's own docstring says makes
+HotSpot's block RC model ill-conditioned. Every die tested so far (down to
+`asap7/gcd`'s 8.98µm) has converged, but nothing bounds this in general; a
+different sub-40µm design could still hit `lupdcmp: singular matrix`. This
+is a loud failure (non-zero exit, caught and re-raised by `run_hotspot()`),
+not a silent one, so it is a documented, watch-for risk rather than a
+blocking defect — see the comment added next to `MIN_HOTSPOT_GRID`'s
+definition in the code.
+
+No `git status` changes outside `extract_thermal_labels.py`,
+`tests/thermal_scale_check.py`, and this file — `results/`, `logs/`,
+`objects/`, and `data/*.npz` remain gitignored as expected.
+
 ### 2026-09-14 — 12-design real routed dataset (6 baseline re-routes + 6 new: asap7/nangate45/sky130hd)
 
 Executed the planned expansion from 6 to 12 real routed designs across all
