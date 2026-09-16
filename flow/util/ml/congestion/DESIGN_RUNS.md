@@ -73,6 +73,411 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-16 — IR-drop track: Laplacian sweep, pre-registration and Stage B result (LODO, seed-averaged)
+
+**Why.** Generalise the thermal-track LODO Laplacian sweep
+(`training/laplacian_sweep.py`, 2026-09-15 entry below) to the IR-drop
+track, to get the same paired/seed-averaged/pre-registered verdict on
+`--laplacian-weight` for `train_irdrop.py` that already exists for
+`train_thermal.py`. `laplacian_sweep.py` was generalised additively (new
+`TRACKS` registry keyed by `"thermal"`/`"irdrop"`; `--track` CLI flag,
+track-dependent `--out` default, `track` threaded into the runs dedup key)
+— no edits to `train_thermal.py`, `thermal_dataset.py`, `train_irdrop.py`,
+`irdrop_dataset.py`, `models/unet.py`, or `models/heads.py`.
+
+**Correction (post-review, 2026-09-16).** The first version of this entry
+claimed the `track` field meant "an IR-drop rerun can never silently
+overwrite a thermal record" — that was true only for the **runs** dedup
+key. The **designs** merge (metadata: `ptp_c`, `worst_drop_mv`, etc.) was
+still keyed on `d["key"]` alone, and design keys (`nangate45_gcd_base`
+etc.) are identical across tracks — so writing IR-drop results to a
+thermal `--out` (or vice versa) would silently overwrite all 12 thermal
+(or IR-drop) design-metadata entries with the other track's metadata,
+breaking every downstream metadata column, confound check, and stratum
+split for that track, even though the run records themselves survived.
+Confirmed reproducible pre-fix (`--track irdrop` against a copy of the
+thermal artifact raised `KeyError: 'ptp_c'` on a subsequent thermal
+`--analyze`). Fixed by keying the designs merge on `(track, key)` (each
+design record now carries an explicit `"track"` field, backfilled as
+`"thermal"` for pre-existing untagged records) and by adding a guard that
+refuses to write a different track's designs into a file whose existing
+designs block belongs to another track.
+
+**Post-review correction to this guard:** the first version inferred a
+legacy (untagged) design block's track from its *run* records
+(`r.get("track", "thermal")`), defaulting to `"thermal"` — but run records
+are schema-identical across tracks (no field distinguishes them), so this
+default was a guess, and it was wrong in exactly the case that mattered:
+writing `--track thermal` into a legacy IR-drop file would itself also
+default to `"thermal"`, making the guard a no-op for that direction
+(reproduced: it silently replaced all 12 IR-drop design records with
+thermal ones, exit 0, no error). Fixed by inferring a legacy design
+record's track from its own distinguishing fields instead
+(`_infer_legacy_track`: presence of `worst_drop_mv` ⇒ irdrop, `ptp_c` ⇒
+thermal) — this is reliable because designs, unlike runs, do have
+track-specific fields, and it correctly protects both write directions,
+not just IR-drop-into-thermal. `_analyze_mode` was given the matching
+fix: reading a file that has zero records for the requested track (e.g.
+`--track irdrop --analyze` against a file that turns out to hold only
+thermal data) now raises immediately instead of silently emitting an
+empty/`nan` summary that overwrites the real one. Re-verified
+against copies of the real artifacts (not the live ground-truth files):
+writing `--track irdrop` into a copy of the legacy-format
+`laplacian_sweep.json` is now refused outright (exit 1, file unchanged);
+a post-fix file with both tracks' designs merges correctly (24/24 design
+records retained, 12 per track); the live `laplacian_sweep.json` and
+`irdrop_laplacian_sweep.json` on disk were unaffected by this
+verification (md5-checked before/after), aside from a one-time additive
+migration adding the `"track"` field to `irdrop_laplacian_sweep.json`'s
+12 pre-existing design records (all other fields and all 180 run records
+unchanged).
+
+**Thermal regression gates (non-negotiable, run before any IR-drop work):**
+- Training-path bit-exactness: `git show HEAD:.../laplacian_sweep.py` vs.
+  the generalised file, both run with `--folds nangate45_gcd_base
+  --lambdas 0 --seeds 0 --epochs 3`. `heldout_mse_final` /
+  `heldout_mae_final` / `heldout_mse_best_epoch` / `train_loss_final` /
+  `train_mse_final` bit-identical (full float repr,
+  `0.06547243148088455` / `0.2273174673318863` / `0.06547243148088455` /
+  `0.04363104452689489` / `0.04363104452689489` — all matched). **PASS.**
+- Analysis-path regression: `--analyze` (thermal default `--out`) against
+  the backed-up `laplacian_sweep_summary.md` from the 2026-09-15 entry —
+  `diff` empty. **PASS.** Proves the `track` backfill
+  (`r.get("track", "thermal")`), the dedup-key change, and the
+  registry-driven table/confound/stratum rendering changed nothing for the
+  existing 210-record thermal artifact.
+
+**IR-drop metadata dump (`_irdrop_metadata`, all 12 designs).** Reproduces
+the 2026-09-14 documented `worst_drop_mv` table exactly (nangate45: gcd
+0.534 / dynamic_node 1.008 / ibex 3.057 / aes 4.985 / jpeg 8.821 /
+tinyRocket 1.370 mV; sky130hd: gcd 0.412 / aes 0.513 / riscv32i 0.588 mV;
+asap7: gcd 103.679 / riscv32i 140.041 / aes 148.236 mV — all match to the
+documented precision). `v_nom` lands exactly at platform nominal supply in
+every case (asap7 0.77V, nangate45 1.1V, sky130hd 1.8V — recovered via
+`mean(irdrop_map + voltage_map)`, no nominal-supply key needed). **No
+design has `degenerate=True`** (all `ptp_mv > 0`). Occupancy
+(`distinct_values/4096`) ranges 0.0471 (`nangate45_gcd_base`, lowest) to
+0.9312 (`nangate45_jpeg_base`, highest); the two `gcd` variants
+(`nangate45_gcd_base`=0.0471, `sky130hd_gcd_base`=0.0476) and `asap7_gcd_base`
+(0.1191) are the most fill-artifact-dominated by a wide margin.
+
+**Sensitivity-cut exclusion, named before Stage B per plan §8:**
+`nangate45_gcd_base` — lowest occupancy of all 12 designs, no
+`degenerate=True` design exists so the occupancy rule (not the degenerate
+fallback) applies. n=11 sensitivity cut excludes this design.
+
+**Stage A (convergence probe, one λ=0 fold, `nangate45_gcd_base`, 120
+epochs, GPU).** Wall time 3.5s. Last-20-epoch `train_mse_final` range
+(0.00467) is **33.5% of the last-20-epoch mean (0.01394) — exceeds the
+pre-registered 25% plateau threshold.** Per the plan's pre-registered rule,
+`--epochs` is raised to **200 for all Stage B IR-drop runs** (all λ, all
+folds, all seeds — not tuned per-fold). This is a data-driven necessity,
+not a retrofit: IR-drop's LODO train set is 11 samples at batch-size 4
+(3 gradient steps/epoch) vs. thermal's same setup, so slower convergence
+than thermal at 120 epochs is plausible on its own, independent of any
+track-specific loss-landscape difference.
+
+**Reproducibility (`--strict-determinism`).** Unlike the thermal entry's
+finding (`torch.use_deterministic_algorithms(True)` was expected to raise
+on a bilinear-upsample backward and was never applied), for the IR-drop
+track on this environment/torch version **`use_deterministic_algorithms(True)`
+did not raise**, at λ=0.1: 4/4 fresh-process reruns (`--folds
+nangate45_gcd_base --lambdas 0.1 --seeds 0 --epochs 20
+--strict-determinism`) were bit-exact
+(`heldout_mse_final=0.07076305150985718` all four times). Without the flag
+(cudnn-only determinism, the setting used for the actual Stage B sweep
+below), a smaller 2-rerun spot check at both λ=0 and λ=0.1 also matched
+exactly — but per the thermal entry's finding (48/60 λ=0.1 reruns matched
+under cudnn-only determinism, individual deviations up to ~10%), a 1-pair
+match does not establish full determinism at every λ under cudnn-only
+settings; Stage B below does not use `--strict-determinism` (not part of
+the plan's Stage B command), so this same caveat travels with it, exactly
+as it does for the thermal entry.
+
+**No regression:** `tests/test_models.py -v` → 20/20 `ok`, exit 0
+(includes the pre-existing `TestIRDropDataset` cases, unaffected by this
+file's changes since none of `irdrop_dataset.py`/`train_irdrop.py` were
+touched).
+
+**Pre-registered sweep configuration (λ={0, 0.01, 0.1}, 5 seeds {0-4},
+epochs=200 per Stage A above, batch-size 4, lr 1e-3, AdamW wd 1e-4,
+CosineAnnealingLR eta_min=1e-6, grad-clip 1.0, LODO 12 folds primary).**
+`--batch-size 4` deviates from `train_irdrop.py`'s shipped default of 8,
+same reasoning/deviation as the thermal sweep (11-sample LODO train set,
+bs=8 → only 2 gradient steps/epoch — bs=4 keeps this comparable to the
+already-run thermal sweep rather than introducing a second uncontrolled
+variable).
+
+**Pre-registered conclusion criteria (verbatim from the plan, applied to
+IR-drop Δ = mean(`heldout_mse_final` at λ) − mean(`heldout_mse_final` at
+λ=0), 5 seeds each, n=12 primary / n=11 sensitivity excluding
+`nangate45_gcd_base`):**
+- **Helps:** median Δ<0; ≥9/12 wins; Wilcoxon p<0.05; sign consistent
+  across both the `fill_dominated`/`well_populated` strata (0.5 occupancy
+  threshold, pre-registered above, median-split fallback if degenerate)
+  and all 3 PDK groups; AND |mean Δ| and |median Δ| exceed the seed-noise
+  threshold below.
+- **Hurts:** mirror image.
+- **Confounded:** |ρ(Δ, rel_drop)| ≥0.6 with p<0.05, OR strata disagree in
+  sign, OR PDK groups disagree in sign with ≥2 groups at n≥3.
+- **Indistinguishable:** anything else.
+- **Noise threshold:** per-design sd across the 5 λ=0 seeds; comparison
+  scale for a difference of two 5-seed means is `sd·√(2/5)` — the MEAN of
+  that quantity across designs is the criterion threshold. Also reporting:
+  (a) raw mean per-run sd, (b) same means excluding the highest-sd design,
+  (c) per-design count of designs whose |Δ| exceeds their own `sd·√(2/5)`.
+- **Honest limits restated regardless of outcome:** paired n=12 floors at
+  p≈0.0005; 12 designs not independent (6 nangate45, recurring names across
+  PDKs) so effective n<12, p-values optimistic; cudnn-only determinism at
+  λ>0 is not fully established for Stage B (see reproducibility note
+  above); the smoothness prior is more weakly motivated for IR drop than
+  the docstring implies — static IR drop solves a Poisson problem with
+  distributed sources (∇·(σ∇V)=J), not a source-free harmonic field, so
+  real IR-drop maps have sharp local minima and structural discontinuities
+  at PDN geometry, and penalising ∇²V may be a bias rather than pure
+  regularisation; if λ>0 helps, part of the effect may be smoothing over
+  the nearest-neighbour-fill blocky-label artifact in the
+  `fill_dominated` stratum rather than learning better physics — reported
+  explicitly per-stratum rather than headlined as a clean win if the effect
+  concentrates there.
+
+**Stage B (real sweep).** LODO: 12 folds × 3 λ (0, 0.01, 0.1) × 5 seeds =
+180 runs, `--epochs 200` per the Stage A decision above. ~17.5 minutes wall
+time on GPU (~5.8s/run at 200 epochs, consistent with Stage A's per-epoch
+timing). `--track irdrop --analyze --sensitivity-exclude
+nangate45_gcd_base` re-cut the tables below from the saved JSON.
+
+**LODO results (n=12, primary), held-out MSE final epoch, mean±sd over 5
+seeds:**
+
+| Design | λ=0 | λ=0.01 | λ=0.1 | Δ(0.01−0) | Δ(0.1−0) |
+|---|---|---|---|---|---|
+| asap7/aes | 0.04513±0.00286 | 0.04333±0.00402 | 0.04841±0.00630 | −0.00180 | +0.00329 |
+| asap7/gcd | 0.09007±0.00877 | 0.08731±0.01114 | 0.08099±0.00685 | −0.00276 | −0.00907 |
+| asap7/riscv32i | 0.17662±0.11628 | 0.12782±0.07609 | 0.13397±0.08507 | −0.04880 | −0.04265 |
+| nangate45/aes | 0.06364±0.01362 | 0.06955±0.01757 | 0.06747±0.01260 | +0.00591 | +0.00383 |
+| nangate45/dynamic_node | 0.08414±0.01902 | 0.09348±0.02143 | 0.09304±0.02729 | +0.00934 | +0.00890 |
+| nangate45/gcd | 0.07597±0.01044 | 0.07813±0.00563 | 0.07393±0.01917 | +0.00217 | −0.00203 |
+| nangate45/ibex | 0.18338±0.02120 | 0.15685±0.00878 | 0.18479±0.03197 | −0.02653 | +0.00141 |
+| nangate45/jpeg | 0.06214±0.01523 | 0.06913±0.01341 | 0.06013±0.02258 | +0.00699 | −0.00202 |
+| nangate45/tinyRocket | 0.05224±0.00409 | 0.05633±0.00575 | 0.05456±0.00686 | +0.00409 | +0.00232 |
+| sky130hd/aes | 0.04152±0.01395 | 0.04036±0.01056 | 0.04347±0.00909 | −0.00116 | +0.00195 |
+| sky130hd/gcd | 0.06418±0.00308 | 0.06436±0.00434 | 0.06206±0.00325 | +0.00018 | −0.00212 |
+| sky130hd/riscv32i | 0.02590±0.00670 | 0.02440±0.00618 | 0.02447±0.00478 | −0.00150 | −0.00143 |
+
+**Aggregate (n=12):** λ=0.01: mean Δ=−0.00449, median Δ=−0.00049, 6/12
+wins, Wilcoxon p=0.96973. λ=0.1: mean Δ=−0.00314, median Δ=−0.00001, 6/12
+wins, Wilcoxon p=0.96973. Both effects are far weaker and far less
+consistent than the thermal track's λ=0.01 result (which had 11/12 wins,
+p=0.005) — here the deltas split almost exactly evenly around zero at both
+λ.
+
+**Confound check:** Spearman ρ(Δ, rel_drop) = −0.3147 (p=0.3191) at
+λ=0.01, −0.0490 (p=0.8799) at λ=0.1; ρ(Δ, log10 worst_drop_mv) = −0.3357
+(p=0.2861) at λ=0.01, −0.0350 (p=0.9141) at λ=0.1 — none large/significant
+on their own. `occupancy` — the variable defining the
+`fill_dominated`/`well_populated` stratum split and the mechanism this
+entry's risk register worries about (nearest-neighbour-fill blocky-label
+artifacts) — was **missing from `confound_specs` in the original version
+of this entry** and has been added post-review: ρ(Δ, occupancy) = +0.2727
+(p=0.3911) at λ=0.01 (not significant), but **+0.6294 (p=0.0283) at
+λ=0.1** — this meets the *numeric* |ρ|≥0.6-with-p<0.05 bar the pre-registration
+set for `rel_drop`, though `occupancy` itself was added to `confound_specs`
+only after the fact, so calling it "pre-registered" would overstate it;
+it is a post-review finding evaluated against a pre-registered threshold,
+not a variable that was pre-registered itself. With 3 candidate confound
+variables tested
+across 2 λ values this does not survive a multiple-comparisons correction,
+so it is suggestive, not conclusive — but it is a far better-grounded
+signal (magnitude threshold + significance test, both met) than the
+sign-disagreement clauses discussed next.
+
+**PDK-sign-disagreement clause — relabelled, not a real confound signal
+(post-review correction).** The original version of this entry called the
+result "Confounded" on the basis of the PDK-group and strata
+sign-disagreement clauses: nangate45 (n=6) mean Δ is slightly *positive*
+(+0.00033 at λ=0.01, +0.00207 at λ=0.1) while asap7 (n=3) and sky130hd
+(n=3) are both negative (asap7 −0.01778/−0.01614, sky130hd
+−0.00083/−0.00053); fill_dominated/well_populated also disagree in sign at
+λ=0.1. Those clauses are technically satisfied as written, but review
+established they don't hold up as a confound signal: (1) the
+sign-disagreement clause has no magnitude floor and no significance
+requirement, so it fires under pure noise with ~3/4 probability given 3
+groups; (2) every IR-drop PDK group mean here is inside the seed-noise
+floor — nangate45's "positive" effect is ~1.7% of a single design's own
+seed sd, and asap7's "negative" effect is driven almost entirely by one
+design (`asap7_riscv32i_base`) whose own seed sd is 2.4x larger than its
+Δ; (3) applying the identical clause retroactively to the already-
+validated thermal λ=0.1 data ALSO technically triggers it (sky130hd
++0.00668 vs. nangate45/asap7 negative, a 3x larger magnitude than what's
+driving this IR-drop reading) — yet the thermal entry correctly called its
+result "Indistinguishable," because its own written rule only checked
+strata disagreement, not PDK sign disagreement, for the confound bar. This
+is a **methodology gap in the pre-registered confound clause itself**
+(flagged here for any future track's sweep, not silently patched away
+after the fact): a sign test over group means with no magnitude/
+significance floor is not a meaningful confound test as currently written,
+and should not be used to call a verdict on its own.
+
+**n=11 sensitivity (`nangate45_gcd_base` excluded, lowest-occupancy design
+per the pre-registered choice above):** λ=0.01: mean Δ=−0.00509, median
+Δ=−0.00116, 6/11 wins, p=0.89844. λ=0.1: mean Δ=−0.00324, median
+Δ=+0.00141, 5/11 wins, p=0.96582. Same pattern as n=12 — weak, inconsistent,
+not significant; the sensitivity cut does not change the picture.
+
+**Seed-noise floor (λ=0), all four required numbers:**
+(a) raw mean per-design sd across seeds = 0.01960. (b) same, excluding the
+highest-sd design (`asap7_riscv32i_base`, sd=0.11628, the same design that
+dominated the thermal track's noise floor) = 0.01081. (c) mean of the
+per-design `sd·√(2/5)` comparison-scale threshold (matching scale for a
+difference of two 5-seed means) = 0.01240 — both λ's |mean Δ| (0.00449,
+0.00314) and |median Δ| (0.00049, 0.00001) fall well **below** this
+threshold. (d) per-design count of designs whose own |Δ| exceeds their own
+`sd·√(2/5)` threshold: 2/12 at λ=0.01, 3/12 at λ=0.1.
+
+**Verdict, applying the plan's pre-registered §8 criteria, with the
+methodology correction above applied (n=12 and n=11 agree):**
+- **Helps:** fails outright at both λ — wins are 6/12 (6/11), far short of
+  the ≥9/12 bar, and Wilcoxon p≈0.97, nowhere near <0.05.
+- **Hurts:** fails by the same mirror-image margin (6/12 losses, not
+  ≥9/12; p≈0.97).
+- **Confounded (as literally written):** the PDK-group sign-disagreement
+  clause is technically met at both λ, and the strata sign-disagreement
+  clause additionally at λ=0.1 — but per the correction above, this clause
+  is magnitude/significance-free and fires on noise; it is not treated as
+  the basis for the verdict. The correlation-based confound test
+  (|ρ|≥0.6 with p<0.05) IS met, but only for `occupancy` at λ=0.1
+  (ρ=+0.6294, p=0.0283) — not for `rel_drop` or `worst_drop_mv` at either
+  λ, and not surviving multiple-comparisons correction across the 3
+  variables × 2 λ tested.
+
+**→ Indistinguishable overall, with a suggestive (uncorrected p=0.028)
+fill-artifact confound signal at λ=0.1 worth a follow-up run at larger n
+(post-review corrected verdict; the original version of this entry called
+this "Confounded" on the sign-disagreement clause alone — see correction
+above).** This is, if anything, an even weaker/more null result than the
+thermal track's own "Indistinguishable" verdict: 6/12 wins (p=0.97) here
+vs. 11/12 wins (p=0.005) for thermal — thermal at least had unanimous
+direction even though it fell short of significance and the noise floor,
+whereas IR-drop's aggregate Δ is a coin flip in both magnitude and sign.
+The correct framing is not "IR-drop's result is materially weaker/
+different than thermal's" as a categorical-verdict claim (both are
+"Indistinguishable"), but that **IR-drop's evidence for any effect at all
+is weaker than thermal's** (6/12 p=0.97 vs. 11/12 p=0.005). The two
+sweeps are also not fully apples-to-apples: IR-drop ran 200 epochs (Stage
+A convergence rule, this entry) vs. thermal's 120, so some caution is
+warranted before comparing their headline effect sizes directly. Real
+confound evidence does exist, but it's the `occupancy` correlation at
+λ=0.1 (see above), not the PDK sign test — the plan's own risk #2
+(nearest-neighbour-fill blocky-label artifacts) and risk #1 (weaker
+physical motivation for smoothness in a Poisson-type field with
+distributed sources) both remain live explanations for why any
+track-specific λ preference would fail to generalize here, and the
+`occupancy` correlation is the more credible evidence for risk #2
+specifically.
+
+**Honest limits (stated regardless of outcome, per the plan):** a paired
+test at n=12 floors around p≈0.0005 and only reliably detects large,
+consistent effects; the 12 designs are not fully independent (6 nangate45,
+recurring design names across PDKs), so effective n<12 and the p-values
+above are optimistic (though here they are so far from significant this
+barely matters); `--strict-determinism` reproduced bit-exactly for
+IR-drop at λ=0.1 in a small spot check (§7.6 above), but Stage B itself
+ran under the weaker cudnn-only determinism setting (matching the thermal
+sweep's methodology, not the stronger flag), so individual-run values in
+the table above carry the same un-quantified ULP-to-percent-level
+non-determinism risk the thermal entry documented, averaged out (or not)
+across 5 seeds; the smoothness prior's physical motivation is weaker for
+IR drop (Poisson problem, distributed sources, real discontinuities at PDN
+geometry) than the docstring implies, per risk #1 in the plan; this sweep
+cannot separate "no real effect" from "an effect entangled with PDK/die
+identity," and the pre-registered confound criteria are specifically
+designed to catch exactly this ambiguity rather than resolve it.
+
+**Verification performed:**
+- §7.1 training-path bit-exactness gate: PASS (bit-identical
+  `heldout_mse_final`/`heldout_mae_final`/`heldout_mse_best_epoch`/
+  `train_loss_final`/`train_mse_final` between `git show HEAD:...` and the
+  generalised file, thermal track, full float repr).
+- §7.2 analysis-path regression gate: PASS (`diff` against the backed-up
+  `laplacian_sweep_summary.md` is empty).
+- §7.3 IR-drop smoke test: PASS (exit 0, one record, `track="irdrop"`,
+  `wall_s`, `smoothness_final` present).
+- §7.4 metadata correctness: PASS, see metadata dump above; no STOP
+  condition hit.
+- §7.5 Stage A convergence: measured, epochs raised to 200 per the
+  pre-registered rule (see above).
+- §7.6 reproducibility: `--strict-determinism` did not raise for this
+  model and reproduced bit-exactly (4/4) at λ=0.1 in a spot check; Stage B
+  itself used cudnn-only determinism (not `--strict-determinism`), same
+  caveat as the thermal entry.
+- §7.7 no regression: `tests/test_models.py -v` → 20/20 `ok`, exit 0.
+- §7.8 Stage B: 180/180 runs completed, `--analyze` produced the tables
+  above.
+
+**Post-review fixes and re-verification (2026-09-16, same day).** Findings
+1, 2, 3, 4, 5 above (designs-merge track bug, mislabeled confound verdict,
+missing `occupancy` confound, wrong mtime filename, undocumented
+sensitivity-exclude default) were all fixed in `laplacian_sweep.py` and
+this entry. Re-verification performed:
+- Designs-merge fix (Finding 1): writing `--track irdrop` into a copy of
+  the legacy-format `laplacian_sweep.json` is refused outright (exit 1,
+  copy's md5 unchanged); a fresh post-fix file accumulates both tracks'
+  designs correctly (24/24 records, 12 per track) when written to
+  sequentially. The live `laplacian_sweep.json` is byte-identical
+  (md5-checked) before/after this verification;
+  `irdrop_laplacian_sweep.json` received a one-time additive migration
+  adding `"track": "irdrop"` to its 12 pre-existing design records (all
+  other fields and all 180 run records unchanged, verified by field-set
+  and count comparison) so the new track-qualified read path in
+  `--analyze` can find them — this was necessary because those records
+  were written before this fix existed.
+- Thermal gates re-run with the validator's stronger check (18 runs: 3
+  folds × 3 λ × 2 seeds, vs. the original single λ=0 run which never
+  exercises the Laplacian branch): `git show HEAD:.../laplacian_sweep.py`
+  vs. the fully-fixed file, `--folds nangate45_gcd_base,asap7_gcd_base,
+  sky130hd_gcd_base --lambdas 0,0.01,0.1 --seeds 0,1 --epochs 3` —
+  `heldout_mse_final`/`heldout_mae_final`/`heldout_mse_best_epoch`/
+  `train_loss_final`/`train_mse_final`/`best_epoch` bit-identical across
+  all 18 records. **PASS** — thermal remains an untouched pure refactor
+  after all fixes, including the λ>0 path.
+- `--track thermal --analyze` re-run against the live artifact: `diff`
+  against the pre-fix summary is empty. **PASS.**
+- `--track irdrop --analyze` re-run: only the confound-table lines changed
+  (now include `occupancy`); all other numbers (per-design table,
+  aggregates, n=11 sensitivity cut, seed-noise floor) are unchanged from
+  the pre-fix summary — `diff` confirms. `irdrop_laplacian_sweep_summary.md`
+  regenerated with the corrected confound line and the corrected verdict
+  documented above.
+- `tests/test_models.py -v` re-run post-fix → 20/20 `ok`, exit 0.
+
+**Files:** `training/laplacian_sweep.py` generalised in place (only file
+changed; no edits to `train_thermal.py`, `thermal_dataset.py`,
+`train_irdrop.py`, `irdrop_dataset.py`, `models/unet.py`,
+`models/heads.py`, or `data_collection/*`); this entry.
+`experiments/irdrop_laplacian_sweep.json` (180 run records) and
+`experiments/irdrop_laplacian_sweep_summary.md` are gitignored artifacts,
+not committed. `experiments/laplacian_sweep.json` /
+`_summary.md` (the thermal artifacts) are unchanged in content (verified
+byte-identical via the §7.2 gate) though `laplacian_sweep_summary.md`'s
+mtime was refreshed by the gate's `--analyze` rerun (`--analyze` only
+reads the JSON and writes `_summary.md`, so the JSON's mtime is untouched
+— the original version of this sentence named `laplacian_sweep.json`
+here, which was wrong; corrected post-review).
+
+**Non-conclusion / non-goal, as scoped:** no checkpoint from this sweep
+ships; no changes to the shipped `train_irdrop.py` defaults; no revision
+of the thermal verdict (only thermal work here is proving it's unchanged,
+per the two gates above); no LOPO run for IR-drop (out of scope per the
+plan). If a production decision on IR-drop's `--laplacian-weight` is
+needed, this result says "leave at the current default (0.0, off)" with
+less ambiguity than the thermal track's result — there is no even
+borderline-promising signal here, and what small aggregate improvement
+exists is concentrated in a subset of designs/PDKs in a way the
+pre-registered criteria are specifically designed to flag as unreliable.
+
+---
+
 ### 2026-09-15 — Laplacian smoothness loss, re-evaluated on the corrected 12-design dataset (LODO, seed-averaged)
 
 **Why this re-run was needed.** The three prior Laplacian comparisons
