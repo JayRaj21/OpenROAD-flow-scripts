@@ -35,6 +35,11 @@ or an auto-generated-looking dump. This applies to every commit and PR on
 this project going forward, regardless of how the change was made (by
 hand, or by an agent/pipeline run).
 
+**No AI attribution trailers (2026-09-17 on):** do not add a
+`Co-Authored-By: Claude ...` line or a `Claude-Session: ...` link to any
+commit message or PR description on this project. Commits should read
+identically to a human-authored one.
+
 ---
 
 ## Codebase Map
