@@ -73,6 +73,301 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-16 (later) — 30-design real routed dataset (12 → 30, three new PDKs: sky130hs/gf180/ihp-sg13g2)
+
+**Goal, per plan.** Grow the real routed dataset from 12 to 30 designs across
+6 PDKs, chosen so die-size coverage becomes a dense ladder rather than three
+clumps, and tighten Laplacian LODO statistics (n=12 → n=30, doubling LOPO
+folds 3→6). Target was deliberately 30, not ~50 — reaching 50 unique designs
+would require the multi-hour/macro-heavy "giant" tier explicitly avoided by
+precedent (`nangate45/bp_fe_top` etc.). **Stated plainly per plan: ~50-60
+unique designs is unreachable in this repo without giants/macros; the next
+round that wants n>30 must choose giants, finish-level variants, or accept
+FNO/Swin work at n≈30.**
+
+**Config/platform staleness found during pre-flight (§4.0 step 2) — decision
+made and applied uniformly.** The `openroad/orfs:latest` image's baked-in
+`/OpenROAD-flow-scripts/flow` copy is stale relative to this worktree's
+`thermal-solver` HEAD: confirmed real diffs in both
+`designs/ihp-sg13g2/gcd/config.mk` (image missing `export SYNTH_USE_SYN = 1`)
+and `platforms/ihp-sg13g2/config.mk` (image missing the `PLATFORM_TCL`
+suppress-message line and `OPT_POST_GRT_WNS`). Per the plan's contingency
+("route with `DESIGN_CONFIG=/work/... DESIGN_HOME=/work/designs` instead"),
+this was extended to also override `PLATFORM_HOME=/work/platforms` — required
+because `PLATFORM_HOME` defaults to `$(FLOW_HOME)/platforms` (the same stale
+image copy) the same way `DESIGN_HOME` does, confirmed via `make
+print-PWR_NETS_VOLTAGES`/`print-LIB_FILES` dry-runs before committing to real
+routing. Applied `DESIGN_CONFIG=/work/designs/<pdk>/<design>/config.mk
+DESIGN_HOME=/work/designs PLATFORM_HOME=/work/platforms` uniformly to **all
+18** new designs (not just the ones directly shown to mismatch), since the
+staleness is systemic (whole image predates recent worktree commits), not
+per-design. `extract_thermal_batch.sh`/`extract_irdrop_batch.sh` were left
+untouched per the plan's non-goals — spot-checked that their own (unmodified)
+`make print-LIB_FILES print-PWR_NETS_VOLTAGES` calls (relative `DESIGN_CONFIG`,
+no `PLATFORM_HOME` override) still resolve to the correct on-disk liberty
+files and voltages for gf180/ihp-sg13g2 despite reading the stale platform
+config for the resolution logic — the corner/voltage mapping itself is
+unchanged between the stale and current platform configs, only unrelated
+lines (`PLATFORM_TCL`, `OPT_POST_GRT_WNS`) differ, and the `/work/${lib#*/flow/}`
+path remap in `extract_irdrop_batch.sh` correctly points at the real mounted
+file regardless.
+
+**Probe phase (§4.1, hard checkpoint) — all 3 new PDKs passed, no drops
+needed.**
+
+| Design | rc | Wall time | Result |
+|---|---|---|---|
+| `ihp-sg13g2/gcd` | 0 | 23s | `6_final.odb`/`.spef` present |
+| `sky130hs/gcd` | 0 | 71s | `6_final.odb`/`.spef` present |
+| `gf180/riscv32i` | 0 | 233s | `6_final.odb`/`.spef` present |
+
+Probe-phase extraction (thermal + IR-drop, both extractors run before
+touching the remaining 15, exactly per plan): thermal `passed=6 failed=0
+skipped=24`; IR-drop `passed=3 failed=0 skipped=27`. gf180's corner-dependent
+`LIB_FILES` (the same pattern that once broke `extract_irdrop_batch.sh` on
+asap7) resolved cleanly via `make print-LIB_FILES` →
+`gf180mcu_fd_sc_mcu9t5v0__ff_n40C_5v50.lib.gz`; `print-PWR_NETS_VOLTAGES`
+returned `VDD 5.5` and the extracted `gf180/riscv32i` IR-drop sample's
+`v_nom` (recovered via `mean(irdrop_map + voltage_map)`) landed exactly at
+5.5000V, worst-case drop 1.32mV (0.024% of nominal, far under the 10%
+sanity bound) — the first 5.5V sample in this dataset, a new voltage regime.
+`ihp-sg13g2/gcd` and `sky130hs/gcd` (both micro-die, `l_eq` 186µm/91µm)
+solved on a coarse native HotSpot grid (37×37, 18×18) per the plan's §6 risk
+note, upsampled to 64×64 for storage — no `lupdcmp: singular matrix` failure,
+no degenerate/flat map. No PDK was dropped; no fallback substitutions were
+needed at this checkpoint.
+
+**Remaining 15 (§4.2) — all routed cleanly on the first try, no fallback
+substitutions, no design near the ~90-minute abort threshold.** Order run
+(cheapest-first by the plan's ordering, which is close to but not exactly
+ascending stdcell count — the actual sequence has two inversions against
+final measured stdcell counts, `sky130hs/ibex`(18307) before
+`sky130hs/aes`(16887) and `asap7/jpeg`(63089) before `asap7/ethmac`(59670),
+since the plan's ordering was based on estimates made before routing):
+`sky130hs/riscv32i` (292s), `ihp-sg13g2/riscv32i` (269s), `asap7/aes_lvt`
+(206s), `ihp-sg13g2/aes` (1012s), `sky130hs/ibex` (482s), `sky130hs/aes`
+(629s), `sky130hd/ibex` (1042s), `gf180/aes` (371s), `asap7/ibex` (706s) —
+the single design flagged by the plan as most likely to fail (slang +
+`OPENROAD_HIERARCHICAL`) routed cleanly, no substitution needed — `sky130hd/jpeg`
+(1198s), `sky130hs/jpeg` (689s), `asap7/jpeg_lvt` (674s), `asap7/jpeg`
+(1022s), `asap7/ethmac` (780s), `nangate45/swerv` (1670s, the longest single
+design, 27.8 min). All `rc=0`.
+
+**Total wall time.** Probe phase: 327s (~5.5 min). Remaining 15: 11,042s
+(~3.07h). **Combined ≈3.15 hours — well under the plan's honest 4-10h
+estimate**, despite this batch's ~3x the prior 12-design pass's cell count on
+three unfamiliar PDKs; no design hung, no per-design timeout was hit, no
+parallelisation was used.
+
+**Extraction (§4.3/§4.4, all 30 designs, auto-discovering, no `--force`, no
+script edits).** `extract_thermal_batch.sh` (`openroad/orfs-ml:latest`,
+`--timeout 3600`): `passed=30 failed=0 skipped=30` — the 30 `[OK]`s are the
+15 non-probe new designs × 2 (features + thermal), and the 30 skips are the
+3 probe designs × 2 (already extracted in §4.1) plus the 12 pre-existing ×
+2 (already present, untouched). `extract_irdrop_batch.sh`
+(`openroad/orfs:latest`, `--timeout 3600`): `passed=15 failed=0 skipped=45`
+— the 15 `[OK]`s are the 15 non-probe new designs' IR-drop extractions
+(their features already existed from the thermal batch just run, so those
+were skipped too), and the 45 skips are those 15 designs' already-done
+features, plus the 3 probe + 12 pre-existing designs' features and IR-drop
+(both already present). Zero failures, zero timeouts across both
+extractors for the full 18-design new batch.
+
+**Verification against every §1 criterion:**
+
+1. **Counts — PASS.** `find flow/results -name 6_final.odb | wc -l` = 30,
+   `-name 6_final.spef | wc -l` = 30, `-name 3_place.odb | wc -l` = 30.
+   `ls flow/util/ml/congestion/data/*.npz | wc -l` = 90.
+2. **Value sanity — PASS.** All 90 `.npz` arrays finite, shape `(64,64)`
+   confirmed for every array in every file; exact expected key set per kind
+   (`features`: `{cell_density, fanout_density, macro_density, pin_density}`;
+   `thermal_labels`: `{thermal_map, power_grid}`; `irdrop_labels`:
+   `{current_density_proxy, irdrop_map, stripe_density, via_density,
+   voltage_map}`). `ALLZERO` flags fired on `macro_density` for exactly the
+   28 non-macro designs and were absent on `asap7_riscv32i`/
+   `nangate45_tinyRocket` (the only two macro designs, both pre-existing) —
+   the expected pattern, all 18 new designs (deliberately picked non-macro)
+   included.
+3. **Die-size diversity criterion — PASS, with large margin, though the
+   "before" count is corrected here from the plan's stated target.** The
+   plan's original criterion said "0 designs" in either band pre-expansion;
+   checking the pre-existing 12 designs' own `l_eq` values against this
+   table shows that undercounts the 75-250µm band — 3 of the 12 pre-existing
+   designs already fell in it (`sky130hd/gcd` 78.05, `nangate45/dynamic_node`
+   238.28, `nangate45/ibex` 240.69), so at most 6 of the "After: 9" below
+   were newly added by this batch, not 9. The 500µm+ band's "before: 0" is
+   correct (old max was `sky130hd/aes` at 475.19µm). Neither correction
+   changes the pass/fail outcome. After: **9** designs in 75-250µm
+   (`asap7/ibex` 76.68, `sky130hd/gcd` 78.05, `sky130hs/gcd` 90.73,
+   `asap7/jpeg` 99.58, `asap7/ethmac` 106.81, `asap7/jpeg_lvt` 150.32,
+   `ihp-sg13g2/gcd` 186.20, `nangate45/dynamic_node` 238.28,
+   `nangate45/ibex` 240.69) and **9** above 500µm (`sky130hd/ibex` 507.53,
+   `sky130hs/aes` 515.86, `ihp-sg13g2/riscv32i` 623.92, `sky130hs/ibex`
+   643.20, `gf180/riscv32i` 732.18, `sky130hd/jpeg` 883.37, `ihp-sg13g2/aes`
+   986.13, `gf180/aes` 1004.03, `sky130hs/jpeg` 1108.30) — both comfortably
+   clear the ≥5 / ≥3 bar. Full ladder in the table below.
+4. **IR-drop sanity — PASS for 13/18 new designs, systemic (pre-existing,
+   not a regression) failure on all 5 new asap7 designs.** `v_nom` matched
+   platform nominal exactly for every new design (1.2V ihp-sg13g2, 1.8V
+   sky130hs, 5.5V gf180, 0.77V asap7). `worst_drop_mv < 0.10 × v_nom × 1000`
+   held for all non-asap7 new designs (max observed ratio: `gf180/aes`
+   0.021%, `ihp-sg13g2/riscv32i` 0.825%, `sky130hs/riscv32i` 0.086% — all far
+   under 10%). **It does NOT hold for any of the 5 new asap7 designs**
+   (`asap7/aes_lvt` 115.75mV vs. 77mV threshold = 150%; `asap7/ethmac`
+   121.09mV = 157%; `asap7/ibex` 86.63mV = 112%; `asap7/jpeg` 139.02mV =
+   181%; `asap7/jpeg_lvt` 77.27mV = 100.3%, right at the line). Checked
+   whether this is new: **it is not** — re-computed the same ratio for the
+   3 pre-existing asap7 designs from their unchanged `.npz` files and all 3
+   already exceed the same 10% bound (`asap7/gcd` 103.68mV = 135%,
+   `asap7/aes` 148.24mV = 192%, `asap7/riscv32i` 140.04mV = 182%) — i.e. 8/8
+   asap7 designs in the full 30-design dataset (old and new) exceed this
+   bound, and the new designs' ratios (100-181%) are actually somewhat
+   *better* than the 3 pre-existing ones' (135-192%). This looks like an
+   inherent property of asap7's low nominal voltage (0.77V — the 10%
+   threshold is only 77mV) combined with the extractor's real IR-drop
+   physics on this PDK's fine-pitch 7nm stack, not a new-design defect or an
+   extraction bug. Per the plan's non-goals (no changes to
+   `extract_irdrop_labels.py` or its constants), this is reported, not
+   "fixed": criterion 5 as literally written fails for the asap7 platform as
+   a whole, old and new alike, and any future model trained pooling
+   `worst_drop_mv` across PDKs should treat asap7 as its own regime rather
+   than assuming the 10%-of-nominal sanity bound holds universally.
+5. **No collateral damage — PASS.** `md5sum -c /tmp/npz_baseline.md5` (36
+   lines, snapshotted before any new routing/extraction): all 36
+   pre-existing `.npz` files report `OK`, byte-identical. Nothing was
+   re-extracted; the published 12-design tables remain valid unchanged.
+6. **`tests/test_models.py -v` — PASS.** 20/20 `ok`, exit 0.
+
+**Full 30-row table, sorted by `l_eq` (equivalent square die edge, µm),
+computed uniformly for all 30 from `3_place.odb` via `openroad -python`
+(`block.getDieArea()`), not mixed with any previously-documented per-design
+numbers:**
+
+| Design | l_eq (µm) | stdcells | ptp_c (°C) | contrast | corr(T,P) | worst_drop (mV) | v_nom (V) | new? |
+|---|---|---|---|---|---|---|---|---|
+| asap7/gcd | 8.98 | 531 | 0.4100 | 0.0045 | 0.6320 | 103.68 | 0.7700 | |
+| nangate45/gcd | 36.73 | 618 | 5.1300 | 0.0566 | 0.6634 | 0.53 | 1.1000 | |
+| asap7/aes | 51.04 | 15197 | 3.8200 | 0.0421 | 0.7846 | 148.24 | 0.7700 | |
+| asap7/aes_lvt | 66.22 | 15141 | 17.2070 | 0.1890 | 0.8061 | 115.75 | 0.7700 | **new** |
+| asap7/riscv32i | 73.15 | 10269 | 26.6046 | 0.2916 | 0.5890 | 140.04 | 0.7700 | |
+| asap7/ibex | 76.68 | 20373 | 12.7122 | 0.1396 | 0.8275 | 86.63 | 0.7700 | **new** |
+| sky130hd/gcd | 78.05 | 483 | 7.5964 | 0.0838 | 0.6368 | 0.41 | 1.8000 | |
+| sky130hs/gcd | 90.73 | 629 | 19.9847 | 0.2193 | 0.4013 | 0.22 | 1.8000 | **new** |
+| asap7/jpeg | 99.58 | 63089 | 7.5000 | 0.0823 | 0.5491 | 139.02 | 0.7700 | **new** |
+| asap7/ethmac | 106.81 | 59670 | 3.3865 | 0.0371 | 0.5822 | 121.09 | 0.7700 | **new** |
+| asap7/jpeg_lvt | 150.32 | 61242 | 42.1461 | 0.4588 | 0.7857 | 77.27 | 0.7700 | **new** |
+| ihp-sg13g2/gcd | 186.20 | 386 | 78.6871 | 0.8512 | 0.7472 | 1.79 | 1.2000 | **new** |
+| nangate45/dynamic_node | 238.28 | 10492 | 34.5512 | 0.3731 | 0.6333 | 1.01 | 1.1000 | |
+| nangate45/ibex | 240.69 | 14978 | 42.4259 | 0.4583 | 0.6534 | 3.06 | 1.1000 | |
+| nangate45/aes | 250.22 | 14568 | 43.4886 | 0.4688 | 0.6716 | 4.99 | 1.1000 | |
+| nangate45/tinyRocket | 301.74 | 28218 | 24.2696 | 0.2605 | 0.3027 | 1.37 | 1.1000 | |
+| nangate45/jpeg | 331.30 | 59227 | 21.1600 | 0.2264 | 0.3741 | 8.82 | 1.1000 | |
+| sky130hd/riscv32i | 377.12 | 7306 | 40.3700 | 0.4295 | 0.3504 | 0.59 | 1.8000 | |
+| sky130hs/riscv32i | 380.54 | 7172 | 36.4100 | 0.3873 | 0.2600 | 1.54 | 1.8000 | **new** |
+| sky130hd/aes | 475.19 | 17607 | 38.6900 | 0.4074 | 0.4458 | 0.51 | 1.8000 | |
+| nangate45/swerv | 481.83 | 85242 | 29.2100 | 0.3072 | 0.4561 | 5.53 | 1.1000 | **new** |
+| sky130hd/ibex | 507.53 | 18446 | 40.6800 | 0.4270 | 0.4697 | 0.24 | 1.8000 | **new** |
+| sky130hs/aes | 515.86 | 16887 | 29.9600 | 0.3141 | 0.4589 | 2.00 | 1.8000 | **new** |
+| ihp-sg13g2/riscv32i | 623.92 | 9297 | 64.1900 | 0.6639 | 0.5835 | 9.90 | 1.2000 | **new** |
+| sky130hs/ibex | 643.20 | 18307 | 41.8900 | 0.4332 | 0.4075 | 1.76 | 1.8000 | **new** |
+| gf180/riscv32i | 732.18 | 7503 | 40.2900 | 0.4122 | 0.3564 | 1.32 | 5.5000 | **new** |
+| sky130hd/jpeg | 883.37 | 45611 | 48.2000 | 0.4859 | 0.4736 | 1.46 | 1.8000 | **new** |
+| ihp-sg13g2/aes | 986.13 | 16047 | 140.9500 | 1.3967 | 0.8319 | 7.62 | 1.2000 | **new** |
+| gf180/aes | 1004.03 | 19284 | 35.2500 | 0.3506 | 0.3813 | 1.15 | 5.5000 | **new** |
+| sky130hs/jpeg | 1108.30 | 48649 | 57.0400 | 0.5610 | 0.5267 | 1.48 | 1.8000 | **new** |
+
+**Thermal contrast spread — measured, expected to change, confound NOT
+fixed, per the explicit non-criterion.** Spread across the full 30-design
+dataset is now `0.0045` (`asap7/gcd`) to `1.3967` (`ihp-sg13g2/aes`), a
+~310x range — wider than the previously-documented ~104x on the 12-design
+set. The low end is unchanged (`asap7/gcd` at 8.98µm was and remains the
+smallest die); the widening is entirely at the top: the old maximum was
+`sky130hd/aes` at 475.19µm, and the new large-die sky130hs/ihp-sg13g2/gf180
+designs push that out to 1108µm, mechanically widening contrast spread per
+the already-documented HotSpot package-geometry physics
+— `contrast` grows with die size under any physically realistic package
+model where chip thickness doesn't scale with lateral extent, per the
+2026-09-14 entry). This is exactly the behavior flagged as a non-criterion
+in the plan (HotSpot package-geometry limitation, not something to "fix"
+here) and is reported, not treated as a regression.
+
+**Coarse-grid designs (relevant to `UPSAMPLED_KEYS`) — correction: this is
+not limited to the 18 new designs, and it invalidates a previously
+published result, not just a future one.** 7 of the 18 new designs solved
+thermal on a coarse native HotSpot grid, upsampled to 64×64 for storage:
+`ihp-sg13g2/gcd` (37×37), `sky130hs/gcd` (18×18), `asap7/aes_lvt` (13×13),
+`asap7/ethmac` (21×21), `asap7/ibex` (15×15), `asap7/jpeg` (19×19),
+`asap7/jpeg_lvt` (30×30). The remaining 11 new designs (including
+`gf180/riscv32i`, `gf180/aes`, and all `ihp-sg13g2`/`sky130hs` designs
+except `gcd`) solved at native 64×64.
+
+**A post-hoc audit found the *pre-existing* 12-design set has the same
+problem**: `_adaptive_hotspot_grid()` goes coarse whenever the die's
+smaller dimension is below `MIN_CELL_UM × 64 = 320µm`, and 4 of the
+pre-existing 12 designs are below that threshold but are **not** in the
+current `UPSAMPLED_KEYS` set — confirmed by checking the effective rank of
+their stored `thermal_map` (bilinear upsampling from an N×N solve caps
+observed rank at N; observed rank matched the predicted coarse grid size
+exactly for all 4): `nangate45/aes` (min_dim=249.85µm, grid 49×49),
+`nangate45/dynamic_node` (238.28µm, 47×47), `nangate45/ibex` (240.69µm,
+48×48), `nangate45/tinyRocket` (301.74µm, 60×60). (`nangate45/jpeg` and
+`sky130hd/aes`, both above 320µm, correctly solve native — checked as
+controls.)
+
+**`UPSAMPLED_KEYS` in `training/laplacian_sweep.py` is a hardcoded 5-entry
+set** (`asap7_gcd_base`, `asap7_aes_base`, `asap7_riscv32i_base`,
+`nangate45_gcd_base`, `sky130hd_gcd_base`) **and is missing 11 entries, not
+7**: the 7 new coarse-grid designs above, plus the 4 pre-existing ones just
+found. The correct set at n=30 is 16 keys. Per the plan's explicit
+non-goal, fixing the code is left for whoever next re-runs either Laplacian
+sweep — but the consequence is stronger than "will mis-stratify a future
+run": **the already-published thermal Laplacian sweep's stratified result
+at n=12 (`DESIGN_RUNS.md`, "upsampled (n=5) vs native (n=7)", both negative
+at both λ) was computed against an already-wrong 5-key set** — 4 of the 7
+designs it reported as "native" were actually solved coarse-grid. That
+stratified breakdown should be treated as invalid, not merely as a
+consistency check that happened to look clean; it does not need
+re-extraction (the `.npz` data itself is correct), only re-analysis with
+the corrected 16-key set once someone updates `UPSAMPLED_KEYS`. The
+sweep's headline "indistinguishable" verdict does not depend on this
+stratification and is unaffected.
+
+**Verification checklist (§5), final pass/fail:**
+1. Counts (odb/spef/place/npz) — PASS.
+2. No collateral damage (md5) — PASS (36/36 unchanged).
+3. Value sanity (finite, shape, keys, ALLZERO) — PASS.
+4. Thermal non-degeneracy (`ptp_c > 1e-3` on all 18 new) — PASS, all 18 well
+   above the gate (lowest of the 18 new designs is `asap7/ethmac` at
+   3.3865°C); all 18 `.npz` were written successfully, confirming
+   `_check_nondegenerate()` never refused.
+5. IR-drop sanity — PASS for 13/18, systemic pre-existing asap7 exception
+   documented above (not a regression, not fixed per non-goals).
+6. Die-size ladder / §1.4 criterion — PASS, 9/9 vs. required 5/3.
+7. `test_models.py -v` — PASS, 20/20.
+8. `git status` — clean except this file (see below).
+
+**Files touched:** this entry only (`util/ml/congestion/DESIGN_RUNS.md`).
+No edits to `extract_thermal_batch.sh`, `extract_irdrop_batch.sh`,
+`extract_features.py`, `extract_thermal_labels.py`, `extract_irdrop_labels.py`,
+`batch_run.sh`, `generate_variants.sh`, any training/model/dataset file, or
+`laplacian_sweep.py`. No `--force` was passed to either batch extractor. Two
+throwaway `openroad -python` scripts used to compute die area and stdcell
+counts uniformly across all 30 designs (`_tmp_die_area.py`,
+`_tmp_cellcount.py`) were written under `data_collection/` for the docker
+mount, then deleted immediately after use — not committed, not left behind.
+`flow/results/`, `flow/logs/`, `flow/objects/`, `flow/reports/`, and
+`flow/util/ml/congestion/data/*.npz` remain gitignored as expected;
+`git status` after this entry shows changes only to this file.
+
+**Non-goals honored, as scoped:** no FNO/Swin work; no training/model/
+dataset code touched; no re-running of the existing Laplacian sweeps at
+n=30 (flagged above as follow-up, not performed); no util/aspect-ratio
+variant generation; no re-litigation of the HotSpot package-scaling fix or
+its constants (contrast-spread growth reported, not investigated further);
+no placement-feedback-loop work.
+
+---
+
 ### 2026-09-16 — IR-drop track: Laplacian sweep, pre-registration and Stage B result (LODO, seed-averaged)
 
 **Why.** Generalise the thermal-track LODO Laplacian sweep
@@ -2085,6 +2380,25 @@ Data starvation in the 10–70% hotspot range is the primary blocker for model t
 ---
 
 ## Planned Next Steps
+
+**Updated 2026-09-16 (30-design entry above).** The real routed dataset is
+now 30 designs / 90 `.npz` files across 6 PDKs (nangate45, asap7, sky130hd,
+sky130hs, gf180, ihp-sg13g2), up from 12/36. The existing thermal and
+IR-drop Laplacian sweep artifacts (`experiments/laplacian_sweep.json`,
+`experiments/irdrop_laplacian_sweep.json`) were generated against the old
+n=12 dataset and have NOT been re-run at n=30 (out of scope for the
+data-collection pass). Before re-running either sweep at n=30,
+`UPSAMPLED_KEYS` in `training/laplacian_sweep.py` must be updated from its
+current 5-entry set to the correct 16 entries (9 pre-existing + 7 new — see
+the corrected coarse-grid audit in the entry above). **This is not just a
+future-proofing step**: the audit found 4 of the 12 pre-existing designs
+(`nangate45_aes_base`, `nangate45_dynamic_node_base`,
+`nangate45_ibex_base`, `nangate45_tinyRocket_base`) are also coarse-grid
+and were already missing from `UPSAMPLED_KEYS` — meaning the thermal
+sweep's already-published n=12 "upsampled (n=5) vs native (n=7)" stratified
+breakdown was computed against a wrong partition and should be treated as
+invalid (not the sweep's headline "indistinguishable" verdict, which
+doesn't depend on this stratification — just that one breakdown table).
 
 ### Immediate
 
