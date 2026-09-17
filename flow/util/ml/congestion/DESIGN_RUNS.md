@@ -26,6 +26,17 @@ be resumed from a cold start without losing context. Update it after every worki
 
 ---
 
+## Conventions
+
+**Commit and PR messages (2026-09-17 on):** write in clear, human-readable
+prose — explain what changed and why in plain language a reviewer can
+follow without cross-referencing the diff, not a terse technical log-line
+or an auto-generated-looking dump. This applies to every commit and PR on
+this project going forward, regardless of how the change was made (by
+hand, or by an agent/pipeline run).
+
+---
+
 ## Codebase Map
 
 ```
