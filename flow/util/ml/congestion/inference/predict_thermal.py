@@ -34,9 +34,12 @@ import tempfile
 
 import numpy as np
 import torch
+from scipy.ndimage import gaussian_filter
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "models"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "training"))
 
+from thermal_dataset import BLUR_SIGMA
 from unet import CongestionUNet
 
 
@@ -106,24 +109,34 @@ def _extract_features_from_odb(odb_path: str, grid: int) -> str:
 
 
 def load_features(features_path: str) -> torch.Tensor:
-    """Load *_features.npz and return (1, 4, H, W) tensor."""
+    """Load *_features.npz and return a (1, 5, H, W) tensor.
+
+    Channels match ThermalDataset: the four extracted density maps plus a
+    Gaussian-blurred, max-normalised copy of cell_density (the pre-diffused
+    channel the thermal model was trained with).
+    """
     npz = np.load(features_path)
+    cell = npz["cell_density"].astype(np.float32)
+    blurred = gaussian_filter(cell, sigma=BLUR_SIGMA)
+    b_max = blurred.max()
+    blurred = blurred / b_max if b_max > 0 else blurred
     x = np.stack(
         [
-            npz["cell_density"],
+            cell,
             npz["macro_density"],
             npz["pin_density"],
             npz["fanout_density"],
+            blurred,
         ]
     ).astype(np.float32)
-    return torch.from_numpy(x).unsqueeze(0)  # (1, 4, H, W)
+    return torch.from_numpy(x).unsqueeze(0)  # (1, 5, H, W)
 
 
 def predict(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = CongestionUNet(
-        in_channels=4,
+        in_channels=5,
         base_features=args.base_features,
         num_heatmap_layers=1,
     ).to(device)

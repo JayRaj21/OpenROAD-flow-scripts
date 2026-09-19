@@ -89,6 +89,44 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-19 — Thermal demo script, and a `predict_thermal.py` bug it exposed
+
+**What was added.** `util/ml/congestion/run_thermal_demo.sh` runs the thermal
+track end to end from one command: model smoke tests, a check that extracted
+data exists, training, the HTML comparison report, and a single-design
+inference example. Options are `--epochs N`, `--extract` (runs the Docker
+extraction if no labels exist yet) and `--no-open`. Outputs go to
+gitignored locations (`checkpoints/`, `experiments/`). Run it with
+`bash util/ml/congestion/run_thermal_demo.sh`.
+
+**Bug found by running it.** `inference/predict_thermal.py` built a 4-channel
+model, but the thermal model has been 5-channel since the pre-diffused input
+channel (Gaussian-blurred `cell_density`) was added, so every real use of
+that script failed with a `state_dict` size mismatch when loading a trained
+checkpoint. The training pipeline and `visualize_thermal.py` were fine;
+only single-design prediction was broken. Fixed by building the same five
+channels the training dataset does, importing `BLUR_SIGMA` from
+`thermal_dataset.py` rather than copying the value. Verified that the
+prediction input is bit-identical to what `ThermalDataset` feeds the model,
+for all six demo designs.
+
+**Verification.** Full demo run end to end (exit 0, tests 20/20, training,
+report, prediction); the missing-data error path prints a clear message and
+exits 1; a short 5-epoch run also completes.
+
+**Dataset incident worth knowing about.** Worktree 3, which held the 90
+`.npz` files from the 30-design expansion, was released back to the
+treehouse pool and reset to master between sessions, which deleted its
+gitignored `data/` directory. All code and docs were safe on
+`origin/thermal-solver`, and the 30 routed results (`flow/results/`) in
+worktree 3 survived. For this demo, 6 designs that were routed in this
+worktree (`asap7/gcd`, `nangate45/{aes,dynamic_node,gcd,ibex}`,
+`sky130hd/gcd`) were re-extracted (12 files, 0 failures). Regenerating the
+full 90 files from worktree 3's routed results is a separate, roughly
+3.5-hour step, and can be checked against the saved baseline md5s for the
+original 36 files. With only 6 designs the demo's validation numbers are
+not meaningful (the point of the demo is that the pipeline runs).
+
 ### 2026-09-16 (later) — 30-design real routed dataset (12 → 30, three new PDKs: sky130hs/gf180/ihp-sg13g2)
 
 **Goal, per plan.** Grow the real routed dataset from 12 to 30 designs across
