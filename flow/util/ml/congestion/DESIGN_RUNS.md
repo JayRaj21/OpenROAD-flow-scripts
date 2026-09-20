@@ -89,6 +89,32 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-19 (later) — 90 data files regenerated after the worktree reset
+
+**Result.** All 90 `.npz` files (30 designs × features, thermal labels,
+IR-drop labels) were regenerated from the 30 routed results that survived
+in worktree 3. Both batch scripts ended with 0 failures. Every file loads,
+has the expected keys and a finite 64×64 array, and the 36 files that
+belonged to the original 12-design dataset are byte-identical to the
+checksums saved before the wipe (36 of 36 match). That confirms the
+regenerated data is the same data every earlier result in this log was
+computed on, so none of those results need to be revisited.
+
+**How it went.** The run was started once, then deliberately stopped at a
+clean boundary (the batch loops were killed so no new design would start,
+and the extraction already in progress was allowed to finish, so no file
+was ever cut off mid-write), and resumed later. The extractors skip
+existing files, so the resume only did the remaining work. Total
+extraction time was roughly 4.5 hours of running time, almost all of it
+thermal (HotSpot). The IR-drop batch for all 30 designs took only about
+4 minutes, much faster than the hour I had estimated from the earlier
+pass, so IR-drop is not a bottleneck for any future regeneration.
+
+**Practical notes.** Keep the checksum file somewhere that survives a
+reboot (it was in `/tmp`; a copy is kept in the job folder). The `data/`
+directory is gitignored, so it only exists in the worktree where it was
+generated; a treehouse `return` on that worktree can wipe it.
+
 ### 2026-09-19 — Thermal demo script, and a `predict_thermal.py` bug it exposed
 
 **What was added.** `util/ml/congestion/run_thermal_demo.sh` runs the thermal
