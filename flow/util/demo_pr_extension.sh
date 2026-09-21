@@ -12,6 +12,10 @@
 # The demo is non-destructive: the ECO step backs up and restores the design
 # database, and the benchmark history file is put back exactly as it was.
 #
+# Every run saves a copy of what it printed (report.txt) and the benchmark HTML
+# chart under util/demo_runs/<platform>-<design>-<tag>/<date-time>/. Git ignores
+# that folder.
+#
 # Usage (from anywhere; it runs inside flow/):
 #   util/demo_pr_extension.sh
 #   util/demo_pr_extension.sh --platform nangate45 --design gcd --pause
@@ -86,6 +90,9 @@ step() {
 
 show_cmd() { echo "${DIM}\$ $*${RESET}"; }
 
+# Everything below runs inside main() so the driver at the bottom of the file
+# can record what it prints into a report.
+main() {
 ODB="results/$PLATFORM/$DESIGN/$TAG/5_1_grt.odb"
 [[ "$ECO_STAGE" == "cts" ]] && ODB="results/$PLATFORM/$DESIGN/$TAG/4_cts.odb"
 HISTORY="util/benchmark_history/${PLATFORM}__${DESIGN}__${TAG}.jsonl"
@@ -106,7 +113,7 @@ cleanup() {
     else
         rm -f "$HISTORY"
     fi
-    rm -f "$ODB_BACKUP" "$HISTORY_BACKUP"
+    rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
 
@@ -135,6 +142,7 @@ if [[ ! -f "$ODB" ]]; then
 fi
 
 echo "${BOLD}pr-extension demo${RESET}  design: $PLATFORM/$DESIGN ($TAG)"
+echo "run: $STAMP   commit: $(git -C "$FLOW_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 # ---------------------------------------------------------------------------
 # 1. Unit tests
@@ -172,7 +180,7 @@ if [[ -f "$HISTORY" ]]; then
     cp -p "$HISTORY" "$HISTORY_BACKUP"
     HAD_HISTORY=1
 fi
-HTML_OUT="$TMP_DIR/benchmark_dashboard.html"
+HTML_OUT="$RUN_DIR/benchmark_dashboard.html"
 show_cmd python3 util/benchmark_dashboard.py record --platform $PLATFORM --design $DESIGN --tag $TAG
 python3 util/benchmark_dashboard.py record --platform "$PLATFORM" --design "$DESIGN" --tag "$TAG"
 python3 util/benchmark_dashboard.py record --platform "$PLATFORM" --design "$DESIGN" --tag "$TAG"
@@ -186,7 +194,7 @@ if [[ $rc -eq 0 ]]; then
 else
     echo "${DIM}exit $rc: the report flagged a regression or a history problem${RESET}"
 fi
-echo "HTML trend chart: $HTML_OUT ${DIM}(open it in a browser; it lives in a temp directory, so copy it if you want to keep it)${RESET}"
+echo "HTML trend chart: saved as benchmark_dashboard.html in this run's folder (path printed at the end)"
 
 # ---------------------------------------------------------------------------
 # 5. eco_fix
@@ -298,3 +306,32 @@ if [[ $LLM -eq 0 ]]; then
     echo "Not shown: the LLM tools. Re-run with --llm for the triage agent; loop_agent.py is the autonomous fixer and edits config.mk, so run it yourself:"
     echo "  python3 util/loop_agent.py --platform $PLATFORM --design $DESIGN"
 fi
+}
+
+# ---------------------------------------------------------------------------
+# Run the demo, keeping a copy of everything it prints
+# ---------------------------------------------------------------------------
+STAMP="$(date +%Y%m%d-%H%M%S)"
+RUNS_DIR="$FLOW_DIR/util/demo_runs"
+RUN_DIR="$RUNS_DIR/$PLATFORM-$DESIGN-$TAG/$STAMP"
+mkdir -p "$RUN_DIR"
+# A folder-level .gitignore that ignores everything (itself included) keeps the
+# saved runs out of git without touching the repository's own .gitignore.
+[[ -f "$RUNS_DIR/.gitignore" ]] || echo '*' > "$RUNS_DIR/.gitignore"
+
+export PYTHONUNBUFFERED=1   # so output shows up live instead of in one lump at the end of each step
+RAW_LOG="$RUN_DIR/.report.raw"
+
+set +e
+main 2>&1 | tee "$RAW_LOG"
+rc=${PIPESTATUS[0]}
+set -e
+
+# The report is the same text with terminal colour codes removed.
+sed 's/\x1b\[[0-9;]*m//g' "$RAW_LOG" > "$RUN_DIR/report.txt"
+rm -f "$RAW_LOG"
+
+echo
+echo "${BOLD}Saved this run to:${RESET} $RUN_DIR"
+for f in "$RUN_DIR"/*; do echo "  $(basename "$f")"; done
+exit "$rc"
