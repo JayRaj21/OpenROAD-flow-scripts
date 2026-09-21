@@ -89,6 +89,325 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-20 — Thermal placement loop, Stage A (G0 plumbing pilot): plumbing passes, G0 map criterion was weaker than stated
+
+**What was asked.** A light feedback loop that changes the placement knob and
+measures how the thermal map responds. Only Stage A, the plumbing pilot, was
+approved and run: one design (`sky130hd/riscv32i`), two variants. Nothing from
+the later stages (the 6-hour gate, the loop itself, LODO training or ranking
+scripts) was built or run.
+
+**Which knob.** `PLACE_DENSITY_LB_ADDON`, not `PLACE_DENSITY`. `scripts/util.tcl`
+ignores `PLACE_DENSITY` entirely whenever `PLACE_DENSITY_LB_ADDON` is set, and
+most designs set it, so overriding `PLACE_DENSITY` would silently do nothing.
+The add-on is normalised per design (it interpolates between the design's own
+minimum feasible density and 1.0). Utilization and aspect ratio were rejected
+as knobs because they change die area, and `extract_thermal_labels.py` scales
+total power and the package model with die area, so any thermal change would
+partly be a package artefact. The floorplan is held fixed.
+
+**New files (all under `util/ml/congestion/loop/`).** `knob_variants.sh`
+re-places a design at given add-on values, reusing the base variant's synthesis
+and floorplan. `placement_qor.py` reports HPWL, instance count and cell area
+from an ODB. `extract_variant_labels.sh` runs the existing feature and thermal
+extractors plus the QoR script, writing to the gitignored
+`experiments/thermal_loop/data/` (never to `data/`, which `ThermalDataset`
+globs). `thermal_metrics.py` computes the shape metrics (`haf_0p8`, `p2m`,
+`top10_ratio`), absolute temperature metrics, the L1 distance between maps, and
+a validity check for thermal-label files. One existing file was edited after
+independent validation (see "Corrections" below):
+`data_collection/extract_thermal_batch.sh`.
+
+**G0 results.**
+
+| Criterion | Result |
+|---|---|
+| Both placements complete | Yes, `dn_010` and `dn_070` (add-on 0.10 and 0.70), about 14 s each including Docker start-up (28 s for both). `3_3_place_gp` alone took 7.6 s (`dn_010`) and 6.4 s (`dn_070`), read from the two logs. FLW 24 (infeasible density) did not occur at 0.70, so no substitute point was needed. |
+| Knob is live | Yes. The placement log prints `Placement density is 0.551` for `dn_010` and `0.857` for `dn_070` (the first, skip-IO global-placement pass printed 0.542 and 0.854). |
+| Placement-only reuse | Yes, after one fix (below). `make -n place` lists only `3_1_place_gp_skip_io`, `3_2_place_iop`, `3_3_place_gp`, `3_4_place_resized`, `3_5_place_dp`, `3_place`, `3_place.sdc`. |
+| Maps differ | Yes, but this only certifies that placement was re-run with different inputs. L1 distance of the normalised `cell_density` maps (`dn_010` vs `dn_070`) is 0.179 against a threshold of 0.02, and the threshold is passed just as easily by a change that has nothing to do with density (table below). It does not show that the knob moved the map. |
+| Thermal labels non-degenerate | Yes. Both load, are finite, 64x64, and both now also pass `thermal_metrics.py --check-thermal-npz`. |
+| `extract_variant_labels.sh` | `passed=5 failed=0 skipped=1` (the skip was one feature file I had already extracted by hand while the first thermal solve was running). That run predates the thermal-file check added below. |
+| `placement_qor.py` on base | `num_insts` = 7306. The independent validator broke this down from `base/3_place.odb` as 5430 `CORE` plus 1876 `CORE_WELLTAP` instances (not re-measured in the correction pass). The 30-row dataset table's "stdcells" column is the same total instance count, so it includes well-tap cells; agreeing with it is not an independent check. |
+| `thermal_metrics.py` self-check | Flat map gives `top10_ratio` 1.0; a single-spike map gives `haf_0p8` 1/4096. Re-run after the input validation was added, same results. |
+
+Variant results (both re-placed by `knob_variants.sh`, same platform files):
+
+| Variant | Density | HPWL (um) | Instances | ptp (C) | tmax (C) | `top10_ratio` | `haf_0p8` |
+|---|---|---|---|---|---|---|---|
+| `dn_010` | 0.551 | 187203 | 7346 | 42.55 | 154.44 | 1.493 | 0.445 |
+| `dn_070` | 0.857 | 166684 | 7233 | 57.24 | 166.02 | 1.797 | 0.225 |
+
+The existing `base` label (HPWL 177608, 7306 instances, ptp 40.37 C, tmax
+153.58 C, `top10_ratio` 1.517, `haf_0p8` 0.424) is deliberately not in this
+table: it was placed with different platform files and is not comparable with
+the variants (see Finding 2).
+
+Within this one pair, higher density gave shorter wire (HPWL 187203 to 166684
+um), a hotter and more concentrated thermal map (peak-to-peak up 15 C,
+`top10_ratio` up 0.30) and a more concentrated `cell_density` map
+(`top10_ratio` 2.82 to 3.23). This is two points on one design. Placement is
+deterministic under identical inputs (the `dn_020` re-run below), but there is
+no measure of how much the thermal metrics move when the inputs change and
+density does not, so the response to the knob is suggestive, not established.
+A dose-response over six variants is what Stage B has to show.
+
+**Why the 0.02 L1 threshold does not measure the knob.** L1 of the min-max
+normalised `cell_density` maps, all recomputed with the new
+`thermal_metrics.py --l1` command from the files in
+`experiments/thermal_loop/data/` and `data/`:
+
+| Pair | Knob step (add-on) | L1 |
+|---|---|---|
+| `dn_010` vs `dn_070` | 0.60 | 0.1787 |
+| `dn_010` vs `dn_020` | 0.10 | 0.1632 |
+| `dn_020` vs `dn_070` | 0.50 | 0.1625 |
+| `base` vs `dn_020` | 0.00, different `setRC.tcl` only (Finding 2) | 0.1499 |
+| `dn_020` vs `dn_020r` | 0.00, identical inputs | 0.0000 |
+
+A 0.10 step gives 0.163 and a 0.60 step gives 0.179, so the distance
+saturates near 0.16 to 0.18 for any change of inputs, while a change of the
+wire-RC file alone already gives 0.150. The earlier statement that the base
+map was "almost as far from `dn_020` as the whole sweep" was read the wrong
+way round: 0.150 is smaller than the typical variant-to-variant distance. The
+threshold of 0.02 therefore only certifies "placement was re-run with
+something different". Any Stage B ranking or dose-response built on this L1
+would be dominated by staging nuisance; use monotonic dose-response of scalar
+metrics and a nuisance reference instead (Stage B section below).
+
+**Two findings that change how Stage B must be run.**
+
+1. *Placement-only reuse needed more than `1_*` and `2_*` files.* The first
+   attempt still listed the whole synthesis and floorplan chain, because
+   `clock_period.txt` (a prerequisite of the yosys canonicalize step) was
+   missing from the new variant directory. `knob_variants.sh` now also copies
+   `clock_period.txt` and `mem*.json`, and touches everything in one `find` so
+   all copies share a timestamp. This was found with `make -n --debug=b`.
+2. *The existing `base/3_place.odb` is reproducible; the difference was the
+   platform directory.* An earlier version of this entry said the base could
+   not be reproduced, possibly because of a different tool build. That was
+   wrong. `knob_variants.sh` forces `PLATFORM_HOME=/work/platforms` (this
+   worktree). Placement sources `$PLATFORM_DIR/setRC.tcl` (`scripts/load.tcl`;
+   the `dn_020` log line 9 reads `source /work/platforms/sky130hd/setRC.tcl`),
+   and global placement is timing-driven with `estimate_parasitics`, so a
+   different wire RC gives a different placement. The worktree's
+   `platforms/sky130hd/setRC.tcl` has different `met1` to `met5` resistances
+   from the copy baked into the image (`met1` 8.929e-04 becomes 1.20565E-03,
+   `met2` 8.929e-04 becomes 1.22132E-03; capacitances are unchanged).
+   Evidence, produced by the independent validator by staging the base's
+   `1_*` and `2_*` files into scratch variants with add-on 0.2 and removing
+   them afterwards (I did not re-run these placements in the correction pass):
+
+   | Placement | Platform directory | `3_place.odb` md5 |
+   |---|---|---|
+   | base (2026-09-14) | image | `f62c6f46a492442619038c4b17a3d4f9` |
+   | re-place, no `/work` overrides | image | `f62c6f46a492442619038c4b17a3d4f9` (identical to base) |
+   | `dn_020` from `knob_variants.sh` | `/work/platforms` | `410af166c2480eb11b731f171878ea8c` |
+   | re-place with `PLATFORM_HOME=/work/platforms` | `/work/platforms` | `410af166c2480eb11b731f171878ea8c` (identical to `dn_020`) |
+
+   The image-platform run even printed the base's exact HPWL (177607.7 um).
+   `1_synth.odb`, `2_floorplan.odb` and `2_floorplan.sdc` are md5-identical
+   between base and the variants, and the first differing file is
+   `3_1_place_gp_skip_io.odb`. The tool build hypothesis is ruled out:
+   `openroad/orfs:latest` and `openroad/orfs-ml:latest` both report
+   `OpenROAD 26Q2-1671-g0a1b0872a0`, and `Makefile`, `util.tcl`,
+   `global_place.tcl`, `global_place_skip_io.tcl` and `io_placement.tcl` are
+   md5-identical between the two images. Determinism holds as well: a second
+   `dn_020` run (`dn_020r`) gave a byte-identical ODB. Consequence: the
+   confound is a controllable flag, not time. The base can be compared with
+   variants provided both were placed with the same `PLATFORM_HOME`; the base
+   itself was placed with the image's copy, so it is not comparable with
+   variants made by `knob_variants.sh` as it stands. Variants must be compared
+   with other variants placed by the same script, which is also why `dn_020`
+   (the base's own add-on) is a useful reference point.
+
+**Pre-existing dataset inconsistency (found here, not fixed, no re-routing).**
+The routes on 2026-09-14 (12 designs, including this base) were made without
+the `/work` overrides and so used the image's baked-in platform files, while
+the 2026-09-16 routes (the 18 added designs) used
+`PLATFORM_HOME=/work/platforms` (recorded in that entry). The 30-design
+dataset therefore mixes two platform-file regimes. That the 12 first routes
+used the image copy is confirmed by measurement only for this base
+(`sky130hd/riscv32i`, the md5 evidence above); for the other 11 it is inferred
+from the 2026-09-16 entry, which introduced the override as a new step. I
+compared every file of the image's platform directory
+(`/OpenROAD-flow-scripts/flow/platforms` in `openroad/orfs:latest`, 1131
+files) against the worktree's `platforms/` (1190 files) by md5, read-only.
+Results per platform (measured):
+
+| Platform | Files differing (present in both) | Present only on the worktree side | `setRC.tcl` | `.lib` / `.lef` |
+|---|---|---|---|---|
+| `nangate45` | `config.mk` (worktree adds `OPT_POST_GRT_WNS ?= 0`), `fakeram.cfg`, `fakeram.tcl` (worktree lists more fakeram sizes) | 4 fakeram45 `.lef` and 4 `.lib` | identical | none differ |
+| `asap7` | `config.mk` (worktree sets `ROUTING_LAYER_ADJUSTMENT ?= 0.25`), `fastroute.tcl` (image hard-codes 0.25, worktree reads `ROUTING_LAYER_ADJUSTMENT`), `setRC.tcl`, 14 `verilog/fakeram*.v` files | `fakeram_2048x128` and `fakeram_512x128` (`.lef`, `.lib`, `.sv`) | **differs**: different M2 to M9 layer R and C values, different signal and clock wire RC, worktree adds M8, M9 and a V9 via | none differ |
+| `sky130hd` | `config.mk` (worktree adds `OPT_POST_GRT_WNS ?= 0`), `setRC.tcl` | none | **differs**: `met1` to `met5` resistances (capacitances equal) | none differ |
+| `sky130hs` | `config.mk` (`OPT_POST_GRT_WNS`) | none | identical | none differ |
+| `gf180` | `config.mk` (worktree adds `FILL_CONFIG` and `OPT_POST_GRT_WNS`), 4 `gds/*.layermap` files | `fill.json` | identical | none differ |
+| `ihp-sg13g2` | `config.mk` (worktree adds `PLATFORM_TCL` suppress-message line and `OPT_POST_GRT_WNS`) | `suppress_message.tcl` | identical | none differ |
+
+`sky130io`, `sky130ram` and `common` are identical. `gt2n` exists only on the
+worktree side (43 files, unused by any routed design). So `setRC.tcl` differs
+for exactly two platforms, `sky130hd` and `asap7`; no `.lib` or `.lef` present
+in both trees differs for any of the six.
+
+What this means, separating what is measured from what is inferred. Measured:
+the file differences above, and that for `sky130hd/riscv32i` the different
+`setRC.tcl` alone yields a different timing-driven placement (base vs
+`dn_020`, cell-density L1 0.150). Inferred, not tested: the 12 first routes
+that used the image copy and sit on `sky130hd` (`gcd`, `riscv32i`, `aes`) or
+`asap7` (`gcd`, `riscv32i`, `aes`) were placed under a different wire RC than
+the 2026-09-16 designs on the same platforms (`sky130hd/ibex`, `sky130hd/jpeg`,
+and the five added `asap7` designs), so their placements, and hence their
+thermal labels, may differ from what the current worktree files would give.
+For `asap7` the `fastroute.tcl`/`ROUTING_LAYER_ADJUSTMENT` difference does not
+change the numeric layer adjustment (0.25 in both), and the only other use of
+`ROUTING_LAYER_ADJUSTMENT` under `scripts/` is `floorplan.tcl`, which skips it
+when `FASTROUTE_TCL` is set, as it is for `asap7`; I did not test the
+`asap7` fakeram verilog differences. The `OPT_POST_GRT_WNS`, fill and
+suppress-message differences are outside placement. I have not measured how
+much any of this moves labels for any design other than by the single
+`riscv32i` comparison, and I make no claim about the effect on earlier
+conclusions. No routing or extraction was redone for this.
+
+**Other observations.** Instance count differs between variants (7233 to 7346)
+because the resizer adds or removes buffers after global placement, so the
+thermal maps compare slightly different netlists. HotSpot extraction dominated
+the wall time at roughly 15 minutes per variant (slower than usual because two
+jobs were sharing the machine), versus about 14 s for placement, so Stage B
+cost is almost entirely thermal extraction. `experiments/thermal_loop/data/`
+and `results/sky130hd/riscv32i/dn_*` also contain `dn_020` and `dn_020r`, the
+determinism check described above; they are gitignored and not part of the
+pilot's two required variants.
+
+**Corrections after independent validation (all 10 findings, F1 to F10).**
+
+- *F1 (base "not reproducible"):* the finding was false; rewritten above with
+  the root cause, the md5 evidence and the platform-file survey.
+- *F2 (L1 threshold):* stated above; Stage B guidance below.
+- *F3 (variants polluting `data/`):* `dn_*` variant directories stay in
+  `results/`, and `extract_thermal_batch.sh` discovered every `3_place.odb`
+  with no tag filter, so its next routine run would have written variant
+  `.npz` files into `data/`, and `ThermalDataset` globs `*_features.npz`
+  there, giving four near-duplicate samples of one design and leaking across
+  design-holdout LODO. The `find` now excludes `results/*/*/dn_*/3_place.odb`
+  (a comment in the script says why). This is a deliberate, approved exception
+  to the "do not edit existing extractors" constraint. `find results -name
+  3_place.odb` returns 34 with the four `dn_*` dirs present; with the filter it
+  returns 30. In a scratch tree, `util_*` and `ar_*` tags (the
+  `generate_variants.sh` scheme) and a design directory literally named
+  `dn_design` are still discovered, while `dn_020` is skipped.
+  `extract_variant_labels.sh` also refuses to run if its output directory
+  resolves to `util/ml/congestion/data` (tested in a scratch copy with the
+  output path pointed there).
+- *F4 (add-on tag rounding):* the old tag rounded to the nearest percent, so
+  `--addons 0.005,0.01` produced `dn_001` twice and the second was skipped as
+  "already exists", and `abc` or an empty entry became `dn_000`. Add-ons must
+  now be a number in [0, 1] with at most 2 decimals and the tag is derived
+  from the exact value; empty, non-numeric, 3-decimal, negative and
+  out-of-range entries (including an empty entry from `0.1,` or `0.1,,0.2`)
+  exit with a message before anything runs. `--pads` must be a non-negative
+  integer (`01` is normalised to `1`). Checked by dry-run: `0.005`, `abc`,
+  empty, `1.5`, `0.123`, `1.01`, `-0.1`, `.5`, `100` and bad pads are all
+  rejected; `0`, `0.1`, `0.10`, `1` and `1.0` are accepted (`0.1` and `0.10`
+  give the same tag `dn_010`, `1` and `1.0` give `dn_100`).
+- *F5 (degenerate extraction reported as OK):* `thermal_metrics.py` gained
+  `check_thermal_npz(path)` (loads; keys exactly `thermal_map` and
+  `power_grid`; both 64x64 and finite; `thermal_map` peak-to-peak above
+  1e-3 C) and a `--check-thermal-npz` command. `extract_variant_labels.sh`
+  runs it after every thermal extraction; a failing file is logged `[FAIL]`,
+  deleted (so the skip logic does not treat it as done) and counted as failed.
+  Tested with synthetic flat, NaN, wrong-shape, wrong-keys, unreadable and
+  missing files (all rejected) and a valid one (accepted), and through the
+  script's own `run_extractor` function with a fake extractor that copies a
+  good, a flat and a NaN file: the good one is kept and counted, the other two
+  are deleted and counted as failed. The two existing variant thermal files
+  pass.
+- *F6 and F7 (exit status, leftover directories, `set -e` abort):*
+  `knob_variants.sh` now prints its summary and then exits 1 if any variant
+  failed. Staging (`mkdir`, the `cp` including `clock_period.txt`, the `mem*.json`
+  copy and the `touch`) is wrapped so a missing file becomes `[FAIL]` and the
+  sweep continues instead of aborting. A variant directory that this run
+  created is removed after a failed staging or placement; a directory that
+  existed before the run is never deleted, and `logs/`, `objects/` and
+  `reports/` are kept for diagnosis. Tests: (a) real run with `--addons 1.00`,
+  which is valid input but infeasible (FLW-0024, lower bound + (1 - lower
+  bound) * addon + 0.01 exceeds 1.0): `[FAIL]`, "removed
+  results/sky130hd/riscv32i/dn_100 (created by this run)", exit 1, directory
+  gone; (b) a scratch copy of the script whose staging names a missing file
+  instead of `clock_period.txt`, with add-ons 0.35, 0.36, 0.10 and a
+  hand-made empty `dn_036` directory: `dn_035` `[FAIL]` and removed, `dn_036`
+  `[FAIL]` and left in place (it pre-existed), `dn_010` `[SKIP]`, sweep
+  continued, exit 1. I then deleted my own `dn_036` test directory and the
+  `dn_100` logs, objects and reports.
+- *F8 (`--dry-run` output):* it now prints exactly the commands that will run:
+  `mkdir -p`, the full `cp` (`1_*`, `2_*`, `clock_period.txt`), the `cp` of
+  `mem*.json` when the base has any, the single `find ... -exec touch {} +`, and
+  the `util/docker_shell` line with `</dev/null`. For a variant that already
+  exists it prints "would skip: already exists" and then the commands, which
+  would not run.
+- *F9 (silent library functions):* `normalize01`, `shape_metrics`,
+  `absolute_metrics`, `blur_proxy` and `l1_distance` now raise `ValueError` for
+  non-finite input, non-2-D input and any shape other than 64x64 unless an
+  explicit `expected_shape` is passed (`l1_distance` applies the same shape to
+  both maps, so a shape mismatch cannot broadcast). Checked: (64,64) vs (1,64),
+  (32,32) vs (64,64), a map with one NaN, an 8x8 map and a 1-D map all raise;
+  an 8x8 pair with `expected_shape=(8,8)` works. A new command,
+  `python3 loop/thermal_metrics.py --l1 a.npz b.npz --key cell_density`, prints
+  the L1 distance, so the headline number is reproducible; it gives 0.178681
+  for `dn_010` vs `dn_070`.
+- *F10 (doc contradictions):* the `base` row was removed from the results table
+  and explained as not comparable; the `num_insts` check is now stated honestly
+  (5430 `CORE` plus 1876 `CORE_WELLTAP`, "stdcells" means all instances); the
+  `3_3_place_gp` timings are attributed correctly (7.6 s `dn_010`, 6.4 s
+  `dn_070`, from the logs; a first correction had them the wrong way round, and
+  the final review caught it).
+
+Also fixed afterwards, after the final independent review: `extract_variant_labels.sh`
+had the same problem as `knob_variants.sh` (it exited 0 even when an extraction
+failed). It now prints its summary and then exits 1 if any extraction failed,
+so a driver script can detect failure from the exit status. The same review
+found that a features or QoR file cut off by a timeout would be skipped as
+"already extracted" on the next run; a failed or timed-out extraction now
+deletes its own partial output (only output that did not exist before that
+run, so nothing older is ever removed). Two documentation errors were also
+corrected (the `3_3_place_gp` timings, and the wording of the proposed
+Spearman threshold, which allows one adjacent rank swap and not two), and a
+non-numeric thermal file now gives a clean `BAD` message instead of a
+traceback.
+
+**What Stage B needs (guidance from these findings).**
+
+- Use one `PLATFORM_HOME` for every variant (`knob_variants.sh` forces
+  `/work/platforms`, which is right), and include a re-placed reference
+  variant at the base's own add-on (for example `dn_020` for `riscv32i`). The
+  base is comparable only if it was placed with the same platform directory;
+  the 12 designs routed on 2026-09-14 were not (see the dataset inconsistency
+  above), so for those designs compare variants only with each other.
+- Extract thermal labels for the reference variant too: the thermal-metric
+  nuisance reference below needs them (only features were extracted for
+  `dn_020` so far).
+- G1 must include a monotonic dose-response check: the Spearman correlation of
+  add-on against `top10_ratio` and against `ptp_c` across the 6 variants, and
+  it must compare the spread of each metric across the variants against a
+  nuisance reference (the difference of the same metric between two placements
+  that differ only in an unrelated input, for example the base-vs-`dn_020`
+  wire-RC difference), so that staging noise cannot pass the gate. Proposal,
+  for the user's approval and not decided: pass only if |Spearman| >= 0.89
+  for both metrics (with 6 points the achievable values are 1.0, 0.943, 0.886,
+  so this allows at most one adjacent rank swap; two swaps give 0.886 and
+  would fail) and the max-minus-min of each metric across the 6 variants is at
+  least twice the nuisance reference for that metric. Cell-density L1 should
+  not be used as a gate: it saturates near 0.16 to 0.18 for any change of
+  inputs, above the setRC-only 0.150 reference.
+
+**Verification of untouched state.** After the corrections,
+`test_models.py -v` passes 20/20, `data/` still holds exactly 90 `.npz` files,
+and the checksum file still matches on 36 of 36. No variant file was written
+to `data/`; `git status` shows only this file and
+`data_collection/extract_thermal_batch.sh` modified plus the untracked `loop/`.
+
+**Next step, pending approval.** Stage B (the 6-hour gate) has not been
+started.
+
 ### 2026-09-19 (later) — 90 data files regenerated after the worktree reset
 
 **Result.** All 90 `.npz` files (30 designs × features, thermal labels,

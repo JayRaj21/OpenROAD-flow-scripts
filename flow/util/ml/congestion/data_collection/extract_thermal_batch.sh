@@ -108,7 +108,10 @@ while IFS= read -r HOST_ODB; do
         fi
     fi
 
-done < <(find results -name "3_place.odb" | sort)
+# Skip dn_* density variants (loop/knob_variants.sh): they are near-duplicates of
+# one design and would leak into ThermalDataset and break LODO. They are
+# extracted by loop/extract_variant_labels.sh into experiments/thermal_loop/data/.
+done < <(find results -name "3_place.odb" -not -path "results/*/*/dn_*/3_place.odb" | sort)
 
 echo ""
 echo "========================================="
