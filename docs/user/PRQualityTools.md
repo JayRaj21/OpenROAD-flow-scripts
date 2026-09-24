@@ -329,8 +329,24 @@ change log, and a counter that numbers the runs.
 - **Cell** (optional): a specific library cell to swap to. It must have the same
   signal pins as the current cell. Without it, the tool picks the next size up or down.
 
-**Not sure what to target?** Call it with a made-up instance name. The result always
-lists the instances on the worst setup paths, so you can pick real ones.
+**Not sure what to target?** Ask for a list. This runs OpenROAD once, changes nothing,
+and returns the instances on the worst setup paths. Each one is marked with whether its
+cell can be sized up or down, so you can skip cells that are already the largest or
+smallest size and cells that are never resized.
+
+```shell
+python3 -c "
+import itertools
+from util.loop_agent import impl_eco_list_targets, pick_resizable_targets
+listing = impl_eco_list_targets('grt', 'nangate45', 'gcd', 'base', '.', itertools.count(1))
+print(pick_resizable_targets(listing['targets'], 'up', 5))
+"
+```
+
+That prints up to five `(instance, cell)` pairs that can be sized up, worst path first.
+Use `'down'` instead of `'up'` to pick cells that can be sized down. The
+autonomous agent does not have this list mode as a tool. It can still call `eco_fix`
+with any name and read the instances the result lists.
 
 **Output.** A result block printed to the screen. Files are also written, with
 `<n>` being the run number:

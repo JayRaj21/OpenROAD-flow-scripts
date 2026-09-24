@@ -1786,3 +1786,51 @@ one level too high still fails the shape check, and that adding
 cd flow/util && python3 -m pytest test_benchmark_dashboard.py -v
 ```
 59 passed.
+
+### 2026-09-24 — eco_fix: list mode, and the demo stops wasting attempts
+
+Timing the demo on nangate45/gcd showed the ECO step dominating its roughly 8
+seconds. Each `eco_fix` attempt starts a Docker container (about 0.2 s of the
+cost) and has OpenROAD reload the design, libraries and constraints. The demo
+made 11 such runs: one deliberate bad-target probe to discover candidate
+instances, then up to 10 `resize_up` attempts. Four of those ten attempts were
+for cells that were already the largest size (or clock cells) and could only
+ever answer "no up-size target".
+
+**Changes**
+- `eco_repair.tcl`: new pure proc `eco_resize_flags` (can a cell go up / down,
+  never for flip-flops, latches, clock buffers or clock gates), and
+  `eco_targets` takes an optional `annotate` argument that adds `can_up` /
+  `can_down` to each target. The size maps are built only when asked for, so
+  ordinary `eco_fix` calls pay nothing. `eco_run` gains a `list_targets` mode
+  that loads the design, lists the annotated targets and stops, with no timing
+  snapshot and no change to the design.
+- `loop_agent.py`: the "write the generated Tcl, run it in Docker, read the JSON"
+  code moved into `_run_eco_tcl`, shared by `impl_eco_fix` and the new
+  `impl_eco_list_targets`. `pick_resizable_targets` chooses distinct instances
+  whose flag is explicitly true. The agent's tool list is unchanged.
+- `demo_pr_extension.sh`: lists targets once, tries only cells that can be sized
+  up, and caps real attempts at 6 (what the old loop effectively made, since 4
+  of its 10 were wasted).
+
+**Measured** (same machine, same design, two runs each): the demo went from
+8.2 s and 8.1 s to 6.0 s and 5.9 s, about 27% faster, from 11 OpenROAD runs to
+7. The six resize attempts and their verdicts are identical to before.
+
+**A correction to the earlier estimate.** Replacing the probe call with the list
+call does not save time by itself: the list call is still one OpenROAD run, about
+the same cost as the probe. The whole saving comes from not launching attempts
+that cannot succeed. The list call is still cleaner, because it no longer relies
+on an error path to discover candidates, and it reports resizability.
+
+**Tests:** 18 new (`test_loop_agent.py` now 73). They cover the list function
+with a mocked Docker run (result parsed, invalid stage and missing database
+rejected without running Docker, missing result file and a Tcl-reported error
+passed through), the candidate picker, and the pure Tcl pieces via tclsh
+(`eco_resize_flags` for every up/down/excluded case, and `eco_json_targets`
+producing valid JSON with real booleans and keeping its original shape when no
+flags are present). All four suites: 197 passed.
+
+**Not done:** loading the design once and trying several candidates in one
+OpenROAD session, which would remove the per-attempt reload. It needs an
+in-memory undo for rejected changes, so it is left as a separate, riskier step.

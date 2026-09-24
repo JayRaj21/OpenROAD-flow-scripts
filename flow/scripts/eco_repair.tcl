@@ -80,14 +80,43 @@ proc eco_measure { id phase } {
 }
 
 # -----------------------------------------------------------------------
+# Can a cell be resized up / down? Returns {can_up can_down} as 0/1 values.
+# upsize_map / downsize_map are array-get lists (cell -> next cell), as
+# returned by build_upsize_map / build_downsize_map. A cell that is excluded
+# from resizing (flip-flops, latches, clock buffers, clock gates) can never be
+# resized. Pure list logic, so it is unit-testable without an ODB database.
+# -----------------------------------------------------------------------
+proc eco_resize_flags { cell upsize_map downsize_map } {
+  if { [is_excluded $cell] } {
+    return [list 0 0]
+  }
+  array set up $upsize_map
+  array set down $downsize_map
+  return [list [info exists up($cell)] [info exists down($cell)]]
+}
+
+# -----------------------------------------------------------------------
 # Informational: instances on the worst setup paths. Never applies
 # anything.
+#
+# With annotate=1, each target also carries can_up / can_down flags saying
+# whether eco_resize could size that instance's cell up or down, so a caller
+# can skip cells that would only come back with "no up-size target". The
+# size maps are built once per call and only when asked for, so the ordinary
+# eco_run path pays nothing for this.
 # -----------------------------------------------------------------------
-proc eco_targets { count } {
+proc eco_targets { count { annotate 0 } } {
   set targets {}
   set seen_pins {}
   set db [::ord::get_db]
   set block [[$db getChip] getBlock]
+
+  set upsize_map {}
+  set downsize_map {}
+  if { $annotate } {
+    set upsize_map [build_upsize_map]
+    set downsize_map [build_downsize_map]
+  }
 
   # Path has no prevPath method in this build (confirmed via live probe:
   # "Invalid method. Must be one of: ... pin edge tag pins start_path") — use
@@ -119,7 +148,13 @@ proc eco_targets { count } {
         set odb_inst [$block findInst $inst_name]
         if { $odb_inst ne "NULL" && $odb_inst ne "" } {
           set cell_name [[$odb_inst getMaster] getName]
-          lappend targets [dict create pin $pin_name inst $inst_name cell $cell_name]
+          set target [dict create pin $pin_name inst $inst_name cell $cell_name]
+          if { $annotate } {
+            lassign [eco_resize_flags $cell_name $upsize_map $downsize_map] can_up can_down
+            dict set target can_up $can_up
+            dict set target can_down $can_down
+          }
+          lappend targets $target
         }
       }
     }
@@ -381,9 +416,15 @@ proc eco_json_metrics { m } {
 proc eco_json_targets { targets } {
   set items {}
   foreach t $targets {
-    lappend items [format {{"pin":%s,"inst":%s,"cell":%s}} \
+    set extra ""
+    if { [dict exists $t can_up] && [dict exists $t can_down] } {
+      set up [expr { [dict get $t can_up] ? "true" : "false" }]
+      set down [expr { [dict get $t can_down] ? "true" : "false" }]
+      set extra ",\"can_up\":$up,\"can_down\":$down"
+    }
+    lappend items [format {{"pin":%s,"inst":%s,"cell":%s%s}} \
       [eco_json_str [dict get $t pin]] [eco_json_str [dict get $t inst]] \
-      [eco_json_str [dict get $t cell]]]
+      [eco_json_str [dict get $t cell]] $extra]
   }
   return "\[[join $items ,]\]"
 }
@@ -546,6 +587,23 @@ proc eco_run {
   set load_ok [catch { set pflag [eco_load $odb_file $stage] } load_msg]
   if { $load_ok != 0 } {
     set msg $load_msg
+    eco_write_result $json_out $id $status $msg $fix $before $after $delta $verdict \
+      $targets $odb_written
+    return
+  }
+
+  # list_targets: report the instances on the worst setup paths, each marked
+  # with whether it can be sized up / down, and stop. Nothing is changed and
+  # no timing snapshot is taken, so this is one cheap load-and-report run.
+  if { $fix_type eq "list_targets" } {
+    set fix [dict create kind list_targets inst "" from "" to "" placement_warning ""]
+    set list_ok [catch { set targets [eco_targets 5 1] } list_msg]
+    if { $list_ok != 0 } {
+      set targets {}
+      set msg "eco_targets failed: $list_msg"
+    } else {
+      set status "listed"
+    }
     eco_write_result $json_out $id $status $msg $fix $before $after $delta $verdict \
       $targets $odb_written
     return
