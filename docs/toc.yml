@@ -29,6 +29,8 @@ entries:
     title: Metrics
   - file: user/InstructionsForAutoTuner.md
     title: AutoTuner
+  - file: user/PRQualityTools.md
+    title: P&R Quality Diagnosis and Repair Tools
 
 - file: Manpage.md
   title: Manpages
