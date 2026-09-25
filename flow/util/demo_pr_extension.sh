@@ -42,7 +42,7 @@ BUILD=0
 LLM=0
 PAUSE=0
 ECO_STAGE=grt
-ECO_MAX_TRIES=10
+ECO_MAX_TRIES=6   # real resize attempts; cells that cannot be sized up are filtered out first
 BENCH_STAGE="Global route"   # "Finish" (the tool's default) is empty unless the build ran the whole flow
 
 usage() {
@@ -215,7 +215,7 @@ import re
 import sys
 
 sys.path.insert(0, "util")
-from loop_agent import impl_eco_fix
+from loop_agent import impl_eco_fix, impl_eco_list_targets, pick_resizable_targets
 
 stage = os.environ["ECO_STAGE"]
 platform, design, tag = os.environ["PLATFORM"], os.environ["DESIGN"], os.environ["TAG"]
@@ -234,25 +234,29 @@ def without_targets(text):
     return text.split("targets (worst setup paths):")[0].rstrip()
 
 
-print("Asking eco_fix for the instances on the worst setup paths (a deliberate bad target)...")
-probe = run("resize_up", "__demo_probe__")
-candidates = []
-for inst, cell in re.findall(r"^\s{2}(\S+)\s+\((\S+)\)\s+pin=", probe, re.M):
-    if inst not in [c[0] for c in candidates]:
-        candidates.append((inst, cell))
-if not candidates:
-    print("Could not find any candidate instances; the design may have no timing paths.")
+print("Listing the instances on the worst setup paths (one OpenROAD run, nothing is changed)...")
+with contextlib.redirect_stdout(io.StringIO()):
+    listing = impl_eco_list_targets(stage, platform, design, tag, ".", counter)
+if listing["status"] != "listed":
+    print(f"Could not list targets: {listing['msg']}")
     sys.exit(0)
 
-print(f"Found {len(candidates)} instances on the worst paths, for example:")
-for inst, cell in candidates[:5]:
+instances = {t["inst"] for t in listing["targets"]}
+candidates = pick_resizable_targets(listing["targets"], "up", max_tries)
+print(f"Found {len(instances)} instances on the worst paths.")
+if not candidates:
+    print("None of them can be sized up (already the largest size, or a clock cell).")
+    sys.exit(0)
+
+print(f"Cells that can be sized up, worst path first (up to {max_tries}):")
+for inst, cell in candidates:
     print(f"  {inst} ({cell})")
 
 print()
-print(f"Trying resize_up on up to {max_tries} of them until one is kept...")
+print("Trying resize_up on each until one is kept...")
 first_rejected = None
 kept = None
-for inst, cell in candidates[:max_tries]:
+for inst, cell in candidates:
     out = run("resize_up", inst)
     head = out.splitlines()[0]
     reason = re.search(r"verdict: \w+ — (.*)\)\s*$", head)

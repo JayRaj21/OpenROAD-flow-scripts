@@ -23,7 +23,9 @@ from loop_agent import (
     STAGE_STALE_FILES,
     _format_eco_result,
     impl_eco_fix,
+    impl_eco_list_targets,
     impl_set_config_param,
+    pick_resizable_targets,
     write_config_params,
 )
 
@@ -531,6 +533,192 @@ class TestEcoFixJsonTransport(unittest.TestCase):
             self.assertIn("\\[0\\]", parsed["fix"]["from"])
 
 
+class TestEcoListTargets(unittest.TestCase):
+    """impl_eco_list_targets runs one list-only OpenROAD pass and returns the
+    worst-path instances with their can_up / can_down flags."""
+
+    PLATFORM, DESIGN, TAG = "nangate45", "gcd", "base"
+
+    def _flow_dir_with_odb(self, stage="grt"):
+        flow_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, flow_dir)
+        odb_rel = ECO_STAGE_ODB[stage].format(
+            p=self.PLATFORM, d=self.DESIGN, t=self.TAG
+        )
+        odb_path = os.path.join(flow_dir, odb_rel)
+        os.makedirs(os.path.dirname(odb_path))
+        with open(odb_path, "w") as f:
+            f.write("")
+        return flow_dir
+
+    def _eco_dir(self, flow_dir):
+        return os.path.join(
+            flow_dir, "objects", self.PLATFORM, self.DESIGN, self.TAG, "eco"
+        )
+
+    def test_returns_targets_and_generates_list_targets_tcl(self):
+        flow_dir = self._flow_dir_with_odb()
+        raw_json = (
+            '{"id":"eco1","status":"listed","msg":"",'
+            '"fix":{"kind":"list_targets","inst":"","from":"","to":""},'
+            '"targets":['
+            '{"pin":"_640_/ZN","inst":"_640_","cell":"NAND2_X2","can_up":true,"can_down":true},'
+            '{"pin":"_577_/ZN","inst":"_577_","cell":"NAND2_X4","can_up":false,"can_down":true}'
+            "]}"
+        )
+
+        def fake_run(cmd, cwd, capture_output, text, timeout):
+            with open(os.path.join(self._eco_dir(flow_dir), "eco1.json"), "w") as f:
+                f.write(raw_json)
+            return mock.Mock(stdout="", stderr="")
+
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_list_targets(
+                "grt",
+                self.PLATFORM,
+                self.DESIGN,
+                self.TAG,
+                flow_dir,
+                itertools.count(1),
+            )
+
+        self.assertEqual(result["status"], "listed")
+        self.assertEqual([t["inst"] for t in result["targets"]], ["_640_", "_577_"])
+        self.assertIs(result["targets"][1]["can_up"], False)
+        with open(os.path.join(self._eco_dir(flow_dir), "eco1.tcl")) as f:
+            tcl_text = f.read()
+        self.assertIn("trepair::eco_run", tcl_text)
+        self.assertIn("list_targets", tcl_text)
+
+    def test_invalid_stage_is_rejected_without_running_docker(self):
+        with mock.patch("loop_agent.subprocess.run") as run:
+            result = impl_eco_list_targets(
+                "place",
+                self.PLATFORM,
+                self.DESIGN,
+                self.TAG,
+                "/nonexistent",
+                itertools.count(1),
+            )
+        run.assert_not_called()
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["targets"], [])
+
+    def test_missing_odb_is_reported_without_running_docker(self):
+        with tempfile.TemporaryDirectory() as flow_dir:
+            with mock.patch("loop_agent.subprocess.run") as run:
+                result = impl_eco_list_targets(
+                    "grt",
+                    self.PLATFORM,
+                    self.DESIGN,
+                    self.TAG,
+                    flow_dir,
+                    itertools.count(1),
+                )
+        run.assert_not_called()
+        self.assertEqual(result["status"], "error")
+        self.assertIn("run that stage first", result["msg"])
+
+    def test_no_result_file_is_reported_as_an_error(self):
+        flow_dir = self._flow_dir_with_odb()
+        with mock.patch(
+            "loop_agent.subprocess.run",
+            return_value=mock.Mock(stdout="", stderr="openroad crashed"),
+        ):
+            result = impl_eco_list_targets(
+                "grt",
+                self.PLATFORM,
+                self.DESIGN,
+                self.TAG,
+                flow_dir,
+                itertools.count(1),
+            )
+        self.assertEqual(result["status"], "error")
+        self.assertIn("no result", result["msg"])
+        self.assertIn("openroad crashed", result["msg"])
+        self.assertEqual(result["targets"], [])
+
+    def test_tcl_reported_error_is_passed_through(self):
+        flow_dir = self._flow_dir_with_odb()
+        raw_json = (
+            '{"id":"eco1","status":"error","msg":"eco_targets failed: boom",'
+            '"fix":{"kind":"list_targets","inst":"","from":"","to":""},"targets":[]}'
+        )
+
+        def fake_run(cmd, cwd, capture_output, text, timeout):
+            with open(os.path.join(self._eco_dir(flow_dir), "eco1.json"), "w") as f:
+                f.write(raw_json)
+            return mock.Mock(stdout="", stderr="")
+
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_list_targets(
+                "grt",
+                self.PLATFORM,
+                self.DESIGN,
+                self.TAG,
+                flow_dir,
+                itertools.count(1),
+            )
+        self.assertEqual(result["status"], "error")
+        self.assertIn("boom", result["msg"])
+
+
+class TestPickResizableTargets(unittest.TestCase):
+    """pick_resizable_targets chooses distinct, explicitly-resizable instances."""
+
+    def _t(self, inst, cell, up, down, pin=None):
+        return {
+            "pin": pin or f"{inst}/ZN",
+            "inst": inst,
+            "cell": cell,
+            "can_up": up,
+            "can_down": down,
+        }
+
+    def test_keeps_only_cells_that_can_go_up_in_worst_path_order(self):
+        targets = [
+            self._t("a", "BUF_X1", True, False),
+            self._t("b", "NAND2_X4", False, True),
+            self._t("c", "NAND2_X2", True, True),
+        ]
+        self.assertEqual(
+            pick_resizable_targets(targets, "up", 10),
+            [("a", "BUF_X1"), ("c", "NAND2_X2")],
+        )
+
+    def test_down_direction_uses_the_can_down_flag(self):
+        targets = [
+            self._t("a", "BUF_X1", True, False),
+            self._t("b", "NAND2_X4", False, True),
+        ]
+        self.assertEqual(
+            pick_resizable_targets(targets, "down", 10), [("b", "NAND2_X4")]
+        )
+
+    def test_several_pins_of_one_instance_count_once(self):
+        targets = [
+            self._t("a", "BUF_X1", True, False, pin="a/Z"),
+            self._t("a", "BUF_X1", True, False, pin="a/A"),
+            self._t("b", "INV_X1", True, False),
+        ]
+        self.assertEqual(
+            pick_resizable_targets(targets, "up", 10),
+            [("a", "BUF_X1"), ("b", "INV_X1")],
+        )
+
+    def test_limit_caps_the_number_returned(self):
+        targets = [self._t(f"i{n}", "BUF_X1", True, False) for n in range(5)]
+        self.assertEqual(len(pick_resizable_targets(targets, "up", 2)), 2)
+
+    def test_targets_without_flags_are_not_guessed_at(self):
+        # An ordinary eco_fix result lists targets without can_up / can_down.
+        targets = [{"pin": "a/Z", "inst": "a", "cell": "BUF_X1"}]
+        self.assertEqual(pick_resizable_targets(targets, "up", 10), [])
+
+    def test_empty_list_gives_empty_result(self):
+        self.assertEqual(pick_resizable_targets([], "up", 10), [])
+
+
 class TestEcoResultFormatter(unittest.TestCase):
     """_format_eco_result renders accept/reject verdicts for all four fix types."""
 
@@ -717,6 +905,89 @@ class TestEcoRepairTclVerdict(unittest.TestCase):
             "puts [dict get $r accepted]\n"
         )
         self.assertEqual(out.strip(), "false")
+
+
+@unittest.skipUnless(shutil.which("tclsh"), "tclsh not available")
+class TestEcoTargetFlagsTcl(unittest.TestCase):
+    """Exercises the list_targets pieces of eco_repair.tcl that are pure Tcl
+    (eco_resize_flags, eco_json_targets) via tclsh, with no ODB dependency."""
+
+    UP_MAP = "NAND2_X1 NAND2_X2 NAND2_X2 NAND2_X4 BUF_X1 BUF_X2"
+    DOWN_MAP = "NAND2_X2 NAND2_X1 NAND2_X4 NAND2_X2 BUF_X2 BUF_X1"
+
+    def _run(self, tcl_body):
+        script = f'source "{ECO_REPAIR_TCL}"\n{tcl_body}'
+        with tempfile.NamedTemporaryFile("w", suffix=".tcl", delete=False) as f:
+            f.write(script)
+            path = f.name
+        try:
+            result = subprocess.run(
+                ["tclsh", path], capture_output=True, text=True, timeout=30
+            )
+        finally:
+            os.remove(path)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        return result.stdout.strip()
+
+    def _flags(self, cell):
+        return self._run(
+            f"puts [trepair::eco_resize_flags {cell} {{{self.UP_MAP}}} {{{self.DOWN_MAP}}}]"
+        )
+
+    def test_middle_size_can_go_both_ways(self):
+        self.assertEqual(self._flags("NAND2_X2"), "1 1")
+
+    def test_smallest_size_can_only_go_up(self):
+        self.assertEqual(self._flags("NAND2_X1"), "1 0")
+
+    def test_largest_size_can_only_go_down(self):
+        self.assertEqual(self._flags("NAND2_X4"), "0 1")
+
+    def test_cell_missing_from_both_maps_cannot_be_resized(self):
+        self.assertEqual(self._flags("OAI21_X4"), "0 0")
+
+    def test_excluded_cells_are_never_resizable_even_if_in_the_maps(self):
+        # Clock buffers and flip-flops are excluded from resizing outright.
+        out = self._run(
+            "puts [trepair::eco_resize_flags CLKBUF_X3 {CLKBUF_X3 CLKBUF_X4} {CLKBUF_X3 CLKBUF_X2}]\n"
+            "puts [trepair::eco_resize_flags DFF_X1 {DFF_X1 DFF_X2} {DFF_X1 DFF_X0}]"
+        )
+        self.assertEqual(out.splitlines(), ["0 0", "0 0"])
+
+    def test_json_targets_with_flags_is_valid_json_with_real_booleans(self):
+        out = self._run(
+            "puts [trepair::eco_json_targets {"
+            "{pin a/Z inst a cell BUF_X1 can_up 1 can_down 0} "
+            "{pin b/ZN inst b cell NAND2_X4 can_up 0 can_down 1}}]"
+        )
+        parsed = json.loads(out)
+        self.assertEqual(
+            parsed,
+            [
+                {
+                    "pin": "a/Z",
+                    "inst": "a",
+                    "cell": "BUF_X1",
+                    "can_up": True,
+                    "can_down": False,
+                },
+                {
+                    "pin": "b/ZN",
+                    "inst": "b",
+                    "cell": "NAND2_X4",
+                    "can_up": False,
+                    "can_down": True,
+                },
+            ],
+        )
+
+    def test_json_targets_without_flags_keeps_the_original_shape(self):
+        out = self._run(
+            "puts [trepair::eco_json_targets {{pin a/Z inst a cell BUF_X1}}]"
+        )
+        self.assertEqual(
+            json.loads(out), [{"pin": "a/Z", "inst": "a", "cell": "BUF_X1"}]
+        )
 
 
 if __name__ == "__main__":

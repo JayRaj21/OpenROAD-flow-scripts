@@ -488,47 +488,20 @@ def _format_eco_result(fix_type, target, stage, result):
     return "\n".join(lines)
 
 
-def impl_eco_fix(
-    fix_type,
-    target,
-    stage,
-    cell,
-    platform,
-    design,
-    tag,
-    flow_dir,
-    change_log,
-    eco_counter,
+def _run_eco_tcl(
+    fix_type, target, cell, stage, platform, design, tag, flow_dir, eco_counter
 ):
-    if fix_type not in ECO_FIX_TYPES:
-        return f"ERROR: '{fix_type}' is not a valid fix_type. Allowed: {sorted(ECO_FIX_TYPES)}"
+    """Write the generated Tcl for one trepair::eco_run, run it in Docker, and
+    read back its JSON result.
 
-    if stage not in ECO_STAGE_ODB:
-        return f"ERROR: '{stage}' is not a valid eco_fix stage. Allowed: {sorted(ECO_STAGE_ODB)}"
-
-    if not ECO_NAME_RE.fullmatch(target or ""):
-        return f"ERROR: invalid target '{target}': contains disallowed characters"
-
-    if cell and not ECO_NAME_RE.fullmatch(cell):
-        return f"ERROR: invalid cell '{cell}': contains disallowed characters"
-
-    # A target/cell ending in an odd number of backslashes would escape the
-    # closing brace of the {...} it's interpolated into below, breaking the
-    # generated Tcl with an opaque "missing close-brace" instead of a clean
-    # validation error.
-    for name, value in (("target", target), ("cell", cell)):
-        if value and (len(value) - len(value.rstrip("\\"))) % 2 == 1:
-            return (
-                f"ERROR: invalid {name} '{value}': ends in an odd number of backslashes"
-            )
-
-    if fix_type == "fix_hold" and "/" not in target:
-        return "ERROR: fix_hold target must be a pin name (e.g. '_412_/D')"
-
+    Returns (parsed_result, None) on success or (None, "ERROR: ...") on
+    failure. Callers must have validated every argument already, because
+    target and cell are interpolated straight into the generated Tcl.
+    """
     odb_rel = ECO_STAGE_ODB[stage].format(p=platform, d=design, t=tag)
     odb_path = os.path.join(flow_dir, odb_rel)
     if not os.path.exists(odb_path):
-        return f"ERROR: {odb_path} not found — run that stage first."
+        return None, f"ERROR: {odb_path} not found — run that stage first."
 
     eco_id = f"eco{next(eco_counter)}"
     eco_dir = os.path.join(flow_dir, "objects", platform, design, tag, "eco")
@@ -568,14 +541,110 @@ def impl_eco_fix(
         )
         output = result.stdout + result.stderr
     except subprocess.TimeoutExpired:
-        return "ERROR: eco_fix run timed out after 15 minutes"
+        return None, "ERROR: eco_fix run timed out after 15 minutes"
 
     try:
         with open(json_path) as f:
-            parsed = json.load(f)
+            return json.load(f), None
     except (OSError, json.JSONDecodeError):
         tail = output[-2000:] if len(output) > 2000 else output
-        return "ERROR: eco run produced no result\n" + tail
+        return None, "ERROR: eco run produced no result\n" + tail
+
+
+def impl_eco_list_targets(stage, platform, design, tag, flow_dir, eco_counter):
+    """List the instances on the worst setup paths, in one OpenROAD run.
+
+    Each target carries can_up / can_down flags saying whether eco_fix could
+    size that instance's cell up or down, so callers can skip cells that would
+    only come back with "no up-size target". Nothing in the design is changed.
+
+    Returns {"status": "listed" | "error", "msg": str, "targets": [dict, ...]}.
+    """
+    if stage not in ECO_STAGE_ODB:
+        return {
+            "status": "error",
+            "msg": f"'{stage}' is not a valid eco stage. Allowed: {sorted(ECO_STAGE_ODB)}",
+            "targets": [],
+        }
+
+    parsed, error = _run_eco_tcl(
+        "list_targets", "", "", stage, platform, design, tag, flow_dir, eco_counter
+    )
+    if error:
+        return {"status": "error", "msg": error, "targets": []}
+
+    return {
+        "status": parsed.get("status", "error"),
+        "msg": parsed.get("msg", ""),
+        "targets": parsed.get("targets", []),
+    }
+
+
+def pick_resizable_targets(targets, direction, limit):
+    """Choose up to `limit` distinct instances that can be resized.
+
+    direction is "up" or "down". A target is only kept when its can_up /
+    can_down flag is explicitly true, so results without the flags (from an
+    ordinary eco_fix call) yield no candidates rather than guesses. Several
+    pins of the same instance count once. Returns [(instance, cell), ...] in
+    worst-path order.
+    """
+    flag = "can_up" if direction == "up" else "can_down"
+    picked = []
+    seen = set()
+    for t in targets:
+        inst = t.get("inst")
+        if inst in seen or t.get(flag) is not True:
+            continue
+        seen.add(inst)
+        picked.append((inst, t.get("cell")))
+        if len(picked) >= limit:
+            break
+    return picked
+
+
+def impl_eco_fix(
+    fix_type,
+    target,
+    stage,
+    cell,
+    platform,
+    design,
+    tag,
+    flow_dir,
+    change_log,
+    eco_counter,
+):
+    if fix_type not in ECO_FIX_TYPES:
+        return f"ERROR: '{fix_type}' is not a valid fix_type. Allowed: {sorted(ECO_FIX_TYPES)}"
+
+    if stage not in ECO_STAGE_ODB:
+        return f"ERROR: '{stage}' is not a valid eco_fix stage. Allowed: {sorted(ECO_STAGE_ODB)}"
+
+    if not ECO_NAME_RE.fullmatch(target or ""):
+        return f"ERROR: invalid target '{target}': contains disallowed characters"
+
+    if cell and not ECO_NAME_RE.fullmatch(cell):
+        return f"ERROR: invalid cell '{cell}': contains disallowed characters"
+
+    # A target/cell ending in an odd number of backslashes would escape the
+    # closing brace of the {...} it's interpolated into below, breaking the
+    # generated Tcl with an opaque "missing close-brace" instead of a clean
+    # validation error.
+    for name, value in (("target", target), ("cell", cell)):
+        if value and (len(value) - len(value.rstrip("\\"))) % 2 == 1:
+            return (
+                f"ERROR: invalid {name} '{value}': ends in an odd number of backslashes"
+            )
+
+    if fix_type == "fix_hold" and "/" not in target:
+        return "ERROR: fix_hold target must be a pin name (e.g. '_412_/D')"
+
+    parsed, error = _run_eco_tcl(
+        fix_type, target, cell, stage, platform, design, tag, flow_dir, eco_counter
+    )
+    if error:
+        return error
 
     change_log.append(
         {
