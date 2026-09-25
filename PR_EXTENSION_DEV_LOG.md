@@ -1834,3 +1834,68 @@ flags are present). All four suites: 197 passed.
 **Not done:** loading the design once and trying several candidates in one
 OpenROAD session, which would remove the per-attempt reload. It needs an
 in-memory undo for rejected changes, so it is left as a separate, riskier step.
+(Done in the next entry.)
+
+### 2026-09-24 — eco_fix: try many cells in one OpenROAD session (search, then confirm)
+
+The demo's ECO step still reloaded the design for every attempt. This adds a
+batch that loads it once and tries several candidate resizes in the same session.
+
+**Design.** `eco_search_run` (Tcl) applies each candidate inside an ODB ECO journal
+(`beginEco` / `endEco`) and rolls it back with `undoEco` when it does not pass, so
+the design is back to its starting point for the next candidate. It stops at the
+first candidate that passes `eco_verdict`. Before writing any code, undo was
+live-tested on nangate45/gcd: four trials whose legalization moved 1, 4, 8 and 5
+neighbouring cells (including row and orientation changes) each restored all 664
+instances and the timing numbers exactly. As a runtime guard, the search
+re-measures after every rollback and stops with an error if the numbers differ
+from the baseline.
+
+**An independent review found that undo is not complete, and the first version
+was wrong.** In the first version the batch also wrote the database for the
+winning candidate. The reviewer showed that after several rollbacks the written
+file differed from what a single attempt writes (different checksum, and a
+reload measured wns -0.042500 where the batch had reported -0.042656). Cause:
+`swapMaster` and legalization clear each resized cell's preferred pin access
+points, and that clearing is not in the journal, so undo does not put it back.
+Masters, positions, orientation, connectivity, net guides and in-session timing
+all match, which is why the guard could not see it. It only affects databases
+that already carry access points (grt); the cts stage gave byte-identical files.
+I reproduced it with the reviewer's exact scenario (8 rolled back, 4 skipped,
+then `_513_` kept): single attempt `6edcf2a2…`, first batch version `c79042ec…`.
+
+**Fix.** The batch never writes. It only decides which candidate passes. Python
+(`impl_eco_try_resizes`) then re-applies that one change alone to a freshly
+loaded database with the normal single-attempt path, which measures it again and
+writes only if it still passes. That path is the one proven to be identical to a
+single `eco_fix`, and the reported numbers are now the numbers on disk. With the
+reviewer's scenario the written database is byte-identical to the single attempt
+(`6edcf2a2…`). It costs one extra OpenROAD run, and only when something is kept.
+`impl_eco_search_resizes` exposes the search alone.
+
+**Other review findings, all addressed**
+- Tests missed three real mutations. Added tests for direction `down` (an
+  unchanged result passes a downsize but not an upsize), a failed parasitics
+  refresh after a rollback, a failed measurement after a rollback, and a failed
+  after-measurement (never accepted). A runner applies eight deliberate bugs one
+  at a time, including those three and "write the database from the search
+  session"; every one is caught.
+- A failure after the swap (for example a parasitics error) was reported as a
+  skip. It is now an error, decided by whether the cell's master changed.
+- The demo formatted metrics with `:.4f` and would crash on a metric that could
+  not be measured ("NA"). It now prints the value as it is.
+- Each measurement left a temporary `*_tns.txt` file. `eco_measure` now deletes it.
+- Not changed: on a timeout the Docker container can keep running. The search
+  step cannot write, so that risk no longer applies to it, but the confirming run
+  still can. `odb_written` is `None` (unknown) when the confirming run returns no
+  result.
+
+**Measured** (nangate45/gcd, same machine): nine candidates in one session took
+0.9 s. The whole demo went from 6.1 s (after PR #10) to about 3.5 s, while
+trying 10 candidates instead of 6. From the original 8.2 s, that is about 57%
+faster. The verdict of every candidate matches the one-run-per-attempt numbers to
+the last digit.
+
+**Tests:** `test_loop_agent.py` now has 95 tests (was 73): the search and confirm
+flow with a mocked Docker run, and the batch's real control flow under `tclsh`
+with stand-ins for the OpenROAD calls. All four suites: 219 passed.

@@ -67,6 +67,7 @@ proc eco_measure { id phase } {
   set fileId [open $f r]
   set contents [read $fileId]
   close $fileId
+  file delete -force $f
   if { [regexp {tns\s+max\s+([-\d.]+)} $contents -> tns_val] } {
     set tns $tns_val
   }
@@ -701,5 +702,229 @@ all tested inputs (verified 2026-09-12); not safe to call."]
 
   eco_write_result $json_out $id $status $msg $fix $before $after $delta $verdict \
     $targets $odb_written
+}
+
+# =======================================================================
+# Batch SEARCH: try several candidate resizes in ONE OpenROAD session, and
+# report which one would pass. It never writes the database.
+#
+# eco_run loads the design once per attempt. eco_search_run loads it once for
+# a whole list of candidates, applying each inside an ODB ECO journal and
+# rolling it back with undoEco when it does not pass.
+#
+# Why it does not write: undoEco restores cell masters, positions,
+# orientations, connectivity and timing exactly (live-tested on
+# nangate45/gcd), but NOT every piece of database state. The resizer clears a
+# resized cell's preferred pin access points, and that clearing is not in the
+# journal, so after rollbacks those cells differ from a pristine load. An
+# independent review found that a database written after several rollbacks
+# differed from the one a single attempt writes, and reloaded with slightly
+# different timing than the batch had measured. The guard below cannot see
+# this, because in-session timing still matches the baseline.
+#
+# So the search only decides WHICH candidate passes. The caller re-applies
+# that one change alone to a freshly loaded database (a normal eco_run), which
+# is the path whose written result is byte-identical to a single attempt.
+#
+# Because a wrong undo would silently poison every later attempt in the
+# search, it still re-measures after every rollback and STOPS if the numbers
+# differ from the baseline. The search stops at the first candidate that
+# passes eco_verdict.
+# =======================================================================
+
+# -----------------------------------------------------------------------
+# JSON for the list of attempts. Each attempt is a dict with inst, outcome
+# (accepted | rejected | skipped | error), reason, from, to, placement_warning,
+# and optionally after (metrics dict) and delta (dict of wns/tns/hold).
+# -----------------------------------------------------------------------
+proc eco_json_attempts { attempts } {
+  set items {}
+  foreach a $attempts {
+    set after "null"
+    if { [dict exists $a after] } {
+      set after [eco_json_metrics [dict get $a after]]
+    }
+    set delta "null"
+    if { [dict exists $a delta] } {
+      set d [dict get $a delta]
+      set delta [format {{"wns":%s,"tns":%s,"worst_hold_slack":%s}} \
+        [dict get $d wns] [dict get $d tns] [dict get $d worst_hold_slack]]
+    }
+    set head [format {"inst":%s,"outcome":%s,"reason":%s,"from":%s,"to":%s} \
+      [eco_json_str [dict get $a inst]] [eco_json_str [dict get $a outcome]] \
+      [eco_json_str [dict get $a reason]] [eco_json_str [dict get $a from]] \
+      [eco_json_str [dict get $a to]]]
+    set tail [format {"placement_warning":%s,"after":%s,"delta":%s} \
+      [eco_json_str [dict get $a placement_warning]] $after $delta]
+    lappend items "\{$head,$tail\}"
+  }
+  return "\[[join $items ,]\]"
+}
+
+proc eco_write_batch_result {
+  json_out id status msg direction before attempts candidate
+} {
+  set body [join [list \
+    [format {"id":%s,"status":%s,"msg":%s} \
+      [eco_json_str $id] [eco_json_str $status] [eco_json_str $msg]] \
+    [format {"direction":%s,"candidate":%s} \
+      [eco_json_str $direction] [eco_json_str $candidate]] \
+    [format {"before":%s} [eco_json_metrics $before]] \
+    [format {"attempts":%s} [eco_json_attempts $attempts]]] ,]
+  set fileId [open $json_out w]
+  puts $fileId "\{$body\}"
+  close $fileId
+}
+
+# -----------------------------------------------------------------------
+# Difference between two metrics dicts as {wns tns worst_hold_slack}, with a
+# tns delta of 0.0 when either side could not be measured (matching eco_run).
+# -----------------------------------------------------------------------
+proc eco_metric_delta { before after } {
+  set d_wns [expr { [dict get $after wns] - [dict get $before wns] }]
+  set d_hold [expr { [dict get $after worst_hold_slack] - [dict get $before worst_hold_slack] }]
+  if { [dict get $before tns] eq "NA" || [dict get $after tns] eq "NA" } {
+    set d_tns 0.0
+  } else {
+    set d_tns [expr { [dict get $after tns] - [dict get $before tns] }]
+  }
+  return [dict create wns $d_wns tns $d_tns worst_hold_slack $d_hold]
+}
+
+# -----------------------------------------------------------------------
+# Orchestrator for the batch search. direction is "up" or "down"; candidates
+# is a Tcl list of instance names. status is "found" (candidate names the
+# instance whose change passed; nothing was written), "rejected" (none
+# passed), or "error".
+# -----------------------------------------------------------------------
+proc eco_search_run {
+  json_out id odb_file stage direction candidates
+  tol_wns tol_tns tol_hold tol_wns_hold
+} {
+  set status "error"
+  set msg ""
+  set na [dict create wns NA tns NA worst_hold_slack NA setup_viol_count NA hold_viol_count NA]
+  set before $na
+  set attempts {}
+  set candidate ""
+  set fix_type [expr { $direction eq "up" ? "resize_up" : "resize_down" }]
+
+  if { $direction ne "up" && $direction ne "down" } {
+    eco_write_batch_result $json_out $id error "unknown direction: $direction" \
+      $direction $before $attempts $candidate
+    return
+  }
+
+  set load_ok [catch { set pflag [eco_load $odb_file $stage] } load_msg]
+  if { $load_ok != 0 } {
+    eco_write_batch_result $json_out $id error $load_msg $direction $before $attempts \
+      $candidate
+    return
+  }
+
+  set measure_ok [catch { set before [eco_measure ${id}_base before] } measure_msg]
+  if { $measure_ok != 0 } {
+    set before $na
+    eco_write_batch_result $json_out $id error "eco_measure (baseline) failed: $measure_msg" \
+      $direction $before $attempts $candidate
+    return
+  }
+
+  set db [::ord::get_db]
+  set block [[$db getChip] getBlock]
+  set n 0
+  set stopped_early 0
+
+  foreach inst $candidates {
+    incr n
+    set attempt [dict create inst $inst outcome error reason "" from "" to "" \
+      placement_warning ""]
+    set accepted 0
+
+    set odb_inst [$block findInst $inst]
+    set has_inst [expr { $odb_inst ne "NULL" && $odb_inst ne "" }]
+    set orig_cell ""
+    if { $has_inst } {
+      set orig_cell [[$odb_inst getMaster] getName]
+    }
+
+    odb::dbDatabase_beginEco $block
+    set apply_ok [catch { set fix [eco_resize $inst $direction {} $pflag] } apply_msg]
+    if { $apply_ok != 0 } {
+      dict set attempt reason "exception while applying: $apply_msg"
+    } elseif { [dict get $fix status] ne "ok" } {
+      # The resize did not complete. If the cell's master is unchanged nothing
+      # was applied (excluded cell, no size target, ...): that is a skip. If
+      # the master changed, a change was applied and then a later step failed:
+      # report it as an error, not a skip. Either way it is rolled back below.
+      set now_cell $orig_cell
+      if { $has_inst } {
+        catch { set now_cell [[$odb_inst getMaster] getName] }
+      }
+      if { $now_cell eq $orig_cell } {
+        dict set attempt outcome skipped
+        dict set attempt reason [dict get $fix msg]
+      } else {
+        dict set attempt reason "[dict get $fix msg] (a change was applied, then rolled back)"
+      }
+    } else {
+      dict set attempt from [dict get $fix from]
+      dict set attempt to [dict get $fix to]
+      if { [dict exists $fix placement_warning] } {
+        dict set attempt placement_warning [dict get $fix placement_warning]
+      }
+      set after_ok [catch { set after [eco_measure ${id}_a$n after] } after_msg]
+      if { $after_ok != 0 } {
+        dict set attempt reason "eco_measure (after) failed: $after_msg"
+      } else {
+        set verdict [eco_verdict $fix_type $before $after $tol_wns $tol_tns $tol_hold \
+          $tol_wns_hold]
+        dict set attempt after $after
+        dict set attempt delta [eco_metric_delta $before $after]
+        dict set attempt reason [dict get $verdict reason]
+        if { [dict get $verdict accepted] } {
+          set accepted 1
+        } else {
+          dict set attempt outcome rejected
+        }
+      }
+    }
+
+    odb::dbDatabase_endEco $block
+
+    if { $accepted } {
+      # This candidate passed. Nothing is written: the caller re-applies it
+      # alone to a freshly loaded database (see the header comment).
+      dict set attempt outcome accepted
+      set candidate $inst
+      set status "found"
+      lappend attempts $attempt
+      break
+    }
+
+    # Not accepted: roll the change back, then prove the design is back to
+    # the baseline before trying the next candidate.
+    odb::dbDatabase_undoEco $block
+    set refresh_ok [catch { estimate_parasitics $pflag } refresh_msg]
+    set check_ok [catch { set check [eco_measure ${id}_u$n undo] } check_msg]
+    lappend attempts $attempt
+    if { $refresh_ok != 0 || $check_ok != 0 } {
+      set why [expr { $refresh_ok != 0 ? $refresh_msg : $check_msg }]
+      set msg "could not verify the rollback after $inst; search stopped. $why"
+      set stopped_early 1
+      break
+    }
+    if { $check ne $before } {
+      set msg "rollback check failed after $inst: timing after undo does not match the\
+ baseline; search stopped. baseline=$before now=$check"
+      set stopped_early 1
+      break
+    }
+  }
+
+  if { $status ne "found" && !$stopped_early && $msg eq "" } {
+    set status "rejected"
+  }
+  eco_write_batch_result $json_out $id $status $msg $direction $before $attempts $candidate
 }
 } ;# namespace trepair

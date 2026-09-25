@@ -348,6 +348,37 @@ Use `'down'` instead of `'up'` to pick cells that can be sized down. The
 autonomous agent does not have this list mode as a tool. It can still call `eco_fix`
 with any name and read the instances the result lists.
 
+**Trying several cells at once.** Each single `eco_fix` reloads the whole design. To test
+many cells without that, use `impl_eco_try_resizes`. It loads the design once, tries each
+cell in turn, undoes every change that does not pass, and stops at the first one that
+does. That one change is then applied alone to a freshly loaded design and written only
+if it still passes, so the saved database is exactly what a single `eco_fix` of that
+cell would write.
+
+```shell
+python3 -c "
+import itertools
+from util.loop_agent import impl_eco_try_resizes
+r = impl_eco_try_resizes('up', ['output42', '_640_', '_617_'], 'grt', 'nangate45', 'gcd', 'base', '.', itertools.count(1))
+print(r['status'], repr(r['kept']), [(a['inst'], a['outcome']) for a in r['attempts']])
+"
+```
+
+The result has a `status` (`applied`, `rejected` or `error`), the kept instance in `kept`
+(empty if none), and one entry per cell tried in `attempts`, each marked `kept`,
+`rejected`, `skipped` (nothing could be changed) or `error`. On the `gcd` example, nine
+candidates took under a second in one session, where trying them one at a time takes
+several seconds.
+
+The search step deliberately never writes. OpenROAD's undo restores timing, positions and
+connections exactly, but not every internal detail (the pin access points that resizing
+clears). An independent check found that saving straight after several undos gave a file
+slightly different from a single fresh change, with different timing when reloaded. So the
+search only decides which cell passes, and the one change that is kept is always re-applied
+on a clean load. The search also re-measures after every undo and stops without a result if
+timing does not match the starting point. Use `impl_eco_search_resizes` if you want only
+the search, with no confirming step and no writing.
+
 **Output.** A result block printed to the screen. Files are also written, with
 `<n>` being the run number:
 

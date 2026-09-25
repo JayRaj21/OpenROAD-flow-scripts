@@ -94,6 +94,9 @@ ECO_SCRIPT_PATH = "/work/scripts/eco_repair.tcl"
 # catch a runaway hold fix that blows past it.
 ECO_TOLERANCES = {"wns": 0.001, "tns": 0.05, "hold": 0.001, "wns_hold": 0.01}
 
+# Most candidates one batch may try; keeps a single OpenROAD run bounded.
+ECO_MAX_BATCH = 50
+
 # Instance/net/pin/cell names accepted for interpolation into generated Tcl
 ECO_NAME_RE = re.compile(r"^[A-Za-z0-9_./\[\]$:\\-]+$")
 
@@ -488,15 +491,16 @@ def _format_eco_result(fix_type, target, stage, result):
     return "\n".join(lines)
 
 
-def _run_eco_tcl(
-    fix_type, target, cell, stage, platform, design, tag, flow_dir, eco_counter
+def _run_eco_script(
+    stage, platform, design, tag, flow_dir, eco_counter, build_call, timeout=900
 ):
-    """Write the generated Tcl for one trepair::eco_run, run it in Docker, and
-    read back its JSON result.
+    """Write a generated Tcl script, run it in Docker, and read back its JSON.
 
-    Returns (parsed_result, None) on success or (None, "ERROR: ...") on
-    failure. Callers must have validated every argument already, because
-    target and cell are interpolated straight into the generated Tcl.
+    build_call(eco_id, json_container, odb_container) returns the single Tcl
+    command line that invokes the ECO orchestrator. Returns (parsed_result,
+    None) on success or (None, "ERROR: ...") on failure. Callers must have
+    validated every value they interpolate, because it goes straight into the
+    generated Tcl.
     """
     odb_rel = ECO_STAGE_ODB[stage].format(p=platform, d=design, t=tag)
     odb_path = os.path.join(flow_dir, odb_rel)
@@ -517,13 +521,7 @@ def _run_eco_tcl(
 
     with open(tcl_path, "w") as f:
         f.write(f"source {ECO_SCRIPT_PATH}\n")
-        f.write(
-            "trepair::eco_run "
-            f"{json_out_container} {eco_id} {odb_container} {stage} {fix_type} "
-            f"{{{target}}} {{{cell or ''}}} 0 "
-            f"{ECO_TOLERANCES['wns']} {ECO_TOLERANCES['tns']} {ECO_TOLERANCES['hold']} "
-            f"{ECO_TOLERANCES['wns_hold']}\n"
-        )
+        f.write(build_call(eco_id, json_out_container, odb_container) + "\n")
 
     cmd = [
         "util/docker_shell",
@@ -537,11 +535,11 @@ def _run_eco_tcl(
     print(f"\n[loop-agent] $ {' '.join(cmd)}", flush=True)
     try:
         result = subprocess.run(
-            cmd, cwd=flow_dir, capture_output=True, text=True, timeout=900
+            cmd, cwd=flow_dir, capture_output=True, text=True, timeout=timeout
         )
         output = result.stdout + result.stderr
     except subprocess.TimeoutExpired:
-        return None, "ERROR: eco_fix run timed out after 15 minutes"
+        return None, f"ERROR: eco run timed out after {timeout // 60} minutes"
 
     try:
         with open(json_path) as f:
@@ -549,6 +547,204 @@ def _run_eco_tcl(
     except (OSError, json.JSONDecodeError):
         tail = output[-2000:] if len(output) > 2000 else output
         return None, "ERROR: eco run produced no result\n" + tail
+
+
+def _run_eco_tcl(
+    fix_type, target, cell, stage, platform, design, tag, flow_dir, eco_counter
+):
+    """Run one trepair::eco_run (a single fix, or list_targets) in Docker.
+
+    Returns (parsed_result, None) on success or (None, "ERROR: ...") on
+    failure. Callers must have validated target and cell already, because
+    they are interpolated straight into the generated Tcl.
+    """
+
+    def build_call(eco_id, json_container, odb_container):
+        return (
+            "trepair::eco_run "
+            f"{json_container} {eco_id} {odb_container} {stage} {fix_type} "
+            f"{{{target}}} {{{cell or ''}}} 0 "
+            f"{ECO_TOLERANCES['wns']} {ECO_TOLERANCES['tns']} {ECO_TOLERANCES['hold']} "
+            f"{ECO_TOLERANCES['wns_hold']}"
+        )
+
+    return _run_eco_script(
+        stage, platform, design, tag, flow_dir, eco_counter, build_call
+    )
+
+
+def _eco_name_error(kind, value):
+    """Return an error string if value is not safe to put in generated Tcl."""
+    if not isinstance(value, str) or not ECO_NAME_RE.fullmatch(value):
+        return f"invalid {kind} '{value}': contains disallowed characters"
+    if (len(value) - len(value.rstrip("\\"))) % 2 == 1:
+        return f"invalid {kind} '{value}': ends in an odd number of backslashes"
+    return None
+
+
+def impl_eco_search_resizes(
+    direction, targets, stage, platform, design, tag, flow_dir, eco_counter
+):
+    """Search several instances for a resize that passes, in ONE OpenROAD
+    session. This never writes the stage database.
+
+    direction is "up" or "down"; targets is a list of instance names. Each
+    resize is applied inside a database journal and rolled back if it does not
+    pass, and the search stops without a result at the first rollback that
+    does not restore the baseline timing. It stops at the first candidate that
+    passes the same accept rules as eco_fix.
+
+    A rollback restores timing, positions and connectivity exactly but not
+    every piece of database state (the resizer's pin access points), so the
+    database is deliberately not written from this session. Use
+    impl_eco_try_resizes to also confirm and write the chosen change.
+
+    Returns {"status": "found" | "rejected" | "error", "msg": str,
+    "candidate": instance or "", "before": metrics, "attempts": [...]}. Each
+    attempt has inst, outcome (accepted | rejected | skipped | error), reason,
+    from, to and, when measured, after and delta.
+    """
+
+    def failed(msg):
+        return {
+            "status": "error",
+            "msg": msg,
+            "candidate": "",
+            "before": {},
+            "attempts": [],
+        }
+
+    if direction not in ("up", "down"):
+        return failed(f"'{direction}' is not a valid direction. Allowed: up, down")
+    if stage not in ECO_STAGE_ODB:
+        return failed(
+            f"'{stage}' is not a valid eco stage. Allowed: {sorted(ECO_STAGE_ODB)}"
+        )
+    if not isinstance(targets, (list, tuple)) or not targets:
+        return failed("targets must be a non-empty list of instance names")
+    if len(targets) > ECO_MAX_BATCH:
+        return failed(
+            f"too many targets ({len(targets)}); the limit is {ECO_MAX_BATCH}"
+        )
+    for name in targets:
+        error = _eco_name_error("target", name)
+        if error:
+            return failed(error)
+
+    def build_call(eco_id, json_container, odb_container):
+        words = " ".join(f"{{{name}}}" for name in targets)
+        return (
+            "trepair::eco_search_run "
+            f"{json_container} {eco_id} {odb_container} {stage} {direction} "
+            f"[list {words}] "
+            f"{ECO_TOLERANCES['wns']} {ECO_TOLERANCES['tns']} {ECO_TOLERANCES['hold']} "
+            f"{ECO_TOLERANCES['wns_hold']}"
+        )
+
+    parsed, error = _run_eco_script(
+        stage,
+        platform,
+        design,
+        tag,
+        flow_dir,
+        eco_counter,
+        build_call,
+        timeout=900 + 60 * len(targets),
+    )
+    if error:
+        return failed(error)
+
+    return {
+        "status": parsed.get("status", "error"),
+        "msg": parsed.get("msg", ""),
+        "candidate": parsed.get("candidate", ""),
+        "before": parsed.get("before", {}),
+        "attempts": parsed.get("attempts", []),
+    }
+
+
+def impl_eco_try_resizes(
+    direction, targets, stage, platform, design, tag, flow_dir, eco_counter
+):
+    """Search for a resize that passes, then confirm and write it.
+
+    Runs impl_eco_search_resizes (one OpenROAD session, nothing written). If a
+    candidate passes, that single change is re-applied alone to a freshly
+    loaded database with the normal eco_fix path, which measures it again and
+    writes the stage database only if it still passes. The written database is
+    therefore exactly what a single eco_fix of that instance would write, and
+    the reported numbers are the numbers on disk.
+
+    Returns {"status": "applied" | "rejected" | "error", "msg": str,
+    "kept": instance or "", "odb_written": True | False | None, "before":
+    metrics, "attempts": [...]}. odb_written is None only when the confirming
+    run gave no result (crash or timeout), so the database may or may not have
+    been written. The attempt for the kept instance carries the confirming
+    run's after and delta.
+    """
+    search = impl_eco_search_resizes(
+        direction, targets, stage, platform, design, tag, flow_dir, eco_counter
+    )
+    result = {
+        "status": search["status"],
+        "msg": search["msg"],
+        "kept": "",
+        "odb_written": False,
+        "before": search["before"],
+        "attempts": search["attempts"],
+    }
+    if search["status"] != "found":
+        return result
+
+    candidate = search["candidate"]
+    fix_type = "resize_up" if direction == "up" else "resize_down"
+    confirm, error = _run_eco_tcl(
+        fix_type, candidate, "", stage, platform, design, tag, flow_dir, eco_counter
+    )
+    chosen = next(
+        (
+            a
+            for a in result["attempts"]
+            if a.get("inst") == candidate and a.get("after")
+        ),
+        None,
+    )
+    if error:
+        result["status"] = "error"
+        result["odb_written"] = None
+        result["msg"] = (
+            f"the search chose {candidate}, but confirming it on a fresh load "
+            f"gave no result, so the stage database may or may not have been "
+            f"changed: {error}"
+        )
+        if chosen:
+            chosen["outcome"] = "error"
+            chosen["reason"] = "confirming on a fresh load gave no result"
+        return result
+
+    result["status"] = confirm.get("status", "error")
+    result["odb_written"] = bool(confirm.get("odb_written", False))
+    verdict_reason = confirm.get("verdict", {}).get("reason", "")
+    if result["status"] == "applied":
+        result["kept"] = candidate
+        result["msg"] = ""
+        if chosen:
+            chosen["outcome"] = "kept"
+            chosen["reason"] = verdict_reason
+            chosen["after"] = confirm.get("after", chosen.get("after"))
+            chosen["delta"] = confirm.get("delta", chosen.get("delta"))
+    else:
+        detail = confirm.get("msg") or verdict_reason
+        result["msg"] = (
+            f"{candidate} passed in the search but was not kept on a fresh load "
+            f"({detail}); nothing was written."
+        )
+        if chosen:
+            chosen["outcome"] = (
+                "rejected" if result["status"] == "rejected" else "error"
+            )
+            chosen["reason"] = f"passed in the search, but on a fresh load: {detail}"
+    return result
 
 
 def impl_eco_list_targets(stage, platform, design, tag, flow_dir, eco_counter):
