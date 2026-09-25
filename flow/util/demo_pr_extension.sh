@@ -42,7 +42,7 @@ BUILD=0
 LLM=0
 PAUSE=0
 ECO_STAGE=grt
-ECO_MAX_TRIES=6   # real resize attempts; cells that cannot be sized up are filtered out first
+ECO_MAX_TRIES=10  # candidate cells the batch tries; cells that cannot be sized up are filtered out first
 BENCH_STAGE="Global route"   # "Finish" (the tool's default) is empty unless the build ran the whole flow
 
 usage() {
@@ -199,7 +199,7 @@ echo "HTML trend chart: saved as benchmark_dashboard.html in this run's folder (
 # ---------------------------------------------------------------------------
 # 5. eco_fix
 # ---------------------------------------------------------------------------
-step "Targeted ECO repair (eco_fix)" "Upsizes one cell on a worst-timing path, measures timing before and after in one OpenROAD session, and only keeps the change if it helped. The design database is restored afterwards."
+step "Targeted ECO repair (eco_fix)" "Tries upsizing several cells on the worst timing paths in a single OpenROAD session, measures timing before and after each, undoes every change that does not help, and keeps only one that does. The design database is restored afterwards."
 if [[ $HAVE_DOCKER -eq 0 ]]; then
     echo "Docker not found; skipping (eco_fix runs OpenROAD inside the Docker container)."
 else
@@ -211,11 +211,10 @@ import contextlib
 import io
 import itertools
 import os
-import re
 import sys
 
 sys.path.insert(0, "util")
-from loop_agent import impl_eco_fix, impl_eco_list_targets, pick_resizable_targets
+from loop_agent import impl_eco_list_targets, impl_eco_try_resizes, pick_resizable_targets
 
 stage = os.environ["ECO_STAGE"]
 platform, design, tag = os.environ["PLATFORM"], os.environ["DESIGN"], os.environ["TAG"]
@@ -223,15 +222,23 @@ max_tries = int(os.environ["ECO_MAX_TRIES"])
 counter = itertools.count(1)
 
 
-def run(fix_type, target):
-    # impl_eco_fix echoes the Docker command it runs; keep the demo output readable.
-    with contextlib.redirect_stdout(io.StringIO()):
-        return impl_eco_fix(fix_type, target, stage, "", platform, design, tag, ".", [], counter)
+def num(value, spec):
+    # A metric that could not be measured is the string "NA"; show it as-is.
+    return format(value, spec) if isinstance(value, (int, float)) else str(value)
 
 
-def without_targets(text):
-    # The full result also lists every worst-path instance; the demo shows that list separately.
-    return text.split("targets (worst setup paths):")[0].rstrip()
+def print_result_table(before, attempt):
+    # One before/after/delta table for a single attempt.
+    after, delta = attempt["after"], attempt["delta"]
+    print(f"{'metric':<18} {'before':>12} {'after':>12} {'delta':>10}")
+    print("-" * 55)
+    for key in ("wns", "tns", "worst_hold_slack"):
+        row = (num(before[key], ".4f"), num(after[key], ".4f"), num(delta[key], "+.4f"))
+        print(f"{key:<18} {row[0]:>12} {row[1]:>12} {row[2]:>10}")
+    for key in ("setup_viol_count", "hold_viol_count"):
+        b, a = before[key], after[key]
+        change = num(a - b, "+d") if isinstance(a, int) and isinstance(b, int) else "NA"
+        print(f"{key:<18} {num(b, 'd'):>12} {num(a, 'd'):>12} {change:>10}")
 
 
 print("Listing the instances on the worst setup paths (one OpenROAD run, nothing is changed)...")
@@ -253,36 +260,40 @@ for inst, cell in candidates:
     print(f"  {inst} ({cell})")
 
 print()
-print("Trying resize_up on each until one is kept...")
-first_rejected = None
-kept = None
-for inst, cell in candidates:
-    out = run("resize_up", inst)
-    head = out.splitlines()[0]
-    reason = re.search(r"verdict: \w+ — (.*)\)\s*$", head)
-    reason = reason.group(1) if reason else ""
-    if out.startswith("status: error"):
-        msg = next((l for l in out.splitlines() if l.startswith("msg:")), "msg: unknown")
-        print(f"  {inst} ({cell}): skipped — {msg[4:].strip()}")
-        continue
-    if out.startswith("status: applied"):
-        print(f"  {inst} ({cell}): KEPT")
-        kept = out
-        break
-    print(f"  {inst} ({cell}): rejected — {reason}")
-    if first_rejected is None:
-        first_rejected = out
+print("Trying resize_up on each in ONE OpenROAD session, undoing every change that is not kept...")
+with contextlib.redirect_stdout(io.StringIO()):
+    batch = impl_eco_try_resizes(
+        "up", [inst for inst, _ in candidates], stage, platform, design, tag, ".", counter
+    )
+if batch["status"] == "error":
+    print(f"The batch stopped with an error, and nothing was written: {batch['msg']}")
+    sys.exit(0)
+
+cells = dict(candidates)
+for a in batch["attempts"]:
+    label = f"{a['inst']} ({cells.get(a['inst'], '?')})"
+    if a["outcome"] == "kept":
+        print(f"  {label}: KEPT")
+    else:
+        print(f"  {label}: {a['outcome']} — {a['reason']}")
 
 print()
+measured = [a for a in batch["attempts"] if a.get("after")]
+kept = [a for a in measured if a["outcome"] == "kept"]
 if kept:
-    print("A change was kept. Full before/after result:")
-    print(without_targets(kept))
+    a = kept[0]
+    print(f"A change was kept: {a['inst']} {a['from']} -> {a['to']}. Before and after:")
+    print_result_table(batch["before"], a)
     print()
-    print("odb_written: True means the change was saved to the database (the demo restores it afterwards).")
-elif first_rejected:
+    print("The change was saved to the database (the demo restores it afterwards).")
+elif measured:
+    a = measured[0]
+    if batch["msg"]:
+        print(batch["msg"])
     print("None of those changes helped enough to be kept, so the database was never modified.")
     print("That is the safety check working. Result for the first one tried:")
-    print(without_targets(first_rejected))
+    print(f"{a['inst']} {a['from']} -> {a['to']}: {a['reason']}")
+    print_result_table(batch["before"], a)
 else:
     print("No candidate could be resized; try another design or stage.")
 PY

@@ -16,6 +16,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from loop_agent import (
     CONFIG_HOOK_PATHS,
+    ECO_MAX_BATCH,
     ECO_STAGE_ODB,
     ECO_TOLERANCES,
     HOOK_PATHS,
@@ -24,6 +25,8 @@ from loop_agent import (
     _format_eco_result,
     impl_eco_fix,
     impl_eco_list_targets,
+    impl_eco_search_resizes,
+    impl_eco_try_resizes,
     impl_set_config_param,
     pick_resizable_targets,
     write_config_params,
@@ -719,6 +722,276 @@ class TestPickResizableTargets(unittest.TestCase):
         self.assertEqual(pick_resizable_targets([], "up", 10), [])
 
 
+class TestEcoBatchResizes(unittest.TestCase):
+    """impl_eco_search_resizes runs one search session and never writes;
+    impl_eco_try_resizes confirms the chosen change on a fresh load, which is
+    the only run that can write the stage database."""
+
+    PLATFORM, DESIGN, TAG = "nangate45", "gcd", "base"
+
+    def _flow_dir_with_odb(self, stage="grt"):
+        flow_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, flow_dir)
+        odb_rel = ECO_STAGE_ODB[stage].format(
+            p=self.PLATFORM, d=self.DESIGN, t=self.TAG
+        )
+        odb_path = os.path.join(flow_dir, odb_rel)
+        os.makedirs(os.path.dirname(odb_path))
+        with open(odb_path, "w") as f:
+            f.write("")
+        return flow_dir
+
+    def _eco_dir(self, flow_dir):
+        return os.path.join(
+            flow_dir, "objects", self.PLATFORM, self.DESIGN, self.TAG, "eco"
+        )
+
+    def _script(self, flow_dir, n):
+        with open(os.path.join(self._eco_dir(flow_dir), f"eco{n}.tcl")) as f:
+            return f.read()
+
+    def _args(self, flow_dir, direction="up", targets=("a", "b"), stage="grt"):
+        return (
+            direction,
+            list(targets),
+            stage,
+            self.PLATFORM,
+            self.DESIGN,
+            self.TAG,
+            flow_dir,
+            itertools.count(1),
+        )
+
+    def _docker(self, flow_dir, payloads):
+        """A fake subprocess.run that writes payloads[n] as eco<n+1>.json."""
+        calls = []
+
+        def fake_run(cmd, cwd, capture_output, text, timeout):
+            n = len(calls) + 1
+            calls.append({"cmd": cmd, "timeout": timeout})
+            if n <= len(payloads) and payloads[n - 1] is not None:
+                with open(
+                    os.path.join(self._eco_dir(flow_dir), f"eco{n}.json"), "w"
+                ) as f:
+                    f.write(payloads[n - 1])
+            return mock.Mock(stdout="", stderr="openroad crashed")
+
+        return fake_run, calls
+
+    METRICS = (
+        '{"wns":-0.04,"tns":-0.4,"worst_hold_slack":0.06,'
+        '"setup_viol_count":13,"hold_viol_count":0}'
+    )
+    AFTER = (
+        '{"wns":-0.02,"tns":-0.4,"worst_hold_slack":0.06,'
+        '"setup_viol_count":13,"hold_viol_count":0}'
+    )
+
+    def _search_json(self, status, candidate="", attempts=None, msg=""):
+        return json.dumps(
+            {
+                "id": "eco1",
+                "status": status,
+                "msg": msg,
+                "direction": "up",
+                "candidate": candidate,
+                "before": json.loads(self.METRICS),
+                "attempts": attempts or [],
+            }
+        )
+
+    def _attempt(self, inst, outcome, reason=""):
+        after = json.loads(self.AFTER) if outcome in ("accepted", "rejected") else None
+        delta = {"wns": 0.02, "tns": 0.0, "worst_hold_slack": 0.0} if after else None
+        return {
+            "inst": inst,
+            "outcome": outcome,
+            "reason": reason,
+            "from": "BUF_X1",
+            "to": "BUF_X2",
+            "placement_warning": "",
+            "after": after,
+            "delta": delta,
+        }
+
+    def _confirm_json(self, status, odb_written, reason="improved wns", msg=""):
+        return json.dumps(
+            {
+                "id": "eco2",
+                "status": status,
+                "msg": msg,
+                "fix": {
+                    "kind": "resize",
+                    "inst": "a",
+                    "from": "BUF_X1",
+                    "to": "BUF_X2",
+                },
+                "before": json.loads(self.METRICS),
+                "after": {**json.loads(self.AFTER), "wns": -0.0199},
+                "delta": {"wns": 0.0201, "tns": 0.0, "worst_hold_slack": 0.0},
+                "verdict": {
+                    "accepted": odb_written,
+                    "target_metric": "wns",
+                    "reason": reason,
+                },
+                "targets": [],
+                "odb_written": odb_written,
+            }
+        )
+
+    # -- input validation (search) --
+
+    def test_invalid_input_is_rejected_without_running_docker(self):
+        flow_dir = self._flow_dir_with_odb()
+        bad_inputs = [
+            dict(direction="sideways"),
+            dict(stage="place"),
+            dict(targets=()),
+            dict(targets=["ok", "bad name"]),
+            dict(targets=["ok", "bad;name"]),
+            dict(targets=["ends_in_backslash\\"]),
+            dict(targets=[f"i{n}" for n in range(ECO_MAX_BATCH + 1)]),
+        ]
+        for kwargs in bad_inputs:
+            for fn in (impl_eco_search_resizes, impl_eco_try_resizes):
+                with self.subTest(kwargs=kwargs, fn=fn.__name__):
+                    with mock.patch("loop_agent.subprocess.run") as run:
+                        result = fn(*self._args(flow_dir, **kwargs))
+                    run.assert_not_called()
+                    self.assertEqual(result["status"], "error")
+                    self.assertEqual(result["attempts"], [])
+
+    def test_missing_odb_is_reported_without_running_docker(self):
+        with tempfile.TemporaryDirectory() as flow_dir:
+            with mock.patch("loop_agent.subprocess.run") as run:
+                result = impl_eco_search_resizes(*self._args(flow_dir))
+        run.assert_not_called()
+        self.assertEqual(result["status"], "error")
+        self.assertIn("run that stage first", result["msg"])
+
+    # -- the search run --
+
+    def test_search_script_lists_every_target_verbatim_and_never_writes(self):
+        flow_dir = self._flow_dir_with_odb()
+        name = r"ctrl.state.out\[0\]$_DFF_P_"
+        fake_run, calls = self._docker(flow_dir, [self._search_json("rejected")])
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_search_resizes(*self._args(flow_dir, targets=["a", name]))
+        tcl_text = self._script(flow_dir, 1)
+        self.assertIn("trepair::eco_search_run", tcl_text)
+        self.assertIn("[list {a} {" + name + "}]", tcl_text)
+        self.assertNotIn("trepair::eco_run", tcl_text)
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["candidate"], "")
+        # The timeout grows with the batch size so a long list is not cut off.
+        self.assertEqual(calls[0]["timeout"], 900 + 60 * 2)
+
+    def test_search_with_no_result_file_is_an_error(self):
+        flow_dir = self._flow_dir_with_odb()
+        fake_run, _ = self._docker(flow_dir, [None])
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_search_resizes(*self._args(flow_dir))
+        self.assertEqual(result["status"], "error")
+        self.assertIn("openroad crashed", result["msg"])
+
+    # -- search, then confirm on a fresh load --
+
+    def test_a_found_candidate_is_confirmed_alone_and_only_then_written(self):
+        flow_dir = self._flow_dir_with_odb()
+        search = self._search_json(
+            "found",
+            "a",
+            [
+                self._attempt("b", "rejected", "no improvement in wns"),
+                self._attempt("a", "accepted"),
+            ],
+        )
+        fake_run, calls = self._docker(
+            flow_dir, [search, self._confirm_json("applied", True)]
+        )
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_try_resizes(
+                *self._args(flow_dir, direction="down", targets=["b", "a"])
+            )
+        self.assertEqual(len(calls), 2)
+        self.assertIn("trepair::eco_search_run", self._script(flow_dir, 1))
+        confirm_script = self._script(flow_dir, 2)
+        self.assertIn("trepair::eco_run", confirm_script)
+        self.assertIn("resize_down {a}", confirm_script)
+        self.assertNotIn("{b}", confirm_script)
+        self.assertNotIn("eco_search_run", confirm_script)
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["kept"], "a")
+        self.assertIs(result["odb_written"], True)
+        kept = [x for x in result["attempts"] if x["outcome"] == "kept"]
+        self.assertEqual([x["inst"] for x in kept], ["a"])
+        # The kept attempt carries the confirming run's numbers, i.e. what is on disk.
+        self.assertEqual(kept[0]["after"]["wns"], -0.0199)
+
+    def test_direction_up_confirms_with_resize_up(self):
+        flow_dir = self._flow_dir_with_odb()
+        search = self._search_json("found", "a", [self._attempt("a", "accepted")])
+        fake_run, _ = self._docker(
+            flow_dir, [search, self._confirm_json("applied", True)]
+        )
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            impl_eco_try_resizes(*self._args(flow_dir, direction="up"))
+        self.assertIn("resize_up {a}", self._script(flow_dir, 2))
+
+    def test_when_nothing_passes_only_one_run_happens_and_nothing_is_written(self):
+        flow_dir = self._flow_dir_with_odb()
+        search = self._search_json("rejected", "", [self._attempt("a", "rejected")])
+        fake_run, calls = self._docker(flow_dir, [search])
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_try_resizes(*self._args(flow_dir))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["kept"], "")
+        self.assertIs(result["odb_written"], False)
+
+    def test_a_candidate_rejected_on_the_fresh_load_is_not_written(self):
+        flow_dir = self._flow_dir_with_odb()
+        search = self._search_json("found", "a", [self._attempt("a", "accepted")])
+        confirm = self._confirm_json(
+            "rejected", False, reason="wns regressed by -0.001"
+        )
+        fake_run, _ = self._docker(flow_dir, [search, confirm])
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_try_resizes(*self._args(flow_dir))
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["kept"], "")
+        self.assertIs(result["odb_written"], False)
+        self.assertIn("not kept on a fresh load", result["msg"])
+        self.assertEqual(result["attempts"][0]["outcome"], "rejected")
+
+    def test_a_confirming_run_with_no_result_says_the_database_state_is_unknown(self):
+        flow_dir = self._flow_dir_with_odb()
+        search = self._search_json("found", "a", [self._attempt("a", "accepted")])
+        fake_run, _ = self._docker(flow_dir, [search, None])
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_try_resizes(*self._args(flow_dir))
+        self.assertEqual(result["status"], "error")
+        self.assertIsNone(result["odb_written"])
+        self.assertIn("may or may not", result["msg"])
+        self.assertEqual(result["kept"], "")
+
+    def test_a_search_that_stopped_on_a_rollback_failure_never_confirms(self):
+        flow_dir = self._flow_dir_with_odb()
+        search = self._search_json(
+            "error",
+            "",
+            [self._attempt("a", "rejected")],
+            msg="rollback check failed after a",
+        )
+        fake_run, calls = self._docker(flow_dir, [search])
+        with mock.patch("loop_agent.subprocess.run", side_effect=fake_run):
+            result = impl_eco_try_resizes(*self._args(flow_dir))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("rollback check failed", result["msg"])
+        self.assertIs(result["odb_written"], False)
+
+
 class TestEcoResultFormatter(unittest.TestCase):
     """_format_eco_result renders accept/reject verdicts for all four fix types."""
 
@@ -988,6 +1261,322 @@ class TestEcoTargetFlagsTcl(unittest.TestCase):
         self.assertEqual(
             json.loads(out), [{"pin": "a/Z", "inst": "a", "cell": "BUF_X1"}]
         )
+
+
+@unittest.skipUnless(shutil.which("tclsh"), "tclsh not available")
+class TestEcoSearchRunTcl(unittest.TestCase):
+    """Runs eco_search_run's real control flow under tclsh with stand-ins for
+    the OpenROAD calls (database journal, resize, measurement, write_db), and
+    checks the order of the calls it makes plus the JSON it writes.
+
+    The important behaviours: every candidate that does not pass is rolled
+    back, the search stops at the first that passes, a failed rollback check
+    stops it, and it NEVER commits or writes the database.
+    """
+
+    BASE = "-0.04 -0.4 0.06 13 0"
+    IMPROVED = "-0.02 -0.4 0.06 13 0"
+    WORSE = "-0.05 -0.4 0.06 13 0"
+
+    PRELUDE = r"""
+namespace eval ::odb {}
+namespace eval ::ord {}
+set ::calls {}
+array set ::masters {a BUF_X1 b BUF_X1 c BUF_X1}
+proc mk {wns tns hold sv hv} {
+  dict create wns $wns tns $tns worst_hold_slack $hold setup_viol_count $sv hold_viol_count $hv
+}
+proc ::ord::get_db {} { return DB }
+proc DB {args} { return CHIP }
+proc CHIP {args} { return BLOCK }
+proc BLOCK {m args} {
+  if { $m eq "findInst" } {
+    set n [lindex $args 0]
+    if { [info exists ::masters($n)] } { return "INST:$n" }
+    return NULL
+  }
+}
+foreach n {a b c} { proc INST:$n {m} [format {return "M:$::masters(%s)"} $n] }
+foreach mn {BUF_X1 BUF_X2} { proc M:$mn {m} [list return $mn] }
+proc ::odb::dbDatabase_beginEco {b} { lappend ::calls begin }
+proc ::odb::dbDatabase_endEco {b} { lappend ::calls end }
+proc ::odb::dbDatabase_commitEco {b} { lappend ::calls commit }
+proc ::odb::dbDatabase_undoEco {b} { lappend ::calls undo }
+proc estimate_parasitics {f} {
+  lappend ::calls estimate
+  if { $::estimate_fail } { error "estimate boom" }
+}
+proc write_db {f} { lappend ::calls write_db }
+proc trepair::eco_load {odb stage} { return "-placement" }
+proc trepair::eco_measure {id phase} {
+  if { [string match "*_base" $id] } {
+    if { $::baseline_fail } { error "boom" }
+    return $::baseline
+  }
+  if { [regexp {_a(\d+)$} $id -> n] } {
+    if { [lsearch $::after_fail $n] >= 0 } { error "after boom" }
+    return [dict get $::after_metrics $n]
+  }
+  if { [regexp {_u(\d+)$} $id -> n] } {
+    if { [lsearch $::undo_measure_fail $n] >= 0 } { error "undo measure boom" }
+    if { [lsearch $::bad_undo $n] >= 0 } { return $::bad_metrics }
+    return $::baseline
+  }
+  error "unexpected measure id $id"
+}
+proc trepair::eco_resize {inst dir cell pflag} {
+  lappend ::calls "resize $inst"
+  if { [info exists ::swap_before_fail($inst)] } { set ::masters($inst) $::swap_before_fail($inst) }
+  return [dict get $::resize_results $inst]
+}
+proc ok_fix {inst from to} {
+  dict create status ok msg "" kind resize inst $inst from $from to $to placement_warning ""
+}
+proc err_fix {msg} { dict create status error kind resize msg $msg }
+"""
+
+    def _run(self, json_path, setup, call, with_prelude=True):
+        script = f'source "{ECO_REPAIR_TCL}"\n'
+        if with_prelude:
+            script += self.PRELUDE + setup + "\n"
+        script += call + "\n"
+        if with_prelude:
+            script += 'puts "CALLS [join $::calls ,]"\n'
+        with tempfile.NamedTemporaryFile("w", suffix=".tcl", delete=False) as f:
+            f.write(script)
+            path = f.name
+        try:
+            result = subprocess.run(
+                ["tclsh", path], capture_output=True, text=True, timeout=30
+            )
+        finally:
+            os.remove(path)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        calls = []
+        for line in result.stdout.splitlines():
+            if line.startswith("CALLS "):
+                calls = [c for c in line[len("CALLS ") :].split(",") if c]
+        with open(json_path) as f:
+            return json.load(f), calls
+
+    def _search(
+        self,
+        candidates,
+        resize_results,
+        after_metrics="",
+        bad_undo="",
+        baseline_fail=0,
+        after_fail="",
+        undo_measure_fail="",
+        estimate_fail=0,
+        swap_before_fail="",
+        direction="up",
+    ):
+        json_path = os.path.join(tempfile.mkdtemp(), "search.json")
+        self.addCleanup(shutil.rmtree, os.path.dirname(json_path))
+        setup = (
+            f"set ::baseline [mk {self.BASE}]\n"
+            "set ::bad_metrics [mk 0.5 -0.4 0.06 13 0]\n"
+            f"set ::bad_undo {{{bad_undo}}}\n"
+            f"set ::baseline_fail {baseline_fail}\n"
+            f"set ::after_fail {{{after_fail}}}\n"
+            f"set ::undo_measure_fail {{{undo_measure_fail}}}\n"
+            f"set ::estimate_fail {estimate_fail}\n"
+            f"array set ::swap_before_fail {{{swap_before_fail}}}\n"
+            f"set ::resize_results [dict create {resize_results}]\n"
+            f"set ::after_metrics [dict create {after_metrics}]\n"
+        )
+        names = " ".join(f"{{{c}}}" for c in candidates)
+        call = (
+            f"trepair::eco_search_run {json_path} t /x.odb grt {direction} [list {names}] "
+            "0.001 0.05 0.001 0.01"
+        )
+        data, calls = self._run(json_path, setup, call)
+        # The search must never commit or write the database, whatever happens.
+        self.assertNotIn("commit", calls)
+        self.assertNotIn("write_db", calls)
+        return data, calls
+
+    def test_candidates_that_do_not_pass_are_each_rolled_back(self):
+        data, calls = self._search(
+            ["a", "b", "c"],
+            "a [ok_fix a BUF_X1 BUF_X2] b [err_fix {no up-size target for: B}] "
+            "c [ok_fix c BUF_X1 BUF_X2]",
+            after_metrics=f"1 [mk {self.WORSE}] 3 [mk {self.BASE}]",
+        )
+        self.assertEqual(data["status"], "rejected")
+        self.assertEqual(data["candidate"], "")
+        self.assertEqual(
+            [(a["inst"], a["outcome"]) for a in data["attempts"]],
+            [("a", "rejected"), ("b", "skipped"), ("c", "rejected")],
+        )
+        self.assertIn("no up-size target", data["attempts"][1]["reason"])
+        expected = []
+        for inst in ("a", "b", "c"):
+            expected += ["begin", f"resize {inst}", "end", "undo", "estimate"]
+        self.assertEqual(calls, expected)
+
+    def test_the_first_passing_candidate_stops_the_search_and_nothing_is_written(self):
+        data, calls = self._search(
+            ["a", "b"],
+            "a [ok_fix a BUF_X1 BUF_X2] b [ok_fix b BUF_X1 BUF_X2]",
+            after_metrics=f"1 [mk {self.IMPROVED}] 2 [mk {self.IMPROVED}]",
+        )
+        self.assertEqual(data["status"], "found")
+        self.assertEqual(data["candidate"], "a")
+        self.assertEqual([a["inst"] for a in data["attempts"]], ["a"])
+        self.assertEqual(data["attempts"][0]["outcome"], "accepted")
+        self.assertNotIn("odb_written", data)
+        self.assertEqual(calls, ["begin", "resize a", "end"])
+
+    def test_a_skipped_candidate_is_rolled_back_before_the_next_passes(self):
+        data, calls = self._search(
+            ["a", "b"],
+            "a [err_fix {cell excluded from resize: CLKBUF_X3}] b [ok_fix b BUF_X1 BUF_X2]",
+            after_metrics=f"2 [mk {self.IMPROVED}]",
+        )
+        self.assertEqual(data["candidate"], "b")
+        self.assertEqual(
+            [(a["inst"], a["outcome"]) for a in data["attempts"]],
+            [("a", "skipped"), ("b", "accepted")],
+        )
+        self.assertEqual(
+            calls,
+            [
+                "begin",
+                "resize a",
+                "end",
+                "undo",
+                "estimate",
+                "begin",
+                "resize b",
+                "end",
+            ],
+        )
+
+    def test_direction_decides_the_accept_rule(self):
+        # An unchanged result is fine for a downsize (no improvement is
+        # required) but is not an improvement for an upsize.
+        for direction, expected_status in (("down", "found"), ("up", "rejected")):
+            with self.subTest(direction=direction):
+                data, _ = self._search(
+                    ["a"],
+                    "a [ok_fix a BUF_X2 BUF_X1]",
+                    after_metrics=f"1 [mk {self.BASE}]",
+                    direction=direction,
+                )
+                self.assertEqual(data["status"], expected_status)
+
+    def test_a_rollback_that_does_not_restore_the_baseline_stops_the_search(self):
+        data, calls = self._search(
+            ["a", "b"],
+            "a [ok_fix a BUF_X1 BUF_X2] b [ok_fix b BUF_X1 BUF_X2]",
+            after_metrics=f"1 [mk {self.WORSE}] 2 [mk {self.IMPROVED}]",
+            bad_undo="1",
+        )
+        self.assertEqual(data["status"], "error")
+        self.assertIn("rollback check failed", data["msg"])
+        self.assertEqual(data["candidate"], "")
+        self.assertEqual([a["inst"] for a in data["attempts"]], ["a"])
+        self.assertNotIn("resize b", calls)
+
+    def test_a_rollback_that_cannot_be_verified_stops_the_search(self):
+        cases = {
+            "the parasitics refresh fails": dict(estimate_fail=1),
+            "the measurement after the rollback fails": dict(undo_measure_fail="1"),
+        }
+        for label, kwargs in cases.items():
+            with self.subTest(label):
+                data, calls = self._search(
+                    ["a", "b"],
+                    "a [ok_fix a BUF_X1 BUF_X2] b [ok_fix b BUF_X1 BUF_X2]",
+                    after_metrics=f"1 [mk {self.WORSE}] 2 [mk {self.IMPROVED}]",
+                    **kwargs,
+                )
+                self.assertEqual(data["status"], "error")
+                self.assertIn("could not verify the rollback", data["msg"])
+                self.assertEqual([a["inst"] for a in data["attempts"]], ["a"])
+                self.assertNotIn("resize b", calls)
+
+    def test_a_failed_after_measurement_is_an_error_and_never_accepted(self):
+        data, calls = self._search(
+            ["a", "b"],
+            "a [ok_fix a BUF_X1 BUF_X2] b [ok_fix b BUF_X1 BUF_X2]",
+            after_metrics=f"2 [mk {self.IMPROVED}]",
+            after_fail="1",
+        )
+        self.assertEqual(
+            [(a["inst"], a["outcome"]) for a in data["attempts"]],
+            [("a", "error"), ("b", "accepted")],
+        )
+        self.assertIn("eco_measure (after) failed", data["attempts"][0]["reason"])
+        self.assertEqual(data["candidate"], "b")
+        # The failed one was rolled back before b was tried.
+        self.assertEqual(calls[:5], ["begin", "resize a", "end", "undo", "estimate"])
+
+    def test_a_failure_after_the_swap_is_an_error_not_a_skip(self):
+        data, _ = self._search(
+            ["a", "b"],
+            "a [err_fix {estimate_parasitics failed: boom}] b [err_fix {no up-size target}]",
+            swap_before_fail="a BUF_X2",
+        )
+        outcomes = {a["inst"]: a for a in data["attempts"]}
+        self.assertEqual(outcomes["a"]["outcome"], "error")
+        self.assertIn("a change was applied, then rolled back", outcomes["a"]["reason"])
+        # b never changed its cell, so it is an ordinary skip.
+        self.assertEqual(outcomes["b"]["outcome"], "skipped")
+
+    def test_a_failed_baseline_measurement_stops_before_touching_the_design(self):
+        data, calls = self._search(["a"], "a [ok_fix a BUF_X1 BUF_X2]", baseline_fail=1)
+        self.assertEqual(data["status"], "error")
+        self.assertIn("baseline", data["msg"])
+        self.assertEqual(data["attempts"], [])
+        self.assertEqual(calls, [])
+
+    def test_a_bad_direction_is_an_error_written_as_json(self):
+        data, calls = self._search(
+            ["a"], "a [ok_fix a BUF_X1 BUF_X2]", direction="sideways"
+        )
+        self.assertEqual(data["status"], "error")
+        self.assertIn("unknown direction", data["msg"])
+        self.assertEqual(calls, [])
+
+    def test_a_missing_database_is_an_error_written_as_json(self):
+        json_path = os.path.join(tempfile.mkdtemp(), "search.json")
+        self.addCleanup(shutil.rmtree, os.path.dirname(json_path))
+        call = (
+            f"trepair::eco_search_run {json_path} t /nonexistent/x.odb grt up [list {{a}}] "
+            "0.001 0.05 0.001 0.01"
+        )
+        data, _ = self._run(json_path, "", call, with_prelude=False)
+        self.assertEqual(data["status"], "error")
+        self.assertIn("odb not found", data["msg"])
+        self.assertEqual(data["attempts"], [])
+
+    def test_attempt_json_is_valid_with_backslash_names_and_optional_measurements(self):
+        json_path = os.path.join(tempfile.mkdtemp(), "j.json")
+        self.addCleanup(shutil.rmtree, os.path.dirname(json_path))
+        call = (
+            r"set skipped [dict create inst {ctrl.out\[0\]$_DFF_} outcome skipped "
+            r"reason {cell excluded} from {} to {} placement_warning {}]"
+            "\n"
+            r"set measured [dict create inst b outcome rejected "
+            r"reason {no improvement in wns} from BUF_X1 to BUF_X2 placement_warning {} "
+            r"after [dict create wns -0.04 tns -0.4 worst_hold_slack 0.06 "
+            r"setup_viol_count 13 hold_viol_count 0] "
+            r"delta [dict create wns 0.0002 tns 0.0 worst_hold_slack 0.0]]"
+            "\n"
+            f"set fh [open {json_path} w]\n"
+            r"puts $fh [trepair::eco_json_attempts [list $skipped $measured]]"
+            "\n"
+            "close $fh"
+        )
+        parsed, _ = self._run(json_path, "", call, with_prelude=False)
+        self.assertEqual(parsed[0]["inst"], r"ctrl.out\[0\]$_DFF_")
+        self.assertIsNone(parsed[0]["after"])
+        self.assertIsNone(parsed[0]["delta"])
+        self.assertEqual(parsed[1]["after"]["wns"], -0.04)
+        self.assertEqual(parsed[1]["delta"]["wns"], 0.0002)
 
 
 if __name__ == "__main__":
