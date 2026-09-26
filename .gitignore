@@ -114,6 +114,7 @@ flow/util/ml/congestion/data/*.npy
 flow/util/ml/congestion/data/*.npz
 flow/util/ml/congestion/data/*.png
 flow/util/ml/congestion/checkpoints/*.pt
+flow/util/ml/congestion/checkpoints/*.pt.json
 flow/util/ml/congestion/experiments/
 flow/util/ml/data/
 flow/util/ml/congestion/*.log

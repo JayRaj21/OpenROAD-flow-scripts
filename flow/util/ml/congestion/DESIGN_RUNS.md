@@ -89,6 +89,106 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-26 — Thermal placement loop, Stage B gate result: FAIL (the loop is not built)
+
+**Result.** The pre-registered gate ran to completion and the verdict is a
+genuine, scored **FAIL** on all three criteria (exit status 1, not an error).
+Under the plan, a FAIL stops the loop work: the feedback loop was not built,
+and nothing beyond the gate was run. The run started at 19:15 on 2026-09-25
+and finished at 02:06 the next morning (about 6 hours 50 minutes). Placement
+was fast (about 1 to 4 minutes per design); almost all of the time was
+HotSpot, about 100 minutes per design (six variants, about 17 minutes each).
+
+**What was run, exactly as pre-registered.** Four designs (`sky130hd/riscv32i`,
+`gf180/riscv32i`, `sky130hs/aes`, `sky130hd/ibex`), six placement-density
+settings each (`PLACE_DENSITY_LB_ADDON` 0.05, 0.15, 0.30, 0.45, 0.60, 0.75),
+so 24 placements and 24 HotSpot maps, none skipped and none failed. Three
+leave-design-family-out models (`riscv32i`, `aes`, `ibex`), each trained for
+200 epochs with seed 0 and batch size 4, and none of them had seen the design
+it was scored on (the leakage guard checked this). All variants shared one set
+of platform files. This was a full-length run, not a smoke test, and the
+result is not near the pre-registered band that would have called for a
+repeat with more seeds. The protected data was untouched afterwards: 90 data
+files, 36 of 36 original checksums matching, 30 base placements.
+
+**Numbers per design** (truth is HotSpot; "proxy" is the free baseline that
+just blurs the cell density; rho is a rank correlation across the six
+variants of one design):
+
+| Design | G1 | Change in the die's temperature range across the six variants (C) | rho(add-on, concentration) | G2: concentration vs temperature range | Model rho | Blur proxy rho | Model's top pick ranked (of 6) |
+|---|---|---|---|---|---|---|---|
+| `sky130hd/riscv32i` | pass | 17.1 | 1.00 | 1.00 | 0.83 | 1.00 | 2 |
+| `gf180/riscv32i` | pass | 32.7 | 1.00 | 1.00 | 1.00 | 1.00 | 1 |
+| `sky130hs/aes` | fail | 45.3 | -0.14 | -0.03 | 0.09 | 0.94 | 4 |
+| `sky130hd/ibex` | fail | 15.0 | -0.37 | -0.43 | -0.09 | 0.66 | 6 |
+
+**Verdict against each criterion.**
+- **G1 (does the setting move the heat map in a steady way):** fail. Only 2
+  of 4 designs passed and 3 were needed. Both failures were on the
+  steadiness test, not on the size of the effect: on `aes` and `ibex` the
+  true HotSpot maps do not respond to the density setting in a consistent
+  order.
+- **G2 (does "how concentrated the heat is" track the real temperature
+  range across the die, peak to peak):** fail. The median across designs is
+  0.49 against a required 0.70. On the two `riscv32i` designs it is perfect,
+  but on `aes` and `ibex` it is unrelated or opposite. For example
+  `sky130hs/aes` at density 0.75 has the largest temperature range of its
+  six variants (73.9 C) and, at the same time, the least concentrated map.
+- **G3 (does the model rank variants like HotSpot):** fail on all three
+  sub-criteria. The median model rank correlation is 0.46 against a required
+  0.60, and it reached 0.3 on only 2 designs (3 needed). The model's top pick
+  was within the true best two on only 2 designs (3 needed). And it did not
+  beat the free baseline: the blur-of-cell-density proxy had a median rank
+  correlation of 0.97, so the model was behind it by 0.51, where it needed to
+  be ahead by 0.15. The proxy's rank correlation was at least the model's on
+  every one of the four designs.
+
+**What this shows, and what it does not.**
+- *The density setting is a real lever on some designs.* On both
+  `riscv32i` designs, raising the placement density gave a steadily hotter
+  and more concentrated map (the die's temperature range grew from 40.2 to
+  57.3 C on `sky130hd` and from 33.7 to 66.4 C on `gf180` across the six
+  settings), consistent with the pilot.
+- *It is not a reliable lever on all designs.* On `aes` and `ibex` even the
+  ground-truth simulator does not give an ordered response. This is a
+  property of the physics and the placer, not of the model, and a perfect
+  model could not turn it into a steady dial. That is the main reason not to
+  expect that a better model alone would rescue the loop.
+- *The model does not add value over a free baseline for this task.* It
+  ranked placements well on `riscv32i` (0.83 and 1.00) and badly on `aes`
+  and `ibex`. Blurring the cell density did at least as well everywhere.
+- *What is not shown.* This does not prove that no model could do it. The
+  planner's expected failure cause is untested: none of the 30 training
+  samples contains two placements of the same design, so the model never saw
+  within-design variation. The plan's fallback (add variants of about six
+  other designs to the training data and re-run only G3) would cost 6 to 8
+  more hours and could not fix the G1 and G2 failures, which use the
+  HotSpot maps only.
+
+**Limits of the evidence.** Four designs and six points each is a small
+sample, and the two `riscv32i` designs are one netlist on two technologies, so
+there are effectively three design families. The thermal labels used for
+training mix two wire-resistance settings on `sky130hd` and `asap7` (see the
+2026-09-20 entry). The pass thresholds were fixed before the run and were not
+adjusted. The gate's own tooling was independently reviewed twice before the
+run, and it was checked once more afterwards (no leftover processes, all
+protected data unchanged).
+
+**Recommendation.** Stop the loop work here, as the plan specifies. Do not
+run the training-variant fallback unless there is a specific reason to, since
+two of the three failed criteria do not depend on the model. If the goal
+stays "steer placement using a fast thermal predictor", the more promising
+directions from the earlier discussion are a different lever than density,
+or a comparison of other model types.
+
+**Housekeeping.** The gate wrote its outputs under
+`util/ml/congestion/experiments/thermal_loop/` (`gate.json`, `gate.md`,
+`gate_run.log`, and the 24 variant maps in `data/`) and three checkpoints
+with their record files under `util/ml/congestion/checkpoints/`. All of
+these are generated files; the record files (`*.pt.json`) are now ignored by
+git like the checkpoints themselves. The variant placements are under
+`results/*/*/dn_*`, which the thermal batch extractor is set to skip.
+
 ### 2026-09-25 — Thermal placement loop, Stage B (go/no-go gate): tooling built and pass criteria pre-registered, no results yet
 
 **Status, stated plainly.** Only the tooling exists. The gate has not been run:
