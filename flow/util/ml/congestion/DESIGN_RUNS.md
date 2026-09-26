@@ -89,6 +89,236 @@ flow/ml/
 
 ## Changelog
 
+### 2026-09-25 — Thermal placement loop, Stage B (go/no-go gate): tooling built and pass criteria pre-registered, no results yet
+
+**Status, stated plainly.** Only the tooling exists. The gate has not been run:
+no gate placements, no HotSpot solves and no gate-scale training have been done.
+There are no gate results. The only training done was three 2-epoch smoke tests
+of `train_lodo.py`, and no placement was run (the orchestrator was checked
+with `--dry-run` only). The criteria below were written before anything
+was run and must not be adjusted after results are seen.
+
+**The question.** Can the thermal U-Net surrogate rank placement-density
+variants of a single design in the same order as HotSpot? The feedback loop is
+only worth building if it can.
+
+**Metrics.** Those already in `thermal_metrics.py`. Maps are re-min-max-normalised
+before shape metrics. "Better" is a lower `top10_ratio` (less heat
+concentration). Rank statistic: Spearman rho (`scipy.stats.spearmanr`) across the
+variants of one design.
+
+**Pre-registered pass criteria.**
+
+Knob grid: `PLACE_DENSITY_LB_ADDON` in {0.05, 0.15, 0.30, 0.45, 0.60, 0.75}
+(tags `dn_005`, `dn_015`, `dn_030`, `dn_045`, `dn_060`, `dn_075`). A design needs
+at least 4 usable variants (a variant that hits FLW-24 infeasible density or
+fails extraction is skipped and reported with its reason); a design with fewer
+than 4 usable variants is excluded from the gate with the reason stated, and the
+gate needs at least 3 usable designs of the 4 to give a verdict at all
+(otherwise the verdict is INCONCLUSIVE, not PASS). The pilot's `dn_010`,
+`dn_020` and `dn_070` are not on the grid and never enter the gate.
+
+- **G1, movability and dose-response (from HotSpot truth only).** A design
+  passes G1 if ALL of: (a) spread (max minus min) of `ptp_c` across its variants
+  is at least 20% of the median `ptp_c`; (b) spread of truth `top10_ratio` is at
+  least 0.05; (c) monotonic dose-response: |Spearman(addon, truth top10_ratio)|
+  >= 0.89 AND |Spearman(addon, truth ptp_c)| >= 0.89. With 6 points the
+  achievable rho values are 1.0, 0.943, 0.886, so this tolerates at most ONE
+  adjacent rank swap (two swaps give 0.886, below 0.89). With 4 points the values
+  are 1.0, 0.8, so it requires a perfect ordering. With 5 points the values
+  include 1.0, 0.9, 0.8; the threshold of 0.89 is met by 0.9, so 5 points also
+  tolerate one adjacent swap (the brief said 5 points need a perfect ordering;
+  that arithmetic was wrong, the threshold was left at 0.89 as registered and
+  this is the consequence). G1 passes overall if at least 3 of the 4 designs
+  pass. There is no separate "nuisance reference" criterion: placement was shown
+  to be exactly deterministic and all variants share one platform-file setting,
+  so there is no run-to-run noise to exceed; the monotonic dose-response is the
+  guard against a spread that is just staging noise.
+- **G2, is the shape objective physically meaningful.** Per design, Spearman
+  between truth `top10_ratio` (of the normalised map) and truth absolute `ptp_c`
+  across its variants. G2 passes if the median across usable designs is >= 0.7.
+- **G3, does the surrogate rank variants correctly.** For each gate design use
+  the leave-design-family-out checkpoint (below), predict each variant from its
+  `_features.npz` (via `predict_thermal.load_features`), compute `top10_ratio` on
+  the normalised prediction, and take Spearman against truth `top10_ratio`. G3
+  passes only if ALL of: (1) median rho across usable designs >= 0.6 AND rho >=
+  0.3 on at least 3 of the 4 designs; (2) the surrogate beats the cheap proxy
+  control by >= 0.15 median rho, where the proxy is `top10_ratio` of
+  `blur_proxy(cell_density)` of the variant's own features (sigma = `BLUR_SIGMA`),
+  scored the same way; (3) the surrogate's top-1 pick (lowest predicted
+  `top10_ratio`) lies within the best 2 of the design's variants by truth
+  `top10_ratio` on at least 3 of 4 designs. The proxy's own rho is reported per
+  design even if the surrogate wins.
+- **Overall verdict.** PASS only if G1, G2 and G3 all pass; FAIL if any fails
+  (and the report says which); INCONCLUSIVE if fewer than 3 usable designs. If G3
+  lands within +/-0.1 of the 0.6 median threshold, the runner flags that a
+  multi-seed rerun (seeds 0, 1, 2, mean) is warranted; that decision follows this
+  rule and not other numbers. A clean FAIL is a valid, useful result, not an
+  error.
+
+Implementation choices where the text was silent: a constant series (for
+example a design whose truth `top10_ratio` is identical across variants) has no
+rank order and is given rho 0.0; "at least 3 of the 4 designs" is counted over
+usable designs, and with only 3 usable designs all 3 must pass; ties in the
+predicted `top10_ratio` pick the lowest add-on; a top-1 pick's truth rank is one
+plus the number of variants strictly better than it.
+
+**Designs and leave-family-out checkpoints.** Holdout is by design name across
+all PDKs, because for example `sky130hd/riscv32i` and `gf180/riscv32i` are the
+same netlist. Each checkpoint is trained on the 30 base samples minus the
+excluded keys minus 3 internal validation samples drawn (seeded) from the
+remaining training designs; the checkpoint with the best internal validation MSE
+is kept.
+
+| Family checkpoint | Gate designs it scores | Excluded keys (exactly) | Training samples |
+|---|---|---|---|
+| `riscv32i` | `sky130hd/riscv32i`, `gf180/riscv32i` | `asap7_riscv32i_base`, `gf180_riscv32i_base`, `ihp-sg13g2_riscv32i_base`, `sky130hd_riscv32i_base`, `sky130hs_riscv32i_base` | 22 |
+| `aes` | `sky130hs/aes` | `asap7_aes_base`, `asap7_aes_lvt_base`, `gf180_aes_base`, `ihp-sg13g2_aes_base`, `nangate45_aes_base`, `sky130hd_aes_base`, `sky130hs_aes_base` | 20 |
+| `ibex` | `sky130hd/ibex` | `asap7_ibex_base`, `nangate45_ibex_base`, `sky130hd_ibex_base`, `sky130hs_ibex_base` | 23 |
+
+Decision on `aes_lvt`: `asap7_aes_lvt_base` belongs to the `aes` family and is
+excluded from the `aes` checkpoint. It is the same RTL on a different cell
+library, so leaving it in training would be the same leak as the same design on
+another PDK. The rule is `family = design name with a trailing _lvt removed`,
+matched exactly on the name parsed the way `laplacian_sweep._parse_key` does it.
+`jpeg_lvt` would fall into `jpeg` by the same rule (not a gate design). The
+sidecar `<checkpoint>.json` records the holdout family, excluded, training and
+validation keys, seed, epochs, batch size, learning rate, Laplacian weight, a
+sha256 of the data directory's sorted key list, sample counts and the sha256 of
+the `.pt` (computed after it is written). `train_lodo.py` builds the training
+and validation datasets, then, right before training starts, asserts that the
+keys of those very datasets (read back from the `Subset` indices, not from a
+separately built list) contain no excluded key and no key of the holdout family
+(`LeakError` otherwise), and writes `train_keys`/`val_keys` from that same
+read-back. `gate_rank.py` refuses to score a design
+(the leakage guard) if: the sidecar family differs; a sidecar field is missing;
+the `.pt` does not hash to the sidecar's sha256 (a swapped checkpoint); the
+design's own base key is not excluded; any family key present in the base data
+directory is missing from `excluded_keys`; or any `train_keys`/`val_keys` entry
+parses to the holdout family on any PDK. With `--expect-epochs N` and
+`--expect-seed S` (`run_gate.sh` always passes them) it also refuses, with exit
+3, a checkpoint whose sidecar epochs or seed differ, so a stale checkpoint
+cannot be scored in place of the one a run asked for. It records each
+checkpoint's path, sha256, epochs, seed and batch size, and the expected
+epochs/seed, in `gate.json`. A checkpoint trained for fewer than 100 epochs is
+a smoke test: `gate.json` gets `"smoke_test": true`, the overall verdict is
+INCONCLUSIVE, never PASS or FAIL, and the per-criterion `g1`/`g2`/`g3` fields
+and the markdown read "INCONCLUSIVE (smoke test)" (the criterion results that
+were computed are kept under `verdict.smoke_test_underlying`).
+
+**What the leakage guard does not prove.** The sidecar is written by
+`train_lodo.py` and is plain JSON. The guard detects honest mistakes and swapped
+files: a different `.pt` next to a sidecar, a sidecar of another family, a
+checkpoint made without the exclusion, a partial or edited-by-accident sidecar,
+a stale checkpoint. It does not detect a deliberate forger. The hash binds the
+`.pt` to the sidecar but not the sidecar to what the network was really trained
+on; someone who edits the sidecar (for example dropping a family key from
+`train_keys`) passes when `--data-dir` is empty or lacks that key (with the
+default data directory the missing-from-`excluded_keys` check catches the
+edit); a fully self-consistent forged sidecar passes; and a change to
+`train_lodo.py` that trains on excluded keys while writing an honest sidecar
+would pass gate_rank. What protects against the last is only the dataset-key
+assertion inside `train_lodo.py` and the tests in `test_gate.py`, not anything
+`gate_rank.py` can verify.
+
+**Files (all new, under `util/ml/congestion/loop/`).** `train_lodo.py` (train one
+family checkpoint; refuses to overwrite `thermal_best.pt` and refuses to read or
+write under `experiments/thermal_loop/`), `gate_rank.py` (discovers variants,
+computes G1 to G3 with the blur-proxy control, writes JSON and a markdown table;
+scoring is pure functions separate from file loading and inference),
+`run_gate.sh` (orchestrator) and `test_gate.py` (self-test).
+
+**Exit-status contract of `gate_rank.py` and `run_gate.sh`.** 0 = PASS,
+1 = FAIL (a genuine scored result), 2 = INCONCLUSIVE (a verdict is written to
+`gate.json`: fewer than 3 usable designs, or a smoke-test checkpoint),
+3 = ERROR: no verdict written and no stale `gate.json`/`gate.md` left behind
+(usage error, unknown family in the checkpoint map, missing or corrupt
+checkpoint, malformed sidecar, refused leaking checkpoint, checkpoint whose
+epochs or seed differ from `--expect-epochs`/`--expect-seed`, state-dict
+mismatch, forward-pass failure, unreadable data, failure to write the outputs,
+missing Python dependency). `gate_rank.py` deletes a pre-existing `--out` and
+`--markdown` once its arguments are valid and before it computes anything, so an
+ERROR never leaves an old verdict beside a fresh error; the two outputs are
+written to temporary files and renamed, so they appear together or not at all,
+and every failure, including a write error, exits 3 rather than the traceback
+exit 1 that would read as FAIL. `run_gate.sh` exits 0, 1 or 2 only when
+`gate_rank.py` did and `gate.json` exists, parses and carries the matching
+verdict; otherwise it prints "ERROR, no verdict", removes any `gate.json` and
+`gate.md` and exits 3. It also exits 3 (again with those files removed) if any
+`train` or `verify` stage failed, without running `gate_rank.py`, so a crashed
+training is never hidden by scoring an older checkpoint; on its own usage errors;
+and when the base/data fingerprint changed during the run. It prints PASS, FAIL,
+INCONCLUSIVE and "ERROR, no verdict" as distinct lines. It also reports variant
+and stage failures (a failed placement or extraction skips that variant and does
+not abort): the summary lists them, `gate.json` `skipped_variants` records the
+skipped variants, and the last line of the run prints the number of skipped
+variants and failed stages, so a PASS with skipped variants is visible (the exit
+status alone does not reflect them).
+
+**Threshold comparisons.** Every threshold is compared with a tolerance of
+1e-9 (`EPS` in `gate_rank.py`), because Spearman rho and float differences come
+back a few ulps off (0.9 as 0.8999999999999998, 0.7 - 0.55 as 0.1499999999999999);
+a value exactly on a threshold therefore passes, as `>=` is meant to. Without
+exact rank ties every Spearman rho and rho difference is a small-denominator
+rational, so the tolerance cannot turn a value that is genuinely below its
+threshold into a pass; the only case where it could matter is exactly tied
+metrics, which is practically impossible for float map metrics. No threshold
+value or criterion was changed.
+
+**Checkpoint reuse, verification and smoke tests.** `run_gate.sh` trains through
+`train_lodo.py --reuse-if-valid`: an existing checkpoint is reused only if its
+sidecar hash, family, epochs, seed, batch size, learning rate, Laplacian weight
+and data-key hash (the sorted list of base sample keys in the data directory)
+match this run, otherwise it is retrained (overwritten); a sidecar without
+`lr` or `data_keys_sha256` is therefore retrained once. After every train stage
+(and with `--skip-train`) it runs `train_lodo.py --verify-only`, which trains
+nothing and exits 0 only for that same match and 3 otherwise, and it hands
+`gate_rank.py` `--expect-epochs` and `--expect-seed 0`. `--epochs` below 100
+prints a loud warning that the run is a smoke test and not the gate verdict,
+and the result is INCONCLUSIVE.
+
+**How to run.** From anywhere in the worktree:
+`bash util/ml/congestion/loop/run_gate.sh` (options `--designs`, `--addons`,
+`--skip-place`, `--skip-extract`, `--skip-train`, `--epochs`, `--dry-run`).
+Stage start and end times go to `experiments/thermal_loop/gate_run.log`. It
+places with `knob_variants.sh`, extracts with `extract_variant_labels.sh`
+(thermal extraction uses `openroad/orfs-ml:latest`), trains the three family
+checkpoints into the gitignored `checkpoints/` folder unless a matching one
+exists (see below), then ranks. A
+failed variant does not stop the others; the summary lists them. It only names
+`dn_NNN` tags, never `base`, and compares a fingerprint of every
+`results/*/*/base` file and of `data/` before and after, aborting on any change.
+Results land in `experiments/thermal_loop/gate.json` and `gate.md`; paste the
+table from `gate.md` into a new entry here.
+
+**Runtime expectation.** Placement about 15 seconds per variant (the pilot
+measured about 14 s including Docker start-up); HotSpot about 10 to 15 minutes
+per variant, so roughly 4 to 6 hours for the 24 variants; training 200 epochs
+per family is small next to that.
+
+**Known limitation.** The 30-design training data mixes two wire-RC regimes for
+`sky130hd` and `asap7` (see the 2026-09-20 entry: the first 12 routes used the
+image's `setRC.tcl`, the later 18 the worktree's). The surrogate is therefore
+trained on inconsistent data, and a weak G3 could partly reflect that rather
+than the surrogate architecture. Both `sky130hd` gate designs and the
+`riscv32i`/`ibex` families sit on affected platforms. The gate variants
+themselves all share one platform-file setting.
+
+**Verification done for the tooling.** `bash -n` and `--dry-run` of
+`run_gate.sh`; 2-epoch smoke training of each family with the excluded keys
+checked against the table above and the checkpoint loaded by
+`predict_thermal.py`; `test_gate.py` (50 cases, including constructed PASS and
+per-criterion FAIL cases, exact-at-threshold and just-below cases for every
+threshold, float-error ties, INCONCLUSIVE, exclusion of a design with fewer than
+4 variants, each leakage check, the smoke-test rule, the exit codes, the
+checkpoint reuse rule, exact rho values for 4, 5 and 6 points, and the pilot
+tags being ignored). These use synthetic variant files under a scratch
+directory, not real placements. A review then found that a value exactly on a
+threshold could fail through float error, that the leakage guard trusted the
+sidecar alone, that errors exited 1 (read as FAIL) and that the test suite let
+most threshold mutations survive; the changes above and a 40-odd mutation check
+of `gate_rank.py` against the test suite address those.
+
 ### 2026-09-20 — Thermal placement loop, Stage A (G0 plumbing pilot): plumbing passes, G0 map criterion was weaker than stated
 
 **What was asked.** A light feedback loop that changes the placement knob and
