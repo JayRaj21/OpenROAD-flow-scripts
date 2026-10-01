@@ -89,6 +89,290 @@ flow/ml/
 
 ## Changelog
 
+### 2026-10-01 (later) — Thermal architecture comparison, Stage 3/4 result: FNO is Better than unet32, smaller U-Nets are Indistinguishable
+
+**Result.** Full sweep ran as pre-registered: `unet32`, `unet16`, `unet8`,
+`fno` x 9 family folds x 5 seeds (180 learned-arm runs, 600 per-design
+records), plus `blur` x 9 folds, no seed (30 records) = 630 run records
+in `experiments/arch_sweep.json`. `xgb` did not run (no xgboost on this
+host, per the pre-registration entry). Verdicts below are exactly what
+`arch_sweep.py --analyze` printed (mechanically produced, not
+hand-adjusted) — see `experiments/arch_sweep_summary.md` for the full
+per-design table, confound table, and report-only breakdowns.
+
+**Stage 3 timing (measured, one `--archs` invocation per arm into the
+same `--out`):** `unet32`=10m35s, `unet16`=8m0s, `unet8`=7m25s,
+`fno`=7m25s, `blur`=~1s (no training). Total ~34 minutes, matching the
+Stage-1 projection (~34 min) closely.
+
+**Verdicts vs `unet32` (Holm-corrected across the 4 pre-registered
+candidate tests `unet16`/`unet8`/`fno`/`xgb`; `xgb` did not run so its
+slot is a non-rejection by default and does not inflate the other three's
+significance):**
+
+| Candidate | median delta | mean delta | wins/losses | Holm-adj p | families neg/pos (of 9) | median delta-rho | Verdict | Sensitivity cut (n=29, asap7_gcd_base excluded) |
+|---|---|---|---|---|---|---|---|---|
+| `unet16` | +0.000332 | +0.003690 | 15/15 | 1.00000 | 5/4 | +0.0159 | **Indistinguishable** | Indistinguishable |
+| `unet8` | -0.003592 | -0.002761 | 22/8 | 0.02284 | 8/1 | +0.0092 | **Indistinguishable** (fails the magnitude-vs-noise-floor criterion) | Indistinguishable |
+| `fno` | -0.013276 | -0.010954 | 23/7 | 0.01195 | 8/1 | +0.0755 | **Better** | **Better** (robust) |
+
+`unet8` clears every "Better" criterion except one: |median delta| > T
+requires 0.003592 > 0.008893, which is false, so it is gated out by the
+pre-registered noise-floor check (the delta is smaller than `unet32`'s
+own seed-to-seed noise) — exactly the purpose that check exists for.
+`fno` clears every criterion including the noise floor
+(|median delta|=0.013 > T=0.0069, |mean delta|=0.011 > T) and remains
+**Better** under the n=29 sensitivity cut (median delta -0.01316, adj_p
+re-tested fresh on n=29 at 0.01915 — not reused from the n=30 value,
+practically unchanged from it either way).
+
+**Correction (post-review):** the first version of this entry's
+sensitivity-cut check reused the n=30 Holm-adjusted p-value instead of
+re-running the Wilcoxon test and Holm correction on the n=29 sample, so
+criterion (3) was never actually re-tested at n=29 for any candidate. This
+is fixed in `arch_sweep.py` (the sensitivity cut now computes its own
+p-values and its own Holm correction on the excluded set). Re-run with the
+fix: `fno`'s genuine n=29 adj_p is 0.01915 (vs the raw, unadjusted n=29
+p of 0.00479) — still well under 0.05, so "Better (robust)" stands, but
+on a real retest rather than an assumption.
+
+**Calibration vs `blur` (same criteria, no Holm correction):** only
+`fno` clears "Better" against the free baseline (median delta -0.025,
+wins 28/30, adj_p=0.00008, T=0.0023 — delta an order of magnitude above
+the noise floor). `unet32`, `unet16`, and `unet8` are all
+**Indistinguishable** from `blur` by this harness's criteria. `unet32`
+itself (the production model, not just the smaller variants): median
+delta -0.0091, wins 18/30, p=0.158 — and its family-level mean delta is
+*positive* (worse than `blur`) in 6 of 9 families (ethmac, gcd, ibex,
+dynamic_node, swerv, tinyRocket), clearing only the sign and win-count
+criteria, nowhere near the significance or family-consistency bars.
+`unet8` comes closest of the three: median delta -0.014, wins 23/30,
+p=0.0099, but still only 6/9 families negative, short of the 7-family
+bar. This is a genuine, unflattering finding about the baseline, not a
+bug: the production 7.8M-parameter U-Net's seed-averaged held-out MSE is
+not statistically distinguishable from a free Gaussian blur of the input
+cell-density channel (no training, no learned parameters) under this
+gate's pre-registered bar, and in most families it is nominally worse.
+
+**Confound check:** no confound signal on any candidate.
+`rho(delta vs unet32, log10 contrast)` is 0.006 (`unet16`), 0.269
+(`unet8`), 0.261 (`fno`), all with p>0.15 (threshold was |rho|>=0.6,
+p<0.05). The corrected 16-key upsampled vs 14-key native strata are
+same-sign for all three candidates (no opposite-sign-with-both-above-T
+case), so the OR branch of the Confounded criterion also does not fire.
+`fno`'s advantage is not an artifact of the coarse-grid/die-size
+confound as tested.
+
+**Report-only findings:**
+- `n_params`: `unet32`=7,779,683, `unet16`=1,947,507 (as predicted, ~1/4),
+  `unet8`=488,219 (~1/16), `fno`=1,188,481 (complex weights counted as 1
+  element each by `.numel()`; real-equivalent storage is ~2x, i.e. ~2.4M,
+  matching the plan's estimate), `blur`=0.
+- `mean_train_mse_final` (overfitting indicator, lower = fit training
+  data more tightly): `fno`=0.0019, `unet8`=0.0062, `unet32`=0.0064,
+  `unet16`=0.0066. `fno` fits its training set substantially tighter
+  than every U-Net width while also generalising best — not consistent
+  with it winning via underfitting/regularisation-by-smallness; more
+  consistent with the global-spectral inductive bias being a better
+  match to this diffusion-like problem, per the model's own docstring
+  motivation (not independently verified beyond this sweep).
+- wire-RC stratum, corrected: the first version of this entry used the
+  wrong 6 keys (it included `nangate45_gcd_base`, which was never on the
+  affected platform list, and `sky130hd_ibex_base`/`sky130hd_jpeg_base`,
+  which were routed *after* the 2026-09-16 fix — and it left out all
+  three asap7 designs, which *were* affected). The correct 6 keys are
+  `asap7_{aes,gcd,riscv32i}_base` and `sky130hd_{aes,gcd,riscv32i}_base`
+  (the first-batch designs on the two affected platforms; see the
+  2026-09-16 (later) entry). On the corrected stratum, the direction
+  reverses for `fno`: it is the *worst* arch on these 6 designs, not a
+  stratum-wide effect shared with every other arch.
+
+  | arch | wire-RC-early (n=6) mean MSE | other (n=24) mean MSE |
+  |---|---|---|
+  | `fno` | 0.0792 | 0.0257 (~3.1x) |
+  | `unet8` | 0.0758 | 0.0368 |
+  | `unet16` | 0.0657 | 0.0474 |
+  | `blur` | 0.0689 | 0.0604 |
+  | `unet32` | 0.0537 | 0.0458 |
+
+  Most of `fno`'s gap comes from one design, `asap7_riscv32i_base`
+  (`fno`=0.262 vs `blur`=0.048 on that single design). This does not
+  change the overall "Better" verdict — the stratum check is report-only,
+  the pre-registered Confounded criterion (which `fno` still passes
+  cleanly on both the correlation and the strata-sign tests above) is
+  what actually gates the verdict, and `fno` beats `unet32` by a wide
+  margin on the *other* 24 designs (0.0257 vs 0.0458). But the earlier
+  claim that this was "not an `fno`-specific effect" was wrong on the
+  correct key set and should not be repeated: on the mixed-wire-RC
+  designs specifically, `fno` is the weakest of the five arches tested,
+  and that is worth knowing before using `fno` on any similarly-affected
+  design.
+- `top10_abs_err` (report-only, not a criterion): `fno`=0.174,
+  `unet8`=0.168, `unet32`=0.164, `unet16`=0.192, `blur`=0.382 — all
+  learned arches roughly tied and all far better than `blur` on this
+  metric, consistent with it not being a reliable sole criterion (per
+  the pre-registration) but also not contradicting the MSE-based
+  verdicts here.
+
+**Determinism spot-check (Stage 1, carried into this result):** all 4
+neural arms' Stage-1 probe runs were rerun-identical in fresh processes,
+including a dedicated 2-rerun check of `fno`'s cuFFT path (all 4
+`heldout_mse` values on the `ibex` fold bit-identical across reruns on
+this GPU); the
+`unet32`/`lodo` parity gate against `laplacian_sweep.py` matched to the
+full float repr (`0.05825115740299225` both ways) after fixing
+`arch_sweep.py` to compute the parity-relevant `heldout_mse` via the same
+`torch.nn.functional.mse_loss` float32/GPU path `laplacian_sweep.py`
+uses, instead of the numpy float64 path `_score()` uses for the other
+reported metrics (mae/spearman/top10) — the two paths agreed to only
+~9 significant figures, which failed the gate's "identical full float
+repr" bar until fixed. This is the kind of thing the parity gate exists
+to catch.
+
+**Non-goals respected:** no checkpoint from this sweep is shipped; none
+of `train_thermal.py`/`predict_thermal.py` was touched; no hyperparameter
+search beyond the pre-registered defaults and the uniform 120->200 epoch
+rule; no new data/re-extraction; `laplacian_sweep.py`, `train_thermal.py`,
+`thermal_dataset.py`, `unet.py`, `heads.py`, and everything under `loop/`
+are byte-for-byte unchanged (verified by `git diff --quiet`).
+
+**What this does and doesn't mean.** This is a comparison result, not a
+switch-architectures decision (explicit non-goal). `fno` beating `unet32`
+on this 30-design, family-held-out thermal set under these exact
+pre-registered criteria is real evidence the global-spectral inductive
+bias fits this diffusion-like problem better than four-level local
+convolutions at this n — it is not evidence `fno` would still win with
+more data, a different loss, or a different grid resolution, none of
+which this sweep varied.
+
+### 2026-10-01 — Thermal architecture comparison, pre-registration (Stage 2 of the go/no-go gate)
+
+**Purpose.** Before running the full sweep, this entry fixes the
+evaluation protocol, metrics, and pass/fail criteria for comparing the
+baseline thermal U-Net (`base_features=32`, 7.8M params) against two
+smaller U-Nets, a per-pixel XGBoost tree ensemble, and a from-scratch
+Fourier Neural Operator, with a free Gaussian-blur baseline as a
+calibration reference. New harness: `training/arch_sweep.py` (parallel to
+`laplacian_sweep.py`, which is unmodified).
+
+**xgboost availability (host dependency check, per plan correction #3).**
+`python3 -c "import xgboost"` fails on this host
+(`ModuleNotFoundError: No module named 'xgboost'`). xgboost is present
+only in the `openroad/orfs-ml:latest` Docker image's Python (per
+`util/ml/Dockerfile`), not the host Python that runs these GPU sweeps.
+Per instruction, nothing was installed. The `xgb` arm (and
+`training/pixel_tree.py`, which only exists if xgboost is importable) is
+**not run** in this sweep. The comparison proceeds with `unet32`
+(baseline), `unet16`, `unet8`, `fno`, and `blur` (calibration reference
+only, 1 run/fold, no seed).
+
+**Protocol.** Leave-one-design-*family*-out (`--protocol lofo`, the
+default), 9 folds (sizes 7/5/5/5/4/1/1/1/1 — aes, gcd, riscv32i, jpeg,
+ibex, ethmac, dynamic_node, tinyRocket, swerv), 5 seeds (0-4) per fold per
+learned arch. `blur` runs once per fold, no seed (it has none). Every one
+of the 30 designs is scored only by a model whose fold excluded its whole
+family — an `aes` design is never scored by a model that trained on any
+other `aes` key, including `aes_lvt`. A separate `--protocol lodo`
+(single-key holdout, 30 folds) exists in the harness ONLY as a parity gate
+against `laplacian_sweep.py`'s `unet32` numbers and is never used for this
+comparison.
+
+**Primary metric:** held-out MSE on the per-sample min-max normalised
+map. **Secondary:** per-design spatial Spearman rho between prediction and
+truth over the 4096 pixels. `top10_abs_err` is reported only, not a
+criterion (the placement-gate's G2 showed it tracks real temperature
+range on only 2 of 4 designs, so it is not reliable as a sole criterion
+here).
+
+**Definitions**, candidate C vs baseline B (B = `unet32`, or `blur` for
+calibration tests): per design d, `delta_d = mean_over_seeds(MSE_C) -
+mean_over_seeds(MSE_B)`; `delta_rho_d` analogous for spatial Spearman.
+Noise threshold `T = mean_over_d(sqrt((sd_B,d^2 + sd_C,d^2) / 5))` (sd=0
+for blur).
+
+**Better** requires ALL of: (1) median delta < 0; (2) wins >= 20 of 30;
+(3) Wilcoxon p < 0.05 after Holm correction across the 4
+candidate-vs-unet32 tests (`unet16`, `unet8`, `fno`, `xgb` — fixed at 4
+regardless of which arms actually ran); (4) family-level mean delta < 0
+in >= 7 of 9 families; (5) |median delta| > T AND |mean delta| > T; (6)
+median delta_rho >= -0.02. Must ALSO hold in the n=29 sensitivity cut
+excluding `asap7_gcd_base`, else report "Better (not robust to the
+sensitivity cut)".
+
+**Worse:** mirror image of (1)-(5) (and delta_rho <= +0.02). **Confounded**
+if |Spearman(delta, log10 contrast)| >= 0.6 with p < 0.05, OR the
+upsampled (16-key, corrected — see below) vs native (14-key) strata have
+opposite-sign mean delta with both strata's magnitude above T.
+**Indistinguishable:** anything else.
+
+**Calibration tests:** same criteria (no Holm) for each learned arm
+against `blur`.
+
+**Corrected `UPSAMPLED_KEYS`.** `laplacian_sweep.UPSAMPLED_KEYS` is a
+stale 5-key set (per the 2026-09-16 (later) audit, the correct set at
+n=30 is 16 keys). `arch_sweep.py` does NOT import the stale constant; it
+defines its own `UPSAMPLED_KEYS_CORRECTED` (16 keys: the 5 originally
+documented + 7 of the 18 2026-09-16 designs solved on a coarse native
+HotSpot grid + 4 pre-existing designs the audit additionally found
+coarse-grid by effective-rank check) for its upsampled/native confound
+stratification.
+
+**Fixed hyperparameters (all neural arms):** AdamW lr=1e-3, weight_decay
+1e-4; CosineAnnealingLR(T_max=epochs, eta_min=1e-6); grad-norm clip 1.0;
+batch size 4; loss = `train_thermal._loss` (plain MSE, laplacian_weight=0,
+this sweep does not vary the Laplacian term). `unet16`/`unet8` reuse
+`CongestionUNet` unchanged at `base_features=16`/`8` (depth fixed at 4
+levels on purpose, so width is the only capacity variable). `fno` is
+`models/fno.py`'s `FNO2d(in_channels=5)` (width=32, modes=12, n_layers=4,
+~1.2M complex-valued / ~2.4M real-equivalent parameters), built from
+scratch (`torch.fft.rfft2`/`irfft2`, no `neuraloperator` dependency).
+`blur` predicts channel 4 of the input directly (`cell_density_blur`,
+already max-normalised) — a zero-parameter, zero-training reference.
+
+**Epoch decision (Stage 1 convergence check).** Probed all 4 arms on the
+`ibex` fold (4 held-out designs), seed 0, 120 epochs: all exited 0,
+produced finite metrics on all 4 held-out designs, and all had final
+train MSE well under 50% of epoch-1 train MSE (ratios 0.065-0.20,
+i.e. all learning). Last-20-epoch held-out-eval range as a fraction of
+its mean: `unet32`=0.305 (over the 25% threshold), `unet16`=0.132,
+`unet8`=0.100, `fno`=0.028. Because `unet32` exceeded the threshold, per
+the plan's rule epochs are raised to **200 for every neural arm**
+(never per-arm) for the full sweep.
+
+**Compute projection.** At 120 epochs on the `ibex` fold, measured wall
+times were `unet32`=8.7s, `unet16`=6.4s, `unet8`=6.0s, `fno`=5.7s (one
+fold, one seed, GPU: RTX 5060 Laptop). Scaling to 200 epochs
+(x200/120) and summing across the 4 arms gives ~45s per fold-seed;
+45 fold-seed combinations (9 folds x 5 seeds) projects to **~34 minutes**
+total training time, plus a negligible `blur` pass (9 folds, no
+training). This is far under the 4-hour stop threshold, so Stage 3
+proceeds.
+
+**Honest limits (stated, not resolved, per the plan's non-goals):**
+- Designs are not independent (7 of 30 are `aes`); effective n is closer
+  to 9 families — the 7-of-9-family criterion is a guard against this,
+  not a fix.
+- The contrast/die-size confound and the mixed wire-RC 6 early
+  sky130hd/asap7 keys are not removed, only tested for (Confounded
+  criterion) and reported (wire-RC stratum, by-PDK breakdown).
+- Only cudnn-level determinism is pinned for the torch arms (no
+  `torch.use_deterministic_algorithms`); FNO's cuFFT path is spot-checked
+  for rerun-to-rerun determinism in Stage 1 alongside the others, not
+  proven deterministic in general.
+- Seed noise differs hugely between arms (`blur` has none, `unet32` is
+  expected to have the most) — "beats `unet32`" is partly limited by the
+  baseline's own noise; this is exactly why T (the noise floor) gates
+  criteria (5).
+- `xgb` is skipped entirely this run (host has no xgboost); the Holm
+  correction is still computed across all 4 nominal candidates (count
+  fixed at registration time, per the plan), so the 3 arms that did run
+  are evaluated at the same statistical bar as if `xgb` had also run.
+- Holm correction across 4 tests and the 20/30 win bar are fixed choices,
+  pre-registered here, not to be adjusted after seeing results.
+
+No results yet — this entry is written before Stage 3 (the full sweep)
+runs, per the plan's gate.
+
 ### 2026-09-26 — Thermal placement loop, Stage B gate result: FAIL (the loop is not built)
 
 **Result.** The pre-registered gate ran to completion and the verdict is a
