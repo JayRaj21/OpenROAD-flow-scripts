@@ -120,18 +120,28 @@ def _verdict_reason(row, baseline_name):
 
 
 def _mini_bar(pct, scale):
-    """A small diverging bar inside a card: left of center = more accurate
-    (blue), right of center = less accurate (red), as a quick visual cue
-    alongside the percent number."""
+    """A small diverging bar inside a card, with its own axis labels so it
+    can be read without cross-referencing the number above it: left of
+    center = more accurate (blue), right of center = less accurate (red).
+    The bar's own length is a direct read of the percent change; the scale
+    labels mark what "all the way to the edge" means on this card's axis."""
     half = 120.0
     clamped = max(-scale, min(scale, pct))
     bar_w = abs(clamped) / scale * half
     color = BLUE if pct < 0 else RED if pct > 0 else GRAY_MID
     bar_x = half - bar_w if pct < 0 else half
-    return f"""<svg viewBox="0 0 240 14" preserveAspectRatio="none" class="mini-bar">
+    svg = f"""<svg viewBox="0 0 240 14" preserveAspectRatio="none" class="mini-bar">
       <line x1="120" y1="1" x2="120" y2="13" class="zero-line" />
       <rect x="{bar_x:.2f}" y="2" width="{max(bar_w, 0):.2f}" height="10" rx="3" fill="{color}"></rect>
     </svg>"""
+    return f"""<div class="mini-bar-wrap">
+      {svg}
+      <div class="mini-bar-axis">
+        <span class="axis-blue">&larr; more accurate (&minus;{scale:.0f}%)</span>
+        <span class="axis-zero">no change</span>
+        <span class="axis-red">less accurate (+{scale:.0f}%) &rarr;</span>
+      </div>
+    </div>"""
 
 
 def _candidate_card(row, baseline_label, scale):
@@ -263,6 +273,14 @@ GLOSSARY = """
       "Median" means the middle design when all 30 are sorted by how much
       they changed &mdash; it isn't skewed by one unusually good or bad design.</dd>
 
+      <dt>The blue/red bar under each card's headline</dt>
+      <dd>A direct picture of that same percentage: the bar's length is how
+      far the error moved, and its color is the direction &mdash; blue
+      reaching left means more accurate, red reaching right means less
+      accurate. The small labels under the bar mark what the far left and
+      far right edges mean on that card's scale; a bar that only reaches
+      partway across is a smaller change than one reaching the edge.</dd>
+
       <dt>Wins / losses</dt>
       <dd>Out of the held-out designs, how many had lower error ("win") vs.
       higher error ("loss") than the baseline. A real effect should win on
@@ -367,8 +385,16 @@ h3 {{ font-size: 1.05rem; margin: 28px 0 4px; }}
 .card-name {{ font-weight: 700; font-size: 1rem; }}
 .card-slug {{ font-weight: 400; color: var(--text-muted); font-size: 0.85rem; }}
 .card-headline {{ margin-top: 8px; font-size: 0.95rem; }}
-.mini-bar {{ display: block; width: 100%; max-width: 260px; height: 14px; margin-top: 6px; }}
+.mini-bar-wrap {{ max-width: 320px; margin-top: 6px; }}
+.mini-bar {{ display: block; width: 100%; height: 14px; }}
 .zero-line {{ stroke: var(--border); stroke-width: 2; }}
+.mini-bar-axis {{
+  display: flex; justify-content: space-between; gap: 6px; margin-top: 2px;
+  font-size: 0.7rem; color: var(--text-muted);
+}}
+.mini-bar-axis .axis-blue {{ color: {BLUE}; }}
+.mini-bar-axis .axis-red {{ color: {RED}; }}
+.mini-bar-axis .axis-zero {{ flex: 0 0 auto; }}
 .card-reason {{ margin-top: 8px; color: var(--text-secondary); font-size: 0.88rem; }}
 
 .verdict-badge {{
