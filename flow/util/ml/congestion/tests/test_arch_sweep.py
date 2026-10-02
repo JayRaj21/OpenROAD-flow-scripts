@@ -347,8 +347,12 @@ class TestIRDropTrainAndAnalyzeCLI(unittest.TestCase):
             page = f.read()
         self.assertIn("IR-drop", page)
         self.assertIn("<svg", page)
+        self.assertIn("What do these terms mean?", page)  # the glossary
         for cand_row in report_data["vs_unet32"]:
-            self.assertIn(f"{cand_row['median_delta']:+.4f}", page)
+            # exact precision isn't asserted (the page rounds for readability);
+            # the verdict label and the raw number in the technical table are.
+            self.assertIn(cand_row["verdict"], page)
+            self.assertIn(f"{cand_row['median_delta']:.6f}", page)
 
 
 class TestVerdictReturnsStats(unittest.TestCase):

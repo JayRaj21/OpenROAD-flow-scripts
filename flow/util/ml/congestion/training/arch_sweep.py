@@ -768,7 +768,13 @@ def _analyze_mode(args):
             f"{cand} vs unet32 (n={len(common)})",
         )
         emit(f"  -> {verdict}")
-        row = {"candidate": cand, "baseline": "unet32", **vstats}
+        row = {
+            "candidate": cand,
+            "baseline": "unet32",
+            "baseline_median_mse": float(np.median([per_arch_mse["unet32"][k] for k in common])),
+            "candidate_median_mse": float(np.median([per_arch_mse[cand][k] for k in common])),
+            **vstats,
+        }
 
         if args.sensitivity_exclude and args.sensitivity_exclude in deltas:
             common_n1 = [k for k in common if k != args.sensitivity_exclude]
@@ -828,7 +834,15 @@ def _analyze_mode(args):
             f"{cand} vs blur (n={len(common)})",
         )
         emit(f"  -> {verdict}")
-        report_vs_blur.append({"candidate": cand, "baseline": "blur", **vstats})
+        report_vs_blur.append(
+            {
+                "candidate": cand,
+                "baseline": "blur",
+                "baseline_median_mse": float(np.median([per_arch_mse["blur"][k] for k in common])),
+                "candidate_median_mse": float(np.median([per_arch_mse[cand][k] for k in common])),
+                **vstats,
+            }
+        )
     emit()
 
     analysis_cfg = ANALYSIS[args.track]
