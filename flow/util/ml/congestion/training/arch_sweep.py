@@ -1,6 +1,6 @@
 """
-Architecture comparison for the thermal track: U-Net (3 widths) vs a
-per-pixel XGBoost baseline vs a Fourier Neural Operator, with a free
+Architecture comparison for the thermal or IR-drop track: U-Net (3 widths)
+vs a per-pixel XGBoost baseline vs a Fourier Neural Operator, with a free
 Gaussian-blur baseline for calibration — under leakage-free design-family
 holdout (not `laplacian_sweep.py`'s single-key LODO).
 
@@ -47,10 +47,22 @@ Usage (from flow/):
   python3 util/ml/congestion/training/arch_sweep.py \\
       --out util/ml/congestion/experiments/arch_sweep.json --analyze
 
+  python3 util/ml/congestion/training/arch_sweep.py --track irdrop \\
+      --archs unet32,unet16,unet8,fno,blur \\
+      --seeds 0,1,2,3,4 --epochs 120 \\
+      --out util/ml/congestion/experiments/irdrop_arch_sweep.json
+
+  python3 util/ml/congestion/training/arch_sweep.py --track irdrop \\
+      --out util/ml/congestion/experiments/irdrop_arch_sweep.json --analyze
+
 Parity gate (must match laplacian_sweep.py's unet32/lodo numbers exactly):
   python3 util/ml/congestion/training/arch_sweep.py --protocol lodo \\
       --folds nangate45_gcd_base --archs unet32 --seeds 0 --epochs 3 \\
       --out /tmp/arch_parity.json
+
+  python3 util/ml/congestion/training/arch_sweep.py --track irdrop \\
+      --protocol lodo --folds nangate45_gcd_base --archs unet32 \\
+      --seeds 0 --epochs 3 --out /tmp/ir_arch_parity.json
 """
 
 import argparse
@@ -72,7 +84,7 @@ sys.path.insert(0, os.path.join(_HERE, "..", "loop"))
 
 from fno import FNO2d  # noqa: E402
 from laplacian_sweep import TRACKS, _parse_key, _spearman  # noqa: E402
-from thermal_metrics import shape_metrics  # noqa: E402
+from thermal_metrics import blur_proxy, shape_metrics  # noqa: E402
 from train_lodo import family_of  # noqa: E402
 from unet import CongestionUNet  # noqa: E402
 
@@ -110,6 +122,49 @@ UPSAMPLED_KEYS_CORRECTED = {
 }
 
 HOLM_CANDIDATE_COUNT = 4  # unet16, unet8, fno, xgb — fixed regardless of availability
+
+
+def _blur_cell_density(x: np.ndarray) -> np.ndarray:
+    """IR-drop's zero-parameter blur baseline: a Gaussian blur of cell
+    density (x[0]), max-normalised, computed on the fly since the IR-drop
+    dataset has no pre-blurred channel (unlike thermal's x[4]). See
+    DESIGN_RUNS.md's IR-drop architecture comparison pre-registration for
+    the rationale."""
+    b = blur_proxy(x[0])
+    m = b.max()
+    return b / m if m > 0 else b
+
+
+def _blur_pred(track: str, x: np.ndarray) -> np.ndarray:
+    if track == "thermal":
+        return x[4]  # cell_density_blur, already /max-normalised
+    if track == "irdrop":
+        return _blur_cell_density(x)
+    raise KeyError(f"No blur-baseline definition for track={track!r}")
+
+
+def _thermal_strata_for_analysis(designs: dict, keys: list[str]):
+    upsampled = [k for k in keys if k in UPSAMPLED_KEYS_CORRECTED]
+    native = [k for k in keys if k not in UPSAMPLED_KEYS_CORRECTED]
+    return [("upsampled", upsampled), ("native", native)], None
+
+
+ANALYSIS = {
+    "thermal": {
+        "confound_key": "contrast",
+        "confound_label": "log10 contrast",
+        "confound_transform": "log10",
+        "strata_fn": _thermal_strata_for_analysis,
+        "report_only_rho_keys": [],
+    },
+    "irdrop": {
+        "confound_key": "worst_drop_mv",
+        "confound_label": "log10 worst_drop_mv",
+        "confound_transform": "log10",
+        "strata_fn": TRACKS["irdrop"]["strata_fn"],
+        "report_only_rho_keys": ["occupancy", "rel_drop"],
+    },
+}
 
 
 def _unet_build(base_features):
@@ -179,6 +234,8 @@ def _base_record(track, protocol, arch, fold, design, seed, epochs, n_params, wa
         "wall_s": wall_s,
         "heldout_mse_best_epoch": None,
         "train_mse_final": None,
+        "epoch1_train_mse": None,
+        "heldout_eval_mse_history": None,
     }
 
 
@@ -227,6 +284,7 @@ def _run_torch(
     best_mse = float("inf")
     train_mse_final = 0.0
     epoch1_train_mse = None
+    heldout_eval_mse_history: list[float] = []
 
     t0 = time.time()
     for epoch in range(1, epochs + 1):
@@ -264,6 +322,7 @@ def _run_torch(
                 eval_mse += loss_fn(pred, target, 0.0).item()
                 n_eval_batches += 1
         eval_mse /= n_eval_batches
+        heldout_eval_mse_history.append(eval_mse)
         if eval_mse < best_mse:
             best_mse = eval_mse
     wall_s = time.time() - t0
@@ -291,6 +350,8 @@ def _run_torch(
             record["heldout_mse"] = heldout_mse_torch
             record["heldout_mse_best_epoch"] = best_mse
             record["train_mse_final"] = train_mse_final
+            record["epoch1_train_mse"] = epoch1_train_mse
+            record["heldout_eval_mse_history"] = heldout_eval_mse_history
             records.append(record)
     return records, epoch1_train_mse
 
@@ -341,7 +402,7 @@ def _run_fixed(arch_name: str, track: str, eval_ds, held_out_keys: list[str]) ->
         sample = eval_ds[idx]
         x = sample["x"].numpy()
         target_np = sample[target_key].squeeze(0).numpy()
-        pred = x[4]  # cell_density_blur, already /max-normalised -- see thermal_dataset.py
+        pred = _blur_pred(track, x)
         record = _base_record(track, None, arch_name, None, key, None, None, 0, time.time() - t0)
         record.update(_score(pred, target_np))
         records.append(record)
@@ -743,41 +804,83 @@ def _analyze_mode(args):
         emit(f"  -> {verdict}")
     emit()
 
-    emit("## Confound: Spearman(delta vs unet32, log10 contrast) and strata")
+    analysis_cfg = ANALYSIS[args.track]
+    confound_key = analysis_cfg["confound_key"]
+    confound_label = analysis_cfg["confound_label"]
+    confound_transform = analysis_cfg["confound_transform"]
+
+    emit(f"## Confound: Spearman(delta vs unet32, {confound_label}) and strata")
+    strata_note = None
     for cand in candidates:
         common = sorted(set(per_arch_mse[cand]) & set(per_arch_mse["unet32"]))
         deltas_ordered = [per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in common]
-        contrasts = [np.log10(designs[k]["contrast"]) for k in common]
-        rho, p = _spearman(deltas_ordered, contrasts)
-        upsampled = [k for k in common if k in UPSAMPLED_KEYS_CORRECTED]
-        native = [k for k in common if k not in UPSAMPLED_KEYS_CORRECTED]
+        confound_vals = [designs[k][confound_key] for k in common]
+        if confound_transform == "log10":
+            confound_vals = [np.log10(v) for v in confound_vals]
+        rho, p = _spearman(deltas_ordered, confound_vals)
+
+        strata_groups, strata_note = analysis_cfg["strata_fn"](designs, common)
+        (s1_label, s1_keys), (s2_label, s2_keys) = strata_groups
 
         thresholds = [
             np.sqrt((sds["unet32"].get(k, 0.0) ** 2 + sds[cand].get(k, 0.0) ** 2) / n_seeds[cand])
             for k in common
         ]
         T = float(np.mean(thresholds)) if thresholds else float("nan")
-        up_mean = float(
-            np.mean([per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in upsampled])
-        ) if upsampled else float("nan")
-        nat_mean = float(
-            np.mean([per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in native])
-        ) if native else float("nan")
+        s1_mean = float(
+            np.mean([per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in s1_keys])
+        ) if s1_keys else float("nan")
+        s2_mean = float(
+            np.mean([per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in s2_keys])
+        ) if s2_keys else float("nan")
         opposite_sign_confound = (
-            upsampled
-            and native
-            and np.sign(up_mean) != np.sign(nat_mean)
-            and abs(up_mean) > T
-            and abs(nat_mean) > T
+            s1_keys
+            and s2_keys
+            and np.sign(s1_mean) != np.sign(s2_mean)
+            and abs(s1_mean) > T
+            and abs(s2_mean) > T
         )
         confound = (abs(rho) >= 0.6 and p < 0.05) or opposite_sign_confound
         emit(
-            f"{cand}: rho(delta,log10 contrast)={rho:.4f} p={p:.4f} "
-            f"upsampled(n={len(upsampled)})_mean_delta={up_mean:.6f} "
-            f"native(n={len(native)})_mean_delta={nat_mean:.6f} "
+            f"{cand}: rho(delta,{confound_label})={rho:.4f} p={p:.4f} "
+            f"{s1_label}(n={len(s1_keys)})_mean_delta={s1_mean:.6f} "
+            f"{s2_label}(n={len(s2_keys)})_mean_delta={s2_mean:.6f} "
             f"{'CONFOUNDED' if confound else 'no confound signal'}"
         )
+    if strata_note:
+        emit(f"    Note: {strata_note}")
     emit()
+
+    if args.track == "irdrop":
+        emit(
+            "## Report-only (IR-drop): occupancy / rel_drop correlations, "
+            "asap7 voltage-regime stratum"
+        )
+        for cand in candidates:
+            common = sorted(set(per_arch_mse[cand]) & set(per_arch_mse["unet32"]))
+            deltas_ordered = [
+                per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in common
+            ]
+            parts = []
+            for rho_key in analysis_cfg["report_only_rho_keys"]:
+                vals = [designs[k][rho_key] for k in common]
+                rho, p = _spearman(deltas_ordered, vals)
+                parts.append(f"rho(delta,{rho_key})={rho:.4f} p={p:.4f}")
+            emit(f"{cand}: " + "  ".join(parts))
+        for a in archs_present:
+            asap7_vals = [
+                per_arch_mse[a][k] for k in per_arch_mse[a] if designs[k]["pdk"] == "asap7"
+            ]
+            other_vals = [
+                per_arch_mse[a][k] for k in per_arch_mse[a] if designs[k]["pdk"] != "asap7"
+            ]
+            emit(
+                f"{a}: asap7(n={len(asap7_vals)})_mean_mse="
+                f"{np.mean(asap7_vals) if asap7_vals else float('nan'):.5f} "
+                f"other(n={len(other_vals)})_mean_mse="
+                f"{np.mean(other_vals) if other_vals else float('nan'):.5f}"
+            )
+        emit()
 
     emit("## Report-only: wire-RC stratum, PDK, top10_abs_err, n_params, train_mse_final")
     # The 6 designs actually routed under the old (pre-2026-09-16) wire-RC
@@ -831,13 +934,15 @@ def main():
         "--out", default="util/ml/congestion/experiments/arch_sweep.json"
     )
     ap.add_argument("--analyze", action="store_true")
-    ap.add_argument("--sensitivity-exclude", default="asap7_gcd_base")
+    ap.add_argument("--sensitivity-exclude", default=None)
     args = ap.parse_args()
 
     args.archs = args.archs.split(",")
     args.seeds = [int(s) for s in args.seeds.split(",")]
     if args.folds is not None:
         args.folds = args.folds.split(",")
+    if args.sensitivity_exclude is None:
+        args.sensitivity_exclude = TRACKS[args.track]["default_sensitivity_exclude"]
 
     if args.analyze:
         _analyze_mode(args)

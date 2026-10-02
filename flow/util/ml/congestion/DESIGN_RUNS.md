@@ -89,6 +89,301 @@ flow/ml/
 
 ## Changelog
 
+### 2026-10-01 (irdrop later) — IR-drop architecture comparison, Stage 3/4 result: no candidate beats unet32, and nothing beats blur either
+
+**Result.** Full sweep ran as pre-registered: `unet32`, `unet16`, `unet8`,
+`fno` x 9 family folds x 5 seeds (180 learned-arm invocations, 600
+per-design records), plus `blur` x 9 folds, no seed (30 records) = 630 run
+records in `experiments/irdrop_arch_sweep.json`, matching 4 arms x 9 folds
+x 5 seeds + 30 exactly. `xgb` did not run (no xgboost on this host, per
+the pre-registration entry). Verdicts below are exactly what
+`arch_sweep.py --analyze --track irdrop` printed (mechanically produced,
+not hand-adjusted) — see `experiments/irdrop_arch_sweep_summary.md` for
+the full per-design table, confound table, and report-only breakdowns.
+
+**Stage 3 timing (measured, one `--archs` invocation per arm into the
+same `--out`):** `unet32`=6m13s, `unet16`=4m38s, `unet8`=4m30s,
+`fno`=4m54s, `blur`=~2s (no training). Total ~20.3 minutes — somewhat
+higher than the Stage-1 projection of ~18.7 minutes (per-arm wall time per
+fold-seed combo on `ibex` was not perfectly representative of every fold,
+e.g. `aes` has 7 held-out designs' worth of held-out evaluation per
+epoch), but the same order of magnitude and far under the 4-hour stop
+threshold.
+
+**Verdicts vs `unet32` (Holm-corrected across the 4 pre-registered
+candidate tests `unet16`/`unet8`/`fno`/`xgb`; `xgb` did not run so its
+slot is a non-rejection by default):**
+
+| Candidate | median delta | mean delta | wins/losses | Holm-adj p | families neg/pos (of 9) | median delta-rho | Verdict | Sensitivity cut (n=29, nangate45_gcd_base excluded) |
+|---|---|---|---|---|---|---|---|---|
+| `unet16` | +0.001652 | +0.007461 | 10/20 | 0.15367 | 2/7 | -0.0390 | **Indistinguishable** | Indistinguishable |
+| `unet8` | +0.003193 | +0.011818 | 11/19 | 0.15367 | 4/5 | -0.0670 | **Indistinguishable** | Indistinguishable |
+| `fno` | +0.005253 | +0.023540 | 11/19 | 0.15367 | 2/7 | -0.0372 | **Indistinguishable** | Indistinguishable |
+
+All three candidates have a positive (worse-than-`unet32`) median and
+mean delta, so the relevant mirror-image criteria to check are "Worse"'s,
+not "Better"'s. On that count `unet16` actually clears the losses (20)
+and families-positive (7/9) bars; what blocks "Worse" for it is the
+Holm-adjusted p (0.154, raw p 0.077) and |median|/|mean| both falling
+below the noise threshold T=0.0100. `unet8` falls just short of the
+losses bar (19, needs 20) in addition to failing significance and the T
+check. `fno` also falls one short on losses (19) and families (7/9, same
+as the others), and its raw p (0.038) would pass alone, but the
+Holm-adjusted figure (0.154) does not — its |median|/|mean| also sit
+under T=0.0082. None of the three clears every "Worse" criterion
+simultaneously, which is why all three land on **Indistinguishable**
+rather than **Worse**, not because none came close on any single
+criterion. This is the opposite directional pattern from the thermal
+result, where `fno` beat `unet32` outright: on IR-drop, nothing tested
+is shown to beat the production U-Net, but nothing is shown to be reliably
+worse than it either, by this harness's pre-registered bar.
+
+**Calibration vs `blur` (same criteria, no Holm correction) — the
+surprising part of this result:** every candidate, including `unet32`
+itself, has a large negative median delta (-0.131 to -0.154) and a large
+win margin (24-27 of 30) against the free blur baseline, with
+Holm-uncorrected p well under 0.0001 in all four cases — on held-out MSE
+alone, all four learned arms are clearly, overwhelmingly better than
+`blur`. But **none of the four is scored "Better" by this harness's
+pre-registered criteria**, because criterion (6) (`median delta_rho >=
+-0.02`) fails for all of them: `unet32`=-0.0738, `unet16`=-0.1049,
+`unet8`=-0.1010, `fno`=-0.0486. Every learned arch's spatial Spearman
+correlation with the true IR-drop map is, in the typical design, *worse*
+than `blur`'s own rank correlation, even though its absolute error is far
+lower. This is a real, counter-intuitive-but-reportable artifact of using
+MSE as the primary metric and Spearman as a gate — verified by direct
+inspection of individual predictions, not just the aggregate numbers.
+The mechanism is the opposite of what a first guess might suggest: the
+learned models are not sharper than `blur`, they are *smoother* —
+retrained-and-inspected predictions had a standard deviation 3-7x lower
+than the true map's on the designs checked, i.e. the models are
+compressing their output toward the per-design mean. That compression
+lowers MSE (predicting close to the mean is a safe bet against a
+squared-error loss) but it also flattens exactly the fine-grained
+spatial ordering that Spearman rewards. `blur`'s large MSE, meanwhile, is
+driven mostly by an offset (its mean prediction sits well above the true
+map's mean on most designs) rather than by getting the spatial pattern
+wrong — and once that offset is corrected for, `blur` still loses to
+`unet32` on MSE by a wide margin, so the learned models' MSE win is real,
+not purely an artifact of `blur`'s miscalibrated scale. The verdict
+machinery is doing exactly what it is supposed to do here — gating a
+seemingly-clear MSE win on a second, independent metric — and the result
+is that **no arch, not even the production model, passes the full
+"Better than blur" bar on this track**, which is a genuine finding about
+this gate's criteria on IR-drop data, not a bug.
+
+**Confound check:** no confound signal on any candidate.
+`rho(delta vs unet32, log10 worst_drop_mv)` is -0.097 (`unet16`), -0.031
+(`unet8`), -0.180 (`fno`), all with p>0.34 (threshold was |rho|>=0.6,
+p<0.05). The `fill_dominated`/`well_populated` occupancy strata are
+same-sign for all three candidates (no opposite-sign-with-both-above-T
+case), so the OR branch of the Confounded criterion also does not fire.
+The uniform "Indistinguishable" verdict above is not an artifact of the
+voltage-regime or fill-level confound as tested — but see the caveat
+below on what a null confound result can and cannot show here.
+
+**Report-only findings (IR-drop-specific):**
+- `rho(delta, occupancy)` and `rho(delta, rel_drop)`: all small and
+  non-significant (`unet16` occupancy rho=-0.209 p=0.267, `unet8`
+  occupancy rho=-0.039 p=0.840, `fno` occupancy rho=-0.267 p=0.154;
+  rel_drop rho's all |rho|<0.14, p>0.46). No evidence the
+  Indistinguishable verdicts are occupancy- or voltage-scale-driven.
+- asap7 (n=8, the high-voltage-drop regime, 77-148mV) vs other PDKs
+  (n=22, under 10mV) mean MSE: `blur` 0.183 vs 0.312 (blur is *better* on
+  asap7, worse elsewhere); every learned arch shows the opposite pattern
+  (worse on asap7 than elsewhere): `unet32` 0.051 vs 0.045, `unet16`
+  0.067 vs 0.049, `unet8` 0.076 vs 0.051, `fno` 0.108 vs 0.056. `fno` has
+  the largest asap7/other gap of the four learned arches. Targets are
+  min-max normalised per design, so this is NOT explained by asap7's
+  larger absolute drop values (that scale is removed before scoring) —
+  the actual cause of the asap7-vs-rest split for either `blur` or the
+  learned arches is not established by this sweep and would need its own
+  investigation if pursued further.
+- `n_params`: `unet32`=7,779,971, `unet16`=1,947,651 (~1/4), `unet8`=
+  488,291 (~1/16), `fno`=1,188,513 (complex weights counted as 1 element
+  each; real-equivalent storage ~2x), `blur`=0 — consistent with the
+  thermal-track counts (off by a handful of parameters from the
+  6-vs-5-input-channel difference in the first conv layer).
+- `mean_train_mse_final`: `fno`=0.0081, `unet8`=0.0233, `unet16`=0.0234,
+  `unet32`=0.0243. Unlike the thermal result, `fno` fitting its training
+  set tighter does *not* translate into better held-out generalisation
+  here — it has the worst held-out MSE of the four learned arches on
+  this track.
+- wire-RC stratum (same 6 corrected keys as the thermal fix:
+  `asap7_{aes,gcd,riscv32i}_base`, `sky130hd_{aes,gcd,riscv32i}_base` — a
+  placement-level property, applies identically to both tracks):
+
+  | arch | wire-RC-early (n=6) mean MSE | other (n=24) mean MSE |
+  |---|---|---|
+  | `blur` | 0.1803 | 0.3017 |
+  | `fno` | 0.1397 | 0.0522 (~2.7x) |
+  | `unet8` | 0.0874 | 0.0506 |
+  | `unet16` | 0.0763 | 0.0479 |
+  | `unet32` | 0.0520 | 0.0447 |
+
+  Same direction as the thermal track's corrected finding: `fno` is
+  disproportionately worse on the wire-RC-early stratum relative to its
+  own performance elsewhere, more so than the other learned arches. This
+  does not change the overall verdicts (all already Indistinguishable on
+  other grounds). **Caveat on how strong this parallel actually is:** 3 of
+  these 6 keys are asap7 designs, which the report-only finding above
+  already shows is a distinct regime for every architecture tested, and
+  most of `fno`'s gap on this stratum comes from a single design,
+  `asap7_riscv32i_base` (`fno`=0.4165 vs `unet32`=0.0519 on that design
+  alone). Excluding `asap7_riscv32i_base`, `fno`'s early-stratum mean is
+  0.084 vs 0.052 elsewhere — the gap narrows but doesn't disappear, so the
+  wire-RC and asap7-voltage-regime effects are confounded with each other
+  here and this finding should be read as weaker, less cleanly
+  attributable evidence than the equivalent thermal-track result, not as
+  an independent confirmation of it.
+- `top10_abs_err` (report-only, not a criterion): all four learned arches
+  are close to each other and modestly better than `blur` (`unet8`=1.009,
+  `fno`=1.101, `unet16`=1.106, `unet32`=1.153, `blur`=1.227 — roughly a
+  12-18% gap, not a large one) — note these are much larger in absolute
+  terms than the thermal track's values, consistent with IR-drop maps'
+  sharper, more localised hotspot structure.
+
+**Determinism spot-check (Stage 1, carried into this result):** all 4
+neural arms' Stage-1 probe runs on the `ibex` fold were rerun-identical
+in fresh processes (16 neural-arm `heldout_mse` values bit-identical, plus
+4 seedless `blur` values trivially identical since that arm has no
+randomness — 20 total records, not 20 independently-confirmed seeded
+reruns), including
+`fno`'s cuFFT path; the `unet32`/`lodo` parity gate against
+`laplacian_sweep.py --track irdrop` matched to the full float repr on
+both folds tested (`nangate45_gcd_base`: `0.04507558047771454`;
+`asap7_riscv32i_base`: `0.02958085387945175`, both ways, across
+`heldout_mse_final`/`heldout_mse`, `heldout_mse_best_epoch`, and
+`train_mse_final`).
+
+**Non-goals respected:** no checkpoint from this sweep is shipped; none
+of `train_irdrop.py`/`irdrop_dataset.py` was touched; no hyperparameter
+search beyond the pre-registered defaults (epochs stayed at 120 for every
+arm, per the Stage 1 convergence check); no new data/re-extraction; no
+architecture-switch decision; `laplacian_sweep.py`, `train_irdrop.py`,
+`irdrop_dataset.py`, `thermal_dataset.py`, `unet.py`, `fno.py`,
+`heads.py`, and everything under `loop/` are byte-for-byte unchanged
+(verified by `git diff --quiet`); the thermal track's own regression
+(`arch_sweep.py --track thermal --analyze` summary and the thermal parity
+value) is unchanged by these edits.
+
+**What this does and doesn't mean.** This is a comparison result, not an
+architecture-switch decision (explicit non-goal either way). On this
+30-design, family-held-out IR-drop set, under these exact pre-registered
+criteria: no smaller U-Net or FNO variant distinguishes itself from the
+production `unet32`, and — more notably — none of the four learned
+architectures clears the full "Better than blur" bar either, purely
+because of the spatial-rank (Spearman) criterion, even though all four
+crush `blur` on MSE by a wide, highly significant margin. As the plan's
+risk list anticipated, the blur baseline here "can't see PDN geometry at
+all," so "beats blur" was always meant to be an easier bar for IR-drop
+than it was for thermal — the fact that even this easier bar isn't
+cleanly cleared (on the rank-correlation half of the bar) is worth
+flagging plainly rather than reading past it. It is not evidence that any
+of these architectures would behave differently with more data, a
+different loss, or a different grid resolution, none of which this sweep
+varied, and the null confound result only rules out the two specific
+confounds tested (voltage regime, fill-level), not every other possible
+one — a limit inherent to min-max-per-design normalisation, as noted in
+the pre-registration.
+
+### 2026-10-01 (irdrop) — IR-drop architecture comparison, pre-registration (Stage 2)
+
+This applies the 2026-10-01 thermal comparison (`training/arch_sweep.py`,
+`--track irdrop`) to the IR-drop labels: the same 30 designs and 9 family
+folds (7/5/5/5/4/1/1/1/1 — aes, gcd, riscv32i, jpeg, ibex, ethmac,
+dynamic_node, tinyRocket, swerv), 5 seeds, arms `unet32` (baseline),
+`unet16`, `unet8`, `fno` (`FNO2d(in_channels=6)`), and `blur` as a
+calibration reference. `xgb` is not run (no xgboost on the host, and the
+harness refuses it for IR-drop).
+
+**Carried over unchanged from the thermal pre-registration:** the primary
+metric (held-out MSE on the per-design min-max normalised map); spatial
+Spearman as the secondary; `top10_abs_err` as report-only; the
+Better/Worse/Indistinguishable criteria (1)-(6) exactly as written; Holm
+correction across the 4 nominal candidates; T = mean_d
+sqrt((sd_B^2 + sd_C^2)/5); the calibration tests against `blur` without
+Holm; the n-1 sensitivity cut with its own Wilcoxon and Holm; fixed
+hyperparameters; loss = `train_irdrop._loss` at lambda=0 (plain MSE).
+
+**IR-drop-specific inputs:**
+1. *Blur:* `gaussian_filter(cell_density, sigma=BLUR_SIGMA=3)/max`,
+   computed in the harness (`arch_sweep._blur_cell_density`). Same
+   definition as thermal channel 4 (unit-tested bit-identical on thermal
+   via a synthetic sample). The IR-drop dataset has no blur channel; `x[4]`
+   there is `stripe_density`. Rationale: static IR drop is a Poisson
+   problem (nabla.(sigma*nabla V)=J, distributed sources), so the solution
+   is the source term convolved with the PDN's Green's function — a
+   low-pass filter; cell density is the input most tied to current draw,
+   so a smoothed version of it is the zeroth-order guess. PDN channels
+   (`stripe_density`/`via_density`) were rejected as the baseline since
+   using them directly needs a hand-chosen sign (more stripe/via density
+   means less drop) and scale.
+2. *Confounded:* |Spearman(delta, log10 worst_drop_mv)| >= 0.6 with
+   p < 0.05 (voltage-regime/label-range variable, in place of log10
+   contrast; asap7 sits at 77-148mV, every other PDK under 10mV), OR
+   `fill_dominated` (occupancy < 0.5, n=14 at n=30) vs `well_populated`
+   (n=16) have opposite-sign mean delta with both above T (label-resolution
+   artifact, in place of upsampled/native; the 0.5 split is not degenerate
+   at n=30, so the median fallback does not fire). `UPSAMPLED_KEYS_CORRECTED`
+   is a HotSpot-grid property and is not used for IR-drop.
+3. *Sensitivity cut:* exclude `nangate45_gcd_base`, the lowest-occupancy
+   design at n=30 (occupancy=0.0471), confirming the IR-drop track's
+   2026-09-16 convention still holds at n=30.
+4. *Report-only:* rho(delta, occupancy), rho(delta, rel_drop), asap7 (n=8)
+   vs others (n=22) mean MSE, and the 6-key wire-RC stratum
+   (`asap7_{aes,gcd,riscv32i}_base`, `sky130hd_{aes,gcd,riscv32i}_base` — a
+   placement-level property applying to both tracks).
+
+**Parity gate:** `unet32`/lodo matched `laplacian_sweep.py --track irdrop`
+exactly, full float repr, on both folds tested: `nangate45_gcd_base`
+`heldout_mse_final`/`heldout_mse`=`0.04507558047771454`,
+`heldout_mse_best_epoch`=`0.04507558047771454`,
+`train_mse_final`=`0.045260295271873474`; `asap7_riscv32i_base`
+`heldout_mse_final`/`heldout_mse`=`0.02958085387945175`,
+`heldout_mse_best_epoch`=`0.02958085387945175`,
+`train_mse_final`=`0.04765586648136377`. Thermal regression: parity value
+still `0.05825115740299225`, thermal `--analyze` summary diff against the
+pre-change baseline empty.
+
+**Stage 1 (`ibex` fold, 4 held-out designs, seed 0, 120 epochs):** all 4
+neural arms exited 0, produced finite metrics on all 4 held-out designs.
+Train-mse ratios (final/epoch-1, all learning, bar is <0.5): `unet32`=0.330,
+`unet16`=0.202, `unet8`=0.211, `fno`=0.069. Last-20-epoch held-out-eval
+range as a fraction of its mean (bar is <=0.25, else raise every arm to 200
+epochs): `unet32`=0.056, `unet16`=0.187, `unet8`=0.180, `fno`=0.010 — all
+under the 0.25 threshold, so **epochs stay at 120 for every arm** in Stage 3.
+Determinism rerun (fresh process): all 20 `heldout_mse` values bit-identical
+between the two runs, including `fno`'s cuFFT path. No NaN/divergence in any
+arm (`via_density`/`stripe_density` are unnormalised raw counts/ratios, per
+the plan's risk list, but no issue appeared at this probe).
+
+**Compute projection.** Per-arm wall time at 120 epochs on `ibex` (one
+fold, one seed, GPU): `unet32`=8.3s, `unet16`=6.0s, `unet8`=5.5s,
+`fno`=5.2s (sum 25.0s). Since epochs stay at 120 (no scaling needed), and
+each arm runs 45 fold-seed combinations (9 folds x 5 seeds) in the full
+sweep: 25.0s x 45 ~= **18.7 minutes** total training time, plus a
+negligible `blur` pass (9 folds, no training). Far under the 4-hour stop
+threshold, so Stage 3 proceeds.
+
+**Honest limits:** the n=12 IR-drop Laplacian sweep found unet32 seed noise
+is large (asap7_riscv32i_base had sd 0.116 at n=12), so the noise floor may
+gate out moderate effects here. Asap7 is a separate voltage regime (the
+log10 worst_drop_mv confound and the report-only asap7 stratum may
+overlap — acceptable, noted here). The fill-artifact (occupancy) confound
+is tested, not removed. Targets are min-max normalized per design, so the
+confound check can only see shape effects, not absolute scale — a null
+confound result is weaker evidence than it looks. Inputs aren't normalised
+(raw via counts/stripe ratios); if any arm diverges or produces NaN in the
+full sweep, stop and report rather than patching the dataset. The blur
+baseline can't see PDN geometry at all (only cell density), so "beats
+blur" is an easier bar for IR-drop than it was for thermal. Designs aren't
+independent: effective n is about 9 families. Determinism is only
+spot-checked (cudnn-level), same as thermal.
+
+No results yet — this entry is written before Stage 3 (the full sweep)
+runs, per the plan's gate.
+
 ### 2026-10-01 (later) — Thermal architecture comparison, Stage 3/4 result: FNO is Better than unet32, smaller U-Nets are Indistinguishable
 
 **Result.** Full sweep ran as pre-registered: `unet32`, `unet16`, `unet8`,

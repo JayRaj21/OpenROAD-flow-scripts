@@ -76,6 +76,50 @@ def _make_synthetic_dataset(out_dir: str, seed: int = 0) -> list[str]:
     return keys
 
 
+def _make_synthetic_irdrop_dataset(out_dir: str, seed: int = 0) -> list[str]:
+    rng = np.random.default_rng(seed)
+    keys = []
+    for pdk, design in SYNTH_DESIGNS:
+        key = f"{pdk}_{design}_base"
+        keys.append(key)
+
+        cell = gaussian_filter(rng.random((GRID, GRID)).astype(np.float32), sigma=3)
+        cell /= cell.max() + 1e-9
+        macro = (rng.random((GRID, GRID)) > 0.9).astype(np.float32)
+        pin = gaussian_filter(rng.random((GRID, GRID)).astype(np.float32), sigma=2)
+        pin /= pin.max() + 1e-9
+        fanout = gaussian_filter(rng.random((GRID, GRID)).astype(np.float32), sigma=4)
+        fanout /= fanout.max() + 1e-9
+
+        np.savez(
+            os.path.join(out_dir, f"{key}_features.npz"),
+            cell_density=cell,
+            macro_density=macro,
+            pin_density=pin,
+            fanout_density=fanout,
+        )
+
+        stripe_density = gaussian_filter(
+            rng.random((GRID, GRID)).astype(np.float32), sigma=2
+        )
+        via_density = gaussian_filter(
+            rng.random((GRID, GRID)).astype(np.float32), sigma=2
+        )
+        irdrop_map = (gaussian_filter(cell, sigma=5) * 0.05).astype(np.float32)
+        irdrop_map += rng.random((GRID, GRID)).astype(np.float32) * 0.005
+        voltage_map = (0.8 - irdrop_map).astype(np.float32)
+        current_density_proxy = cell.astype(np.float32)
+        np.savez(
+            os.path.join(out_dir, f"{key}_irdrop_labels.npz"),
+            irdrop_map=irdrop_map,
+            voltage_map=voltage_map,
+            current_density_proxy=current_density_proxy,
+            stripe_density=stripe_density.astype(np.float32),
+            via_density=via_density.astype(np.float32),
+        )
+    return keys
+
+
 class TestFNO(unittest.TestCase):
     def test_shape_and_range(self):
         model = FNO2d(in_channels=5)
@@ -138,6 +182,28 @@ class TestScore(unittest.TestCase):
         scores = arch_sweep._score(target, target)
         self.assertAlmostEqual(scores["heldout_mse"], 0.0, places=10)
         self.assertAlmostEqual(scores["spatial_spearman"], 1.0, places=10)
+
+
+class TestBlurPred(unittest.TestCase):
+    def test_thermal_blur_equals_channel_4(self):
+        rng = np.random.default_rng(0)
+        cell = rng.random((GRID, GRID)).astype(np.float32)
+        blurred = gaussian_filter(cell, sigma=3)
+        blurred = blurred / blurred.max()
+        x = np.stack(
+            [cell, rng.random((GRID, GRID)), rng.random((GRID, GRID)), rng.random((GRID, GRID)), blurred]
+        ).astype(np.float32)
+        np.testing.assert_array_equal(arch_sweep._blur_cell_density(x), x[4])
+        np.testing.assert_array_equal(arch_sweep._blur_pred("thermal", x), x[4])
+
+    def test_irdrop_blur_is_smoothed_cell_density_not_channel_4(self):
+        rng = np.random.default_rng(0)
+        x = rng.random((6, GRID, GRID)).astype(np.float32)
+        expected = gaussian_filter(x[0], 3)
+        expected = expected / expected.max()
+        pred = arch_sweep._blur_pred("irdrop", x)
+        np.testing.assert_allclose(pred, expected, atol=1e-6)
+        self.assertFalse(np.array_equal(pred, x[4]))
 
 
 class TestTrainCLI(unittest.TestCase):
@@ -208,6 +274,56 @@ class TestTrainCLI(unittest.TestCase):
         with open(self.out) as f:
             n2 = len(json.load(f)["runs"])
         self.assertEqual(n1, n2)
+
+
+class TestIRDropTrainAndAnalyzeCLI(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.data_dir = os.path.join(self.tmpdir.name, "data")
+        os.makedirs(self.data_dir)
+        self.keys = _make_synthetic_irdrop_dataset(self.data_dir)
+        self.out = os.path.join(self.tmpdir.name, "irdrop_arch_sweep_test.json")
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def _run_cli(self, extra_args):
+        cmd = [
+            sys.executable,
+            ARCH_SWEEP_PATH,
+            "--track",
+            "irdrop",
+            "--data-dir",
+            self.data_dir,
+            "--out",
+            self.out,
+        ] + extra_args
+        return subprocess.run(cmd, cwd=FLOW_DIR, capture_output=True, text=True)
+
+    def test_train_and_analyze_end_to_end(self):
+        result = self._run_cli(
+            [
+                "--archs",
+                "unet32,unet8,blur",
+                "--seeds",
+                "0",
+                "--epochs",
+                "2",
+                "--batch-size",
+                "2",
+                "--folds",
+                "ibex",
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        result = self._run_cli(["--analyze"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary_path = os.path.splitext(self.out)[0] + "_summary.md"
+        with open(summary_path) as f:
+            summary = f.read()
+        self.assertIn("fill_dominated", summary)
+        self.assertIn("log10 worst_drop_mv", summary)
 
 
 if __name__ == "__main__":
