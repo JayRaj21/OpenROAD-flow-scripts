@@ -576,7 +576,7 @@ def _verdict(
     adjusted_p: float,
     emit,
     label: str,
-) -> str:
+) -> tuple[str, dict]:
     keys = sorted(deltas)
     vals = [deltas[k] for k in keys]
     median_d = float(np.median(vals))
@@ -627,10 +627,27 @@ def _verdict(
         and median_drho <= 0.02
     )
     if better:
-        return "Better"
-    if worse:
-        return "Worse"
-    return "Indistinguishable"
+        verdict = "Better"
+    elif worse:
+        verdict = "Worse"
+    else:
+        verdict = "Indistinguishable"
+
+    stats_out = {
+        "median_delta": median_d,
+        "mean_delta": mean_d,
+        "wins": wins,
+        "losses": losses,
+        "n": len(vals),
+        "adjusted_p": adjusted_p,
+        "T": T,
+        "families_negative": families_negative,
+        "families_positive": families_positive,
+        "n_families": n_families,
+        "median_delta_rho": median_drho,
+        "verdict": verdict,
+    }
+    return verdict, stats_out
 
 
 def _analyze_mode(args):
@@ -728,6 +745,7 @@ def _analyze_mode(args):
     else:
         adjusted_by_candidate_n1 = {}
 
+    report_vs_unet32 = []
     for cand in candidates:
         common = sorted(set(per_arch_mse[cand]) & set(per_arch_mse["unet32"]))
         deltas = {k: per_arch_mse[cand][k] - per_arch_mse["unet32"][k] for k in common}
@@ -738,7 +756,7 @@ def _analyze_mode(args):
             for k in common
             if k in rho_c and k in rho_b and not np.isnan(rho_c[k]) and not np.isnan(rho_b[k])
         }
-        verdict = _verdict(
+        verdict, vstats = _verdict(
             deltas,
             delta_rhos,
             sds.get(cand, {}),
@@ -750,11 +768,12 @@ def _analyze_mode(args):
             f"{cand} vs unet32 (n={len(common)})",
         )
         emit(f"  -> {verdict}")
+        row = {"candidate": cand, "baseline": "unet32", **vstats}
 
         if args.sensitivity_exclude and args.sensitivity_exclude in deltas:
             common_n1 = [k for k in common if k != args.sensitivity_exclude]
             deltas_n1 = {k: deltas[k] for k in common_n1}
-            verdict_n1 = _verdict(
+            verdict_n1, vstats_n1 = _verdict(
                 deltas_n1,
                 {k: v for k, v in delta_rhos.items() if k in common_n1},
                 sds.get(cand, {}),
@@ -771,9 +790,16 @@ def _analyze_mode(args):
                 emit(f"  -> Worse (not robust to the sensitivity cut)")
             else:
                 emit(f"  -> sensitivity cut: {verdict_n1}")
+            row["sensitivity_cut"] = {
+                "excluded": args.sensitivity_exclude,
+                "verdict": verdict_n1,
+                **vstats_n1,
+            }
+        report_vs_unet32.append(row)
     emit()
 
     emit("## Calibration vs blur (no Holm correction)")
+    report_vs_blur = []
     for cand in [a for a in archs_present if a != "blur"]:
         if "blur" not in per_arch_mse:
             continue
@@ -790,7 +816,7 @@ def _analyze_mode(args):
             _, p_cal = stats.wilcoxon(list(deltas.values()))
         except ValueError:
             p_cal = float("nan")
-        verdict = _verdict(
+        verdict, vstats = _verdict(
             deltas,
             delta_rhos,
             sds.get(cand, {}),
@@ -802,6 +828,7 @@ def _analyze_mode(args):
             f"{cand} vs blur (n={len(common)})",
         )
         emit(f"  -> {verdict}")
+        report_vs_blur.append({"candidate": cand, "baseline": "blur", **vstats})
     emit()
 
     analysis_cfg = ANALYSIS[args.track]
@@ -915,6 +942,25 @@ def _analyze_mode(args):
     with open(summary_path, "w") as f:
         f.write("\n".join(lines) + "\n")
     print(f"Wrote summary to {summary_path}")
+
+    # Structured counterpart to the markdown summary above, for
+    # view_report.py to render as charts without recomputing any
+    # statistic — this harness's verdict logic stays the single source of
+    # truth for both the text and the chart.
+    report_data_path = os.path.splitext(args.out)[0] + "_report_data.json"
+    with open(report_data_path, "w") as f:
+        json.dump(
+            {
+                "track": args.track,
+                "n_designs": len(designs),
+                "archs_present": archs_present,
+                "vs_unet32": report_vs_unet32,
+                "vs_blur": report_vs_blur,
+            },
+            f,
+            indent=2,
+        )
+    print(f"Wrote report data to {report_data_path}")
 
 
 def main():

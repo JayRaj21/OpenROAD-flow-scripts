@@ -325,6 +325,50 @@ class TestIRDropTrainAndAnalyzeCLI(unittest.TestCase):
         self.assertIn("fill_dominated", summary)
         self.assertIn("log10 worst_drop_mv", summary)
 
+        report_data_path = os.path.splitext(self.out)[0] + "_report_data.json"
+        with open(report_data_path) as f:
+            report_data = json.load(f)
+        self.assertEqual(report_data["track"], "irdrop")
+        self.assertTrue(report_data["vs_unet32"])
+        self.assertTrue(report_data["vs_blur"])
+        for row in report_data["vs_unet32"] + report_data["vs_blur"]:
+            self.assertIn(row["verdict"], ("Better", "Worse", "Indistinguishable"))
+
+        html_out = os.path.join(self.tmpdir.name, "report.html")
+        view_report_path = os.path.join(os.path.dirname(ARCH_SWEEP_PATH), "view_report.py")
+        result = subprocess.run(
+            [sys.executable, view_report_path, report_data_path, "--out", html_out],
+            cwd=FLOW_DIR,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(html_out) as f:
+            page = f.read()
+        self.assertIn("IR-drop", page)
+        self.assertIn("<svg", page)
+        for cand_row in report_data["vs_unet32"]:
+            self.assertIn(f"{cand_row['median_delta']:+.4f}", page)
+
+
+class TestVerdictReturnsStats(unittest.TestCase):
+    def test_verdict_stats_match_printed_values(self):
+        deltas = {"a": -0.5, "b": -0.4, "c": 0.1}
+        delta_rhos = {"a": 0.01, "b": 0.0, "c": -0.01}
+        sds_c = {"a": 0.01, "b": 0.01, "c": 0.01}
+        sds_b = {"a": 0.01, "b": 0.01, "c": 0.01}
+        families = {"a": "fam1", "b": "fam2", "c": "fam3"}
+        emitted = []
+        verdict, stats_out = arch_sweep._verdict(
+            deltas, delta_rhos, sds_c, sds_b, families, 1, 0.5, emitted.append, "test"
+        )
+        self.assertEqual(stats_out["verdict"], verdict)
+        self.assertAlmostEqual(stats_out["median_delta"], -0.4)
+        self.assertEqual(stats_out["wins"], 2)
+        self.assertEqual(stats_out["losses"], 1)
+        self.assertEqual(stats_out["n_families"], 3)
+        self.assertEqual(len(emitted), 1)  # unchanged printed-line behavior
+
 
 if __name__ == "__main__":
     unittest.main()

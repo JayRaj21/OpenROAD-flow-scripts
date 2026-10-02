@@ -89,6 +89,35 @@ flow/ml/
 
 ## Changelog
 
+### 2026-10-02 — `arch_sweep.py --analyze` now also writes a chart-ready report, and a local HTML viewer to render it
+
+Both bake-off results (thermal and IR-drop) were only readable as a markdown
+table before this. `--analyze` now also writes `<out_stem>_report_data.json`
+next to the usual `_summary.md` — the exact same per-candidate stats
+(`median_delta`, `wins`/`losses`, `adjusted_p`, `T`, family counts,
+`median_delta_rho`, `verdict`) that `_verdict()` already computes and prints,
+just also returned as a dict instead of only emitted as text. No new
+statistics, no behavior change to the printed output: both tracks' `--analyze`
+text was confirmed byte-for-byte identical before and after this change.
+
+New script `training/view_report.py` reads one or two of these
+`*_report_data.json` files and renders a single local HTML page with
+diverging bar charts (median delta vs `unet32`, and vs `blur` alongside the
+median-delta-rho gate that blocks a "Better" verdict even on a decisive MSE
+win) plus the full data table. It recomputes nothing — every number on the
+page comes from the same `_verdict()` output already in the JSON, so the
+chart can never say something the text summary doesn't.
+
+Usage (from `flow/`):
+```
+python3 util/ml/congestion/training/view_report.py \
+    util/ml/congestion/experiments/arch_sweep_report_data.json \
+    util/ml/congestion/experiments/irdrop_arch_sweep_report_data.json \
+    --out util/ml/congestion/experiments/bakeoff_report.html
+```
+Open the resulting file directly in a browser — no server, no network
+dependency, no Claude Code or claude.ai account needed to view it.
+
 ### 2026-10-01 (irdrop later) — IR-drop architecture comparison, Stage 3/4 result: no candidate beats unet32, and nothing beats blur either
 
 **Result.** Full sweep ran as pre-registered: `unet32`, `unet16`, `unet8`,
