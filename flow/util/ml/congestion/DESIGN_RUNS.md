@@ -89,6 +89,229 @@ flow/ml/
 
 ## Changelog
 
+### 2026-10-02 (latest) — FNO production-readiness pass, Stages 2-6 result: STAY ON U-NET (G1 fails, narrowly)
+
+**Result.** New harness `training/readiness_eval.py` (read-only imports
+from `arch_sweep.py`, `laplacian_sweep.py`, `train_thermal.py`,
+`models/thermal_arch.py` — none of those four files were touched) runs the
+same `unet32`/`fno`/`blur` comparison as the bake-off but under
+`train_thermal.py`'s actual production recipe: a single `ThermalDataset(
+augment=True)` object split 70/15/15 by `split_thermal_dataset` (fixed
+seed 42) restricted to each fold's non-held-out designs, batch size 8,
+100 epochs, `num_workers=2`, best-validation-checkpoint selection, AdamW
+lr=1e-3/wd=1e-4, cosine schedule, grad-clip 1.0, Laplacian weight 0 — per
+the gates pre-registered in the entry directly below this one (confirmed
+unchanged from that entry; nothing here was tuned after seeing a result).
+
+**Stage 2a timing probe.** `unet32`=11.36s, `fno`=7.95s for one fold-seed
+(`ibex`, 100 epochs, GPU). Projected: (11.36+7.95)×45 fold-seed
+combinations ≈ **14.5 minutes** for Stage 2's two trainable arches, plus a
+negligible `blur` pass — far under the 2-hour stop threshold, so Stage 2
+proceeded. Measured Stage 2 wall time: 13m03s, matching the projection
+closely; wrote 330 run records (one per design per seed: `unet32`
+30 designs×5 seeds + `fno` 30×5 + `blur` 30×1 = 150+150+30 = 330) to
+`experiments/readiness_sweep.json`.
+
+**G1 (effect holds under production settings) — FAIL, narrowly.**
+`arch_sweep.py --analyze --sensitivity-exclude asap7_gcd_base` on
+`readiness_sweep.json` (unmodified script, read-only use):
+
+| | median Δ | mean Δ | wins/losses | Holm-adj p | families neg/pos | T | median Δ-rho | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| full sample (n=30) | -0.007170 | -0.006389 | 20/10 | 0.09364 | 7/2 (of 9) | 0.006603 | 0.0198 | **Indistinguishable** |
+| n=29 cut (excl. `asap7_gcd_base`) | -0.007468 | -0.007060 | 20/9 | 0.03951 | 7/2 (of 9) | 0.006721 | 0.0218 | **Better** |
+
+The pre-registered rule requires the full-sample verdict to be **Better**
+*and* the n=29 cut to also be **Better**. Here the n=29 cut alone clears
+every bar (including a Holm-adjusted p of 0.03951 < 0.05), and the
+full-sample |median Δ|=0.007170 clears the pre-registered 0.006638 bar
+(half the bake-off's 0.013276) — but the full-sample verdict itself is
+**Indistinguishable**, not Better, because two of its six criteria fail by
+a narrow margin: Holm-adjusted p=0.09364 (not <0.05; raw p would have
+passed, Holm correction over the 4 nominal candidates is what pushes it
+over) and |mean Δ|=0.006389 vs noise floor T=0.006603 (fails by 0.0002,
+about 3% of T).
+
+**Correction (post-review):** the first draft of this entry attributed
+the near-miss to `asap7_gcd_base` specifically, as if it were a lone
+outlier or artifact. Checked directly by dropping each of the 30 designs
+in turn and recomputing: three different exclusions (not just
+`asap7_gcd_base`) each independently push both failing criteria over
+their bars — `ihp-sg13g2_aes_base` (Holm-adj p=0.02581, the largest of
+the three), `ihp-sg13g2_gcd_base` (0.03951), and `asap7_gcd_base` itself
+(0.03951, matching the n=29 cut above since that's the one the
+pre-registration named). `asap7_gcd_base` is only `fno`'s third-worst
+design here (Δ=+0.013047); `ihp-sg13g2_aes_base` is worse (Δ=+0.027214).
+Its own seed spread is ordinary (fno 0.0434-0.0583, sd 0.0055; unet32
+0.0328-0.0463, sd 0.0045, against a 30-design T of 0.0066) — not a bug,
+not an outlier, just a design `fno` consistently loses on (4 of 5 seeds
+above unet32's highest seed). It is the n=29 cut only because it was
+named in the pre-registration before any result existed, not because the
+data singles it out. The honest description: the full sample misses
+narrowly, and dropping any one of `fno`'s three biggest losses on this
+data would push it over — not that one design is an artifact distorting
+an otherwise-clear result. Per the mechanical rule this is still a clean
+**G1 = FAIL**, not a judgment call; the caveat worth flagging is that
+it's a genuine near-miss on real, ordinary design-to-design variation,
+not a case where `fno` and `unet32` are obviously, comfortably
+comparable.
+
+**G2 (determinism) — PASS.**
+- (a) Fresh-process rerun: `readiness_eval.py --archs unet32,fno --seeds
+  0,1,2` (all 9 folds, both arches, 180 total per-design records) into a
+  scratch file, then `--check-identical` against the Stage 2 sweep:
+  **180 matched, 0 mismatched** — every `heldout_mse` value byte-identical
+  across the two fresh processes, including `fno`'s cuFFT path.
+- (b) Two full-production-data `train_thermal.py --arch fno --seed 0`
+  runs (scratch `--checkpoint-dir`s `readiness_fno_a`/`readiness_fno_b`,
+  both deleted after recording the hashes): `thermal_best.pt` sha256
+  identical on both runs:
+  `af6da6c9a9990438e42798a4a1a8fd1ebb8e28895eaf15ca9d9c17fd1644a686`.
+- (c) Since (a) and (b) both passed in default (non-`--deterministic-
+  algorithms`) mode, the fallback clause ("repeat both with
+  `--deterministic-algorithms` only if (a) or (b) fails") was not
+  strictly triggered, but the probe was still run, per the plan's Stage 3
+  instructions, as a forward-looking check: `CUBLAS_WORKSPACE_CONFIG=:4096:8
+  readiness_eval.py --archs fno --seeds 0 --deterministic-algorithms
+  --label fno_detalg` ran to completion, exit 0, no `RuntimeError` from any
+  op, wall time 8.0-8.9s/fold (vs ~7.9-8.9s/fold in default mode on the same
+  folds) — no meaningful slowdown and no non-determinism-related failure
+  mode surfaced. G2 passes on default settings; adopting
+  `--deterministic-algorithms` is not required.
+
+**G3 (wire-RC weak spot doesn't affect current routes) — PASS.**
+`readiness_eval.py --wirerc-report --report-from readiness_sweep.json`
+(actual gate input; `arch_sweep.json`, the bake-off file, run first as a
+read-only corroboration only):
+
+| Group | n | fno mean MSE | unet32 mean MSE | Δ (fno - unet32) | T | Δ ≤ T? |
+|---|---|---|---|---|---|---|
+| E (report-only) | 6 | 0.052855 | 0.062902 | -0.010047 | 0.015897 | yes |
+| **L_asap7** | 5 | 0.023556 | 0.030030 | **-0.006475** | **0.004825** | **yes** |
+| L_sky | 2 | 0.030678 | 0.048597 | -0.017919 | 0.006533 | yes |
+| **L (asap7 ∪ sky)** | 7 | 0.025591 | 0.035335 | **-0.009744** | **0.005313** | **yes** |
+| O (report-only) | 17 | 0.032372 | 0.036089 | -0.003717 | 0.003854 | yes |
+
+The gate (bold rows) is PASS if Δ over L_asap7 ≤ T_L_asap7 AND Δ over L ≤
+T_L — both hold, and with room: averaged over these groups, `fno` is
+actually *better* than `unet32` under production settings, not just "not
+meaningfully worse." Averaged this way it looks like a reversal of the
+bake-off's own report-only finding (that `fno` was the *worst* arch on
+the 6-key wire-RC-early stratum, driven mostly by `asap7_riscv32i_base`).
+
+**Correction (post-review):** the first draft of this entry called the
+single-design comparison on `asap7_riscv32i_base` itself a "genuine
+reversal" too — `fno`=0.095907 vs `unet32`=0.121812 under production
+settings, read as `fno` now winning on that same design. Checked directly
+against the per-seed records: production `unet32`'s five seeds are
+`[0.0430, 0.0805, 0.4215, 0.0379, 0.0262]` — seed 2 alone (0.4215, a
+clear outlier against the other four) is what lifts the mean enough to
+exceed `fno`'s. `fno`'s five seeds are `[0.0695, 0.1029, 0.0716, 0.1750,
+0.0605]`; paired seed-by-seed, `fno` is *worse* than `unet32` on 4 of 5,
+and `fno`'s own median (0.0716) is well above `unet32`'s median (0.0430).
+`fno` is also worse than the zero-parameter `blur` baseline (0.0476) on
+this design. So the design-level "reversal" isn't supported — `fno`'s
+weakness on `asap7_riscv32i_base` largely persists under production
+settings; what changed is that one noisy `unet32` seed inflated
+`unet32`'s own mean on this one design, not that `fno` improved. The G3
+gate itself is unaffected by this correction, since it's decided on the
+**L**-group averages (5-7 designs each), not on this one design; averaged
+over a group, `fno`'s loss on `asap7_riscv32i_base` is outweighed by
+wins elsewhere. The accurate framing: the bake-off's "`fno` is the worst
+arch on this stratum" finding was about the un-averaged early group **E**
+(6 keys, including this design); G3 evaluates the broader **L** groups,
+where `fno`'s per-design losses and wins net out favorably — that's a
+difference in which designs get averaged together, not evidence `fno`
+itself performs differently on `asap7_riscv32i_base` under the two
+recipes. Per-design rows for `E ∪ L` and the riscv32i family are in the
+tool's output (`stage4_readiness.txt`, not committed — regenerable from
+`readiness_sweep.json` via `--wirerc-report`); the riscv32i family's 5
+keys individually (group means, not per-seed): `asap7`=fno 0.095907/unet32
+0.121812, `gf180`=fno 0.032439/unet32 0.043253, `ihp-sg13g2`=fno
+0.012461/unet32 0.016522, `sky130hd`=fno 0.013300/unet32 0.032045,
+`sky130hs`=fno 0.036372/unet32 0.085890 — `fno` is at or below `unet32`
+on every key's *mean* in this family under production settings, but per
+the correction above, `asap7`'s mean specifically should not be read as
+`fno` beating `unet32` seed-for-seed on that design.
+
+**G4 (learning rate, informational, does not block the decision).**
+`readiness_eval.py --archs fno --lr 3e-4|3e-3 --seeds 0,1,2,3,4` into the
+same scratch file, then `--compare fno fno_lr3e-4,fno_lr3e-3 --holm-m 2`:
+
+| Candidate | median Δ | mean Δ | wins/losses | Holm-adj p | families neg/pos | T | median Δ-rho | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| `fno_lr3e-4` | +0.010772 | +0.008190 | 9/21 | 0.00695 | 3/6 (of 9) | 0.003085 | -0.0943 | Indistinguishable |
+| `fno_lr3e-3` | +0.000259 | +0.003263 | 15/15 | 0.87121 | 3/6 (of 9) | 0.004589 | 0.0003 | Indistinguishable |
+
+Both candidates have a positive (worse-than-lr=1e-3) median delta, so
+neither clears "Better" (which requires median Δ < 0) — `fno_lr3e-4` is
+closer to a *statistically significant* regression (adj_p=0.00695) than
+to an improvement, and `fno_lr3e-3` is statistically indistinguishable
+from the current lr=1e-3 in either direction. Per the pre-registered rule,
+since neither is Better, **lr stays at 1e-3**; Stage 3(b)'s determinism
+recheck at a new LR was skipped since no new LR was adopted.
+
+**Decision: STAY ON U-NET.** READY TO SWITCH requires G1 ∧ G2 ∧ G3; G2
+and G3 pass but **G1 fails**, so the mechanical rule outputs STAY ON
+U-NET. Revisit trigger (tied to the failing gate, per the pre-registration):
+new data — specifically, G1 missed by a small margin on both the
+significance and magnitude criteria, and (per the correction above) that
+margin isn't owed to one anomalous design but to ordinary design-to-design
+spread; a revisit with more seeds (to shrink the per-design seed-noise
+component of T directly) is the more defensible narrow fix. Adding a few
+more designs to whichever family currently has the fewest, on the chance
+it reduces leverage on the full-sample statistics, is a weaker bet than
+it looked before this correction, since no single design or family was
+shown to be the cause.
+
+**Honest limits, as stated not resolved (carried from the
+pre-registration, re-checked against what actually happened):**
+- Production epoch count (100) is what this pass used throughout, per the
+  pre-registration's resolution of that ambiguity — no longer ambiguous
+  in practice, just worth remembering it was a judgment call, not a
+  measurement.
+- G3's groups are small (5 and 7 designs) — a G3 pass here is still weak
+  evidence, even though it passed with room (both Δs are favorable —
+  `fno` ahead of `unet32` — by more than their own T, i.e. the advantage
+  clears the noise floor rather than merely avoiding falling short of it).
+- The validation set is randomly flipped (production's own behavior,
+  kept on purpose to match what actually runs) — this pass does not
+  attempt to control for it.
+- G1's failure is a near-miss (2 of 6 criteria fail by small margins, on
+  ordinary design-to-design spread rather than one anomalous design —
+  see the correction above) — the mechanical verdict is still FAIL, and
+  this entry does not substitute a different verdict for the
+  pre-registered one, but a reader should not take "G1 FAIL" to mean
+  `fno` and `unet32` are decisively different in production; the evidence
+  here is genuinely closer to a coin flip than the bake-off's own
+  decisive `fno`-wins result was.
+- `readiness_eval.py` only ever trains `unet32` (thermal_arch's "unet" at
+  base_features=32) and `fno` — it does not reproduce `unet16`/`unet8`/
+  `xgb` under production settings, since production never runs those
+  either; this pass cannot speak to whether a smaller U-Net would behave
+  differently under the production recipe.
+- Designs are not independent (effective n is closer to 9 families); this
+  was already a limit of the bake-off and carries over unchanged here.
+
+**Files.** New: `training/readiness_eval.py` (the harness, read-only
+imports from `arch_sweep.py`/`laplacian_sweep.py`/`train_thermal.py`/
+`models/thermal_arch.py`), `tests/test_readiness_eval.py`. Data:
+`experiments/readiness_sweep.json` (330 records, the G1/G3 gate input),
+`experiments/readiness_sweep_summary.md` and
+`experiments/readiness_sweep_report_data.json` (from `arch_sweep.py
+--analyze`, unmodified script). The Stage 3(a) rerun, Stage 3(c)
+determinism probe, and Stage 5 LR-sweep JSON files were written to a
+scratch tmp directory outside the repo and are not committed. No
+checkpoint from this pass is shipped (`readiness_eval.py` never writes a
+checkpoint to disk in train mode at all); the two scratch Stage 3(b)
+checkpoint directories (`checkpoints/readiness_fno_a`/`readiness_fno_b`)
+were deleted after recording their hashes, leaving `checkpoints/` exactly
+as it was before this pass (`thermal_best.pt`/`thermal_last.pt` and the
+three `thermal_lodo_*` files, all untouched). `arch_sweep.py`,
+`laplacian_sweep.py`, `train_thermal.py`, `models/thermal_arch.py`, and
+everything under `loop/` are byte-for-byte unchanged (verified by `git
+diff --quiet` against this branch's Stage-1 commit).
+
 ### 2026-10-02 (later) — FNO production-readiness pass, pre-registration
 
 **Purpose.** The thermal bake-off (2026-10-01 later) found `fno` Better
