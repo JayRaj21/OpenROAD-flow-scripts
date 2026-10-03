@@ -89,6 +89,85 @@ flow/ml/
 
 ## Changelog
 
+### 2026-10-02 (later) — FNO production-readiness pass, pre-registration
+
+**Purpose.** The thermal bake-off (2026-10-01 later) found `fno` Better
+than `unet32` under its own harness's settings. This entry pre-registers
+the gates for deciding whether that result also holds under
+`train_thermal.py`'s actual production settings, before any of Stage 1's
+code or Stage 2's sweep exists — nothing below is to be tuned after
+seeing a result.
+
+**What's different between the bake-off and production, and why that
+matters here:**
+1. The production split is not the bake-off split, and production never
+   scores held-out designs. `train_thermal.py:82` calls
+   `split_thermal_dataset`, which does a random 70/15/15 split of
+   individual designs with a fixed seed of 42
+   (`thermal_dataset.py:145-159`) — not grouped by design family. The 5
+   test designs are never evaluated. Validation comes from the same
+   `ThermalDataset(augment=True)` object as training, so validation
+   images are randomly flipped too.
+2. Production training settings differ from the bake-off's: batch size 8
+   (bake-off: 4); epochs default 100 (bake-off: 200); `num_workers=2`
+   (bake-off: 0); production keeps the best-validation checkpoint
+   (bake-off: last-epoch model). LR 1e-3, weight decay 1e-4, cosine
+   schedule, grad clip 1.0, Laplacian weight 0 — same in both.
+3. Production training is not seeded at all today: no `torch.manual_seed`,
+   no cuDNN flags. Even today's U-Net checkpoint can't be reproduced.
+
+**Gates**, evaluated on a `readiness_sweep.json` that a later stage's
+`readiness_eval.py` will produce — does not exist yet:
+
+Δ_k = seed-mean MSE of `fno` minus seed-mean MSE of `unet32` for design
+k, under production settings, from `readiness_sweep.json` (produced in a
+later stage, not yet).
+
+- **G1, the effect holds under production settings.** `arch_sweep.py
+  --analyze` on `readiness_sweep.json` gives `fno` vs `unet32` =
+  **Better** (all six bake-off criteria, Holm m=4 as hardcoded). Also
+  **Better** in the n=29 cut excluding `asap7_gcd_base`. And |median Δ| ≥
+  0.006638 (half the bake-off's 0.013276).
+- **G2, determinism.** (a) `--check-identical` passes for `fno` on seeds
+  0-2 × all 9 folds (27 fold-seed runs). (b) Two full-data `--seed 0` FNO
+  `thermal_best.pt` files have identical sha256. If (a) or (b) fails only
+  in default mode: repeat both with `--deterministic-algorithms`. If they
+  then pass with no RuntimeError, G2 passes on condition that the switch
+  adopts that flag. Otherwise G2 FAILS. `unet32` mismatches are reported
+  but don't block anything.
+- **G3, the wire-RC weak spot doesn't affect current routes.** PASS if
+  mean Δ over L_asap7 ≤ T_L_asap7 AND mean Δ over L ≤ T_L, where each T is
+  the `_verdict` noise floor over that group. Otherwise FAIL. Report E and
+  riscv32i-family Δ regardless. G3 is evaluated on `readiness_sweep.json`;
+  the bake-off file only corroborates.
+  - **E** = `asap7_{aes,gcd,riscv32i}_base`, `sky130hd_{aes,gcd,riscv32i}_base`
+  - **L_asap7** = `asap7_{aes_lvt,ethmac,ibex,jpeg,jpeg_lvt}_base`
+  - **L_sky** = `sky130hd_{ibex,jpeg}_base`
+  - **L** = L_asap7 ∪ L_sky
+  - **O** = the other 17 designs
+- **G4, learning rate (decides what to adopt; doesn't block).** Adopt
+  3e-4 or 3e-3 only if `--compare` against `fno` at lr 1e-3 (Holm m=2)
+  gives **Better**. If both do, take the lower median delta. Otherwise
+  keep 1e-3. G1 is always judged at 1e-3; the adopted LR's G1 result is
+  reported as optimistic, not substituted in.
+- **Decision:** READY TO SWITCH iff G1 ∧ G2 ∧ G3. Otherwise STAY ON
+  U-NET, revisit trigger tied to the failing gate (G1→new data;
+  G2→determinism fix; G3→re-route the 6 early designs under current
+  platform files, ~2-3h, separate task).
+
+**Honest limits, stated not resolved:**
+- Production epoch count is ambiguous (the script's and demo's default
+  say 100, elsewhere in this file says 200) — this pass pre-registers 100
+  because that's what actually runs.
+- G3's groups are small (5 and 7 designs), so a G3 pass is weak evidence.
+- The validation set is randomly flipped — kept on purpose, matches
+  production.
+- `torch.use_deterministic_algorithms` may raise on some op; Stage 3
+  (later, not this round) only records that.
+
+No results yet — this entry is written before Stage 1 (making the
+architecture pluggable) or any later stage runs, per the plan's gate.
+
 ### 2026-10-02 — `arch_sweep.py --analyze` now also writes a chart-ready report, and a local HTML viewer to render it
 
 Both bake-off results (thermal and IR-drop) were only readable as a markdown
