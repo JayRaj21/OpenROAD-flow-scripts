@@ -6,6 +6,7 @@
 #
 # Options:
 #   --epochs N     Training epochs (default: 100)
+#   --arch NAME    Thermal model architecture: unet or fno (default: unet)
 #   --extract      If no thermal labels exist yet, run the Docker extraction
 #                  first (needs routed designs under results/ and the
 #                  openroad/orfs-ml:latest image; this is the slow step)
@@ -26,6 +27,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."   # always run from flow/
 
 EPOCHS=100
+ARCH=unet
 EXTRACT=false
 OPEN=true
 
@@ -37,6 +39,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --epochs)  EPOCHS="$2"; shift 2 ;;
+        --arch)    ARCH="$2"; shift 2 ;;
         --extract) EXTRACT=true; shift ;;
         --no-open) OPEN=false; shift ;;
         -h|--help) usage ;;
@@ -105,7 +108,8 @@ mkdir -p "$CKPT_DIR" "$OUT_DIR"
 python3 "$ML_DIR/training/train_thermal.py" \
     --data-dir "$DATA_DIR" \
     --checkpoint-dir "$CKPT_DIR" \
-    --epochs "$EPOCHS"
+    --epochs "$EPOCHS" \
+    --arch "$ARCH"
 
 echo ""
 echo "[4/5] Writing the HTML report..."

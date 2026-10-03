@@ -28,7 +28,7 @@ from scipy.ndimage import gaussian_filter
 import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "models"))
-from unet import CongestionUNet
+from thermal_arch import ARCH_CHOICES, load_thermal_model, thermal_heatmap
 
 
 def _parse_args():
@@ -40,7 +40,13 @@ def _parse_args():
         "--checkpoint", default="util/ml/congestion/checkpoints/thermal_best.pt"
     )
     ap.add_argument("--out", default="thermal_report.html")
-    ap.add_argument("--base-features", type=int, default=32)
+    ap.add_argument(
+        "--arch",
+        choices=ARCH_CHOICES,
+        default=None,
+        help="Thermal model architecture (default: resolved from the checkpoint's sidecar, else unet)",
+    )
+    ap.add_argument("--base-features", type=int, default=None)
     return ap.parse_args()
 
 
@@ -121,7 +127,7 @@ def collect(data_dir, model, device):
         t_norm = (t - t_lo) / denom
 
         with torch.no_grad():
-            pred = model(x_t).heatmap[0, 0].cpu().numpy()
+            pred = thermal_heatmap(model, x_t)[0, 0].cpu().numpy()
 
         mae = float(np.abs(pred - t_norm).mean())
         with np.errstate(invalid="ignore"):
@@ -205,7 +211,7 @@ select:focus,input:focus{{outline:1px solid var(--accent)}}
 <body>
 <header>
   <h1>Thermal Prediction Report</h1>
-  <span class="meta">{checkpoint} &nbsp;·&nbsp; {n} designs</span>
+  <span class="meta">{checkpoint} &nbsp;·&nbsp; {arch} &nbsp;·&nbsp; {n} designs</span>
 </header>
 <div class="controls">
   <label>Platform</label>
@@ -288,13 +294,10 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    model = CongestionUNet(
-        in_channels=5, base_features=args.base_features, num_heatmap_layers=1
-    ).to(device)
-    state = torch.load(args.checkpoint, map_location=device)
-    model.load_state_dict(state)
-    model.eval()
-    print(f"Loaded: {args.checkpoint}")
+    model, resolved = load_thermal_model(
+        args.checkpoint, device, arch=args.arch, base_features=args.base_features
+    )
+    print(f"Loaded: {args.checkpoint}  (arch={resolved['arch']})")
 
     rows = collect(args.data_dir, model, device)
     if not rows:
@@ -304,6 +307,7 @@ def main():
     data_js = json.dumps(rows)
     html = HTML_TEMPLATE.format(
         checkpoint=os.path.basename(args.checkpoint),
+        arch=resolved["arch"],
         n=len(rows),
         data_js=data_js,
     )

@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "models"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "training"))
 
 from thermal_dataset import BLUR_SIGMA
-from unet import CongestionUNet
+from thermal_arch import ARCH_CHOICES, load_thermal_model, thermal_heatmap
 
 
 def _parse_args():
@@ -62,10 +62,16 @@ def _parse_args():
         "--out", required=True, help="Output .npz path for predicted thermal map"
     )
     ap.add_argument(
+        "--arch",
+        choices=ARCH_CHOICES,
+        default=None,
+        help="Thermal model architecture (default: resolved from the checkpoint's sidecar, else unet)",
+    )
+    ap.add_argument(
         "--base-features",
         type=int,
-        default=32,
-        help="base_features used when training (default 32)",
+        default=None,
+        help="base_features used when training (default: resolved from the checkpoint's sidecar, else 32)",
     )
     ap.add_argument(
         "--grid",
@@ -135,15 +141,10 @@ def load_features(features_path: str) -> torch.Tensor:
 def predict(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = CongestionUNet(
-        in_channels=5,
-        base_features=args.base_features,
-        num_heatmap_layers=1,
-    ).to(device)
-    state = torch.load(args.checkpoint, map_location=device)
-    model.load_state_dict(state)
-    model.eval()
-    print(f"[predict] Loaded checkpoint: {args.checkpoint}")
+    model, resolved = load_thermal_model(
+        args.checkpoint, device, arch=args.arch, base_features=args.base_features
+    )
+    print(f"[predict] Loaded checkpoint: {args.checkpoint}  (arch={resolved['arch']})")
 
     tmp_feat = None
     if args.features:
@@ -155,9 +156,9 @@ def predict(args):
     x = load_features(feat_path).to(device)
 
     with torch.no_grad():
-        out = model(x)
+        out = thermal_heatmap(model, x)
     # Per-sample normalised output [0, 1]: 1 = predicted hottest point in design.
-    thermal_norm = out.heatmap[0, 0].cpu().numpy().astype(np.float32)
+    thermal_norm = out[0, 0].cpu().numpy().astype(np.float32)
 
     print(
         f"[predict] Relative hotspot map: "
