@@ -89,6 +89,201 @@ flow/ml/
 
 ## Changelog
 
+### 2026-11-02 (later) — Thermal U-Net vs blur diagnostics, result: the bake-off's blur baseline was mis-scaled, and two earlier conclusions are corrected
+
+Run with `training/diagnose_thermal.py` (stages p1 p2 d1-d5 report; parity
+gates P1 30/30 identical to the stored `blur` arm, P2 18/18 bit-identical,
+P3 unit test all passed). Every number below was independently recomputed by
+a reviewer from the raw data and reproduced, with no leakage found in the
+calibration (affine fit and sigma choice use training folds only). M = median
+held-out MSE over the 30 designs; lower is better.
+
+**What the study found.**
+
+| Predictor | M |
+|---|---|
+| constant (training mean) | 0.0668 |
+| mean map | 0.0488 |
+| bake-off `blur` (sigma 3, divided by its max) | 0.0540 |
+| blur, global affine fit only (sigma 3) | 0.0344 |
+| blur, global affine fit only, sigma chosen on training | 0.0338 |
+| blur, per-design min-max + global affine (sigma 3) | 0.0313 |
+| blur, per-design min-max + global affine, sigma chosen on training (8 in all 9 folds) | 0.0214 |
+| stored `unet32` (5 seeds) / stored `fno` | 0.0422 / 0.0236 |
+| ridge on 20 multi-scale input features, raw | 0.0524 |
+| same ridge, each feature min-max scaled per design (reviewer's run) | 0.0165 |
+| `unet32`, seed 0, output rescaled per design to min-max (reviewer's run) | 0.0377 -> 0.0230 |
+| ORACLE: blur of the true `power_grid`, min-max + affine (not available at inference) | 0.00265 |
+| ORACLE with global affine only (reviewer's run) | 0.0140 |
+
+1. **The bake-off's `blur` arm was mis-scaled.** Targets are min-max
+   normalised per design but the baseline was only divided by its max.
+   Fitting two global parameters on training designs drops it from 0.0540
+   to about 0.034.
+2. **The per-design min-max step is what makes "calibrated blur beats the
+   U-Net" true, and it helps the models too.** Without that step the
+   calibrated blur is not shown to differ from `unet32` (sigma 3: unet32
+   wins 11/30, p=0.24). Applying the same min-max step to `unet32`'s own
+   output (it uses no target information) takes it from 0.0377 to 0.0230,
+   level with the best blur (seed 0 only; `fno` does not gain from it). The
+   fair statement is that a properly scaled free baseline is about as good
+   as the U-Net, not that it clearly beats it.
+3. **A linear filter bank is competitive once it is scaled the same way.**
+   The raw ridge (0.0524) looked 24% worse than the U-Net, but with per-
+   design min-max on the features it reaches 0.0165, beating both stored
+   learned models. The pre-registered R3 outcome ("nonlinearity is doing
+   real work") is therefore an artifact of an inconsistent baseline and is
+   withdrawn. (The extra R3 labels in the code for the other directions were
+   not part of the pre-registered text.)
+4. **Inputs look like the bottleneck, with a caveat.** R1: oracle M 0.00265
+   vs unet32 0.0422 (ratio 0.063, under the 0.5 bar); with global affine
+   only the ratio is 0.33, still under 0.5. The oracle is partly circular
+   (temperature is a smooth function of the power HotSpot was given), so
+   read it as "a good power estimate would help a great deal", not as a
+   ceiling a model could reach.
+5. **Data: unresolved.** unet32 medians at 25/50/75/100% of training
+   designs: 0.0573 / 0.0446 / 0.0385 / 0.0414 (fno 0.0348 / 0.0290 / 0.0248
+   / 0.0230). The pre-registered mechanical R2 label is "saturated" (the
+   75->100% change is under 5%), but the change is an increase and about a
+   quarter of the per-seed sd (0.011), and the 25->50->75% steps fall 22%
+   then 14%. The honest reading is that 75->100% cannot be resolved with 3
+   seeds; the curve is not evidence of saturation.
+6. **Failure anatomy.** Delta (unet32 minus bake-off blur) correlates with
+   `distinct_values` (rho +0.53, p=0.003; Holm over 4 fields keeps it), but
+   that field is a proxy for coarse-grid vs native (rho 0.80 with
+   upsampled); within each grid group it is not significant, and it is
+   driven by the raw blur's scaling error, not by the U-Net. Train/held-out
+   gap: 0.0064 vs 0.0473, positive on 30/30 designs.
+
+**Corrections to earlier committed entries (those entries are not edited).**
+- **Thermal bake-off, "unet32 is statistically indistinguishable from
+  blur" and "fno vs blur: Better".** Both used the mis-scaled baseline.
+  Against a min-max calibrated blur `fno` wins 19/30 at sigma 3 (p=0.11) and
+  12/30 at sigma 8 (p=0.36); it still beats the global-affine-only blur
+  (24/30, p=0.0035). `fno` vs `unet32` does not involve blur and stands
+  (seed-0 retrains reproduced the stored records 30/30).
+- **IR-drop bake-off, "once that offset is corrected for, blur still loses
+  to unet32 on MSE by a wide margin" and "learned models beat blur
+  decisively on MSE" (24-27/30, p<1e-4).** Reviewer recomputation: global-
+  affine-fit blur M=0.0443 (unet32 wins 17/30, p=0.64); constant training
+  mean M=0.0432 (17/30, p=0.38); mean map 0.0430. No learned IR-drop arm is
+  shown to beat a constant predictor on MSE. The rank-correlation finding is
+  unaffected, since Spearman ignores affine rescaling (calibrated sigma-3 rho
+  0.227 equals the stored blur's), so blur still matches or beats every
+  learned arm on rank. The sentence about the learned models' predictions
+  being compressed toward the mean still describes the models, but the
+  claim that this buys them a large MSE win over blur does not stand.
+
+**Not done yet.** The reviewer's extra numbers (per-design-scaled ridge,
+global-affine-only blur, min-max-postprocessed model outputs, the IR-drop
+baselines) were computed in scratch scripts, not in the repo. A symmetric
+re-evaluation that applies the same post-processing to every predictor on
+both tracks, with several seeds, is the natural next step and would also
+settle the 75->100% question.
+
+### 2026-11-02 — Thermal U-Net vs blur diagnostics, reading rules (written before results)
+
+**Why.** In the architecture bake-off (entry "2026-10-01 (later) — Thermal
+architecture comparison", `experiments/arch_sweep.json`) the production U-Net
+(`unet32`) was statistically indistinguishable from the free `blur` baseline
+(input channel 4, the max-normalised sigma-3 Gaussian blur of cell density):
+median held-out MSE difference -0.0091, 18/30 wins, Holm-uncorrected p=0.158,
+with a large generalisation gap (train_mse_final ~0.0064 vs held-out ~0.045).
+Before spending effort on architectures or compute we want to know why.
+Candidate causes: (a) the inputs are a weak proxy for power (the real HotSpot
+`power_grid` sits in every `*_thermal_labels.npz` but is never an input);
+(b) too few training designs; (c) the net does no better than a linear filter
+bank over the same features; (d) the label is intrinsically noisy
+(per-design min-max normalisation, near-isothermal designs, 16 designs
+upsampled from a coarse HotSpot grid); (e) the blur baseline is helped or
+handicapped by its offset/scale.
+
+**This entry is written before any D2, D3, D4 or D5 number exists.** The only
+thing run beforehand was parity gate P1 (below), which passed.
+
+**Harness.** New `training/diagnose_thermal.py` (stages `p1 p2 d1 d2 d3 d4
+d5 report`) and `tests/test_diagnose_thermal.py`. Read-only imports from
+`arch_sweep.py`, `laplacian_sweep.py`, `thermal_dataset.py`,
+`loop/thermal_metrics.py`; none of those files, nor `experiments/arch_sweep.json`,
+`experiments/readiness_sweep.json` or any checkpoint, is modified. Results go to
+`experiments/thermal_diagnostics.json` and
+`experiments/thermal_diagnostics_summary.md`. Same 9 leave-one-design-family-out
+folds (`_make_family_folds`); targets are `ThermalDataset(augment=False)`
+`"thermal"` (per-design min-max normalised); every predictor is scored with
+`arch_sweep._score` (numpy float64). Summaries are median and mean over the 30
+designs. Stored torch arches use the per-design mean over seeds. `power_grid`
+is divided by its own max per design before use. D2, D3-`ridge_inputs_plus_power`
+use `power_grid`, which is NOT available at inference: oracle diagnostics only.
+
+**Study design.**
+
+- D1 floor and baselines (no training; fitting uses the fold's training designs
+  only): `const_mean` (mean of all training target pixels), `mean_map`
+  (per-pixel mean of training targets), and a cell-density blur sweep
+  `gaussian_filter(x[0], sigma)`, sigma in {1,2,3,4,6,8}, in three variants:
+  `raw_max` (divide by max; sigma=3 must equal channel 4 / the stored `blur`
+  arm), `minmax` (per-design min-max of the input-derived map), `calibrated`
+  (the `minmax` map with one global affine a*m+b fitted by least squares on
+  the training designs' pixels, then clipped to [0,1]).
+- D2 oracle-input ceiling: the same sigma sweep and variants on the true
+  `power_grid`. The reported sigma per variant is the one with the lowest
+  training-fold MSE, applied to the held-out designs (never chosen by held-out
+  score); the full sweep table is reported for transparency.
+- D3 linear filter bank: per-pixel ridge regression (numpy normal equations,
+  features standardised with training-fold statistics, unpenalised intercept)
+  on channels 0-3 x sigma in {0,1,2,4,8} = 20 features (`ridge_inputs`), and
+  those plus the power_grid blurred at the same 5 sigmas = 25 features
+  (`ridge_inputs_plus_power`, oracle). alpha=1.0 is the headline; alpha in
+  {0.01, 100} are sensitivity only and are not chosen among by held-out score.
+  Predictions clipped to [0,1].
+- D4 learning curve: `unet32` and `fno`, seeds 0,1,2, all 9 folds, trained on
+  nested random subsets of each fold's training designs at fractions 0.25,
+  0.5, 0.75 (1.0 reuses the stored bake-off records, seeds 0,1,2). Per
+  (fold, seed) one permutation of the sorted training keys is drawn from
+  `np.random.default_rng([fold_index, seed])` and the first round(frac*n_train)
+  keys are used, so subsets are nested. `arch_sweep._run_torch` is reused
+  unchanged through a thin dataset wrapper restricted to (training subset +
+  the fold's held-out keys). Recipe is the bake-off recipe (200 epochs, batch
+  size 4, lr 1e-3, as stored in `arch_sweep.json` and the `arch_sweep.py`
+  defaults).
+- D5 failure anatomy (no training): from the stored sweeps, per design
+  delta = MSE(unet32) - MSE(blur); Spearman of delta against `ptp_c`,
+  `contrast`, `corr_t_p`, `distinct_values`; mean delta by PDK and by
+  coarse-grid (`UPSAMPLED_KEYS_CORRECTED`) vs native; the 5 worst and 5 best
+  designs for the U-Net; train-vs-held-out gap per design.
+
+**Parity gates (must pass before any D1-D4 number is trusted).** P1: D1
+`raw_max` sigma=3 reproduces the stored `blur` `heldout_mse` per design, equal
+under `repr()`, all 30 designs (PASSED before this entry was written, 30/30).
+P2: `unet32` through the D4 wrapper at fraction 1.0 for folds `ibex`, `gcd` x
+seeds 0,1 is bit-identical to the stored records. P3: unit test that the 0.25
+subset is inside the 0.5 subset inside the 0.75 subset, and held-out keys never
+appear in a training subset.
+
+**Reading rules (M = median held-out MSE over the 30 designs).**
+
+- R1 input bottleneck. M_oracle = M of the best-sigma (chosen on training),
+  globally-affine-calibrated blur of the true `power_grid`. If M_oracle <=
+  0.5 x M_unet32: "input features are the bottleneck (the real power map is far
+  more predictive than anything the model sees)". If M_oracle >= 0.8 x
+  M_unet32: "even the true power map does not help; the limit is the
+  label/physics/normalisation, not the inputs". In between: "partially
+  input-limited".
+- R2 data-limited. Relative drop in unet32 median MSE from 75% to 100% of
+  training designs: >= 10% is data-limited (more designs should help); < 5% is
+  saturated (more designs of the same kind will not help much); otherwise
+  ambiguous. The 25/50/75/100% medians are reported as well.
+- R3 filtering-only. If the multi-scale ridge regression (alpha=1, 20 input
+  features) has M within 10% of M_unet32: "the U-Net is doing no more than a
+  linear filter bank over these inputs".
+- R4 baseline fairness. Report M for the globally-affine-calibrated cell-density
+  blur (sigma 3) against the raw stored blur. No threshold; state plainly
+  whether calibration changes the earlier "U-Net ties blur" conclusion
+  (including if calibrated blur beats unet32).
+
+These are interpretation aids for a diagnostic, not a pass/fail gate; the
+numbers and the rule each lands in are reported without softening.
+
 ### 2026-10-02 (latest) — FNO production-readiness pass, Stages 2-6 result: STAY ON U-NET (G1 fails, narrowly)
 
 **Result.** New harness `training/readiness_eval.py` (read-only imports
