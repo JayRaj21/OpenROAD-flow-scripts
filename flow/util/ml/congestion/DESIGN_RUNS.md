@@ -89,6 +89,210 @@ flow/ml/
 
 ## Changelog
 
+### 2026-11-04 — Input-normalisation experiment, result: normalising the inputs roughly halves the thermal U-Net's error and removes FNO's lead; nothing helps IR-drop
+
+Run with `training/input_norm_eval.py` (U-Net `unet32` and `fno`, input
+variants V0 raw / V1 per-design per-channel min-max / V2 V1 plus min-max
+blurs at sigma 1, 2, 4, 8 of the raw density channels, seeds 0-4, 9
+leave-one-family-out folds, both tracks; V0 is the stored results for seeds
+0-4). Parity gates passed: V0 through the new wrapper reproduced the stored
+unscaled `heldout_mse` bit-for-bit (36/36 per track), and V1/V2 commute
+with flips exactly on all 60 designs and read only the design's own input.
+An independent reviewer recomputed every number below from the raw JSON and
+found no leakage and no arithmetic errors; the wording below includes their
+corrections. M = median held-out MSE over 30 designs (unscaled / rescaled).
+
+| Thermal | unet32 | fno |
+|---|---|---|
+| V0 raw | 0.0422 / 0.0309 | 0.0236 / 0.0232 |
+| V1 | 0.0221 / 0.0171 | 0.0223 / 0.0201 |
+| V2 | 0.0146 / 0.0147 | 0.0186 / 0.0167 |
+| free baselines | ridge_mm 0.0165 / **0.0127**, blur_sel 0.0540 / 0.0236 | |
+
+| IR-drop (unscaled) | unet32 | fno |
+|---|---|---|
+| V0 | 0.0327 | 0.0488 |
+| V1 | 0.0331 | 0.0415 |
+| V2 | 0.0367 | 0.0455 |
+| free baselines | ridge_raw 0.0326, mean_map 0.0430, const_mean 0.0432 | |
+
+**N1 (does normalising help the same network?).** Thermal `unet32`: V1
+Better than V0 (23/30 designs, 7/9 families, median change -0.0159,
+Holm-adjusted p 3e-4); V2 Better (27/30, 8/9 families, -0.0232, p 4e-5).
+Thermal `fno` V1/V2 and all four IR-drop variants: no demonstrated effect.
+Interpretation: the thermal U-Net's earlier weakness was largely input
+scaling. Caveat on V1: macro density is all zeros in 28 of 30 designs on
+both tracks, so the constant-channel guard leaves it unchanged; pin/fanout
+and the thermal blur channel already have a per-design maximum of 1.0.
+So on thermal, V1 in practice rescales one channel (cell density). In two
+designs (asap7_riscv32i, nangate45_tinyRocket) a few macro pixels equal the
+cell-density maximum (268.8 and 55.8) and V1 compresses 99% of their
+cell-density pixels below 0.004; this affects 2 of 30 designs and flips no
+verdict. V2 adds no information beyond V1 (blur is linear and min-max is
+affine-invariant, so every V2 channel is a fixed function of V1); it hands
+the network precomputed multi-scale features.
+
+**N3 (does FNO's lead over the U-Net depend on normalisation? thermal).**
+V0 unscaled: fno Better (23/30, 8/9 families, adj. p 0.018). V1 and V2
+unscaled: Indistinguishable (15/30 and 12/30 wins for fno). V1 rescaled:
+Indistinguishable. V2 rescaled: fno is Worse than unet32 (fno lower on
+8/30 designs, lower in 1/9 families, median change +0.0040 against a noise
+threshold of 0.0029, adj. p 0.019). That last verdict is
+fragile: it appears only after rescaling (at V2 unscaled the pair is
+Indistinguishable, 12/18), it passes each rule by a small margin (22
+designs against a minimum of 20), and dropping the aes family (7 designs)
+takes it to 15/23 with raw p 0.065 (a post-hoc reviewer check). FNO did not
+get worse with normalisation: fno V2 vs fno V0 is Indistinguishable
+(unscaled 17/13, median -0.0012, adj. p 0.17), though its median did fall
+21% (0.0236 to 0.0186), just not reliably. The FNO-over-U-Net advantage
+disappears because the U-Net improves.
+
+**N2 (do normalised networks reach the free baselines?).** All 16
+comparisons are Indistinguishable. The pre-registered label for that
+outcome was "matches or beats" (anything not Worse). That label was too
+generous and is withdrawn: Indistinguishable here means the test has too
+little power, not that the networks match. On thermal all four networks
+have a higher median than `ridge_mm` at rescaled (0.0147 to 0.0201 vs
+0.0127), the network is lower in only 1 to 4 of 9 families against it, and
+fno V1 vs `ridge_mm` is close to Worse (higher on 23/30 designs, 8/9
+families, adj. p 0.057). The nearest result in the network's favour is
+unet32 V2 vs `blur_sel` rescaled (18/12, 7/9 families, adj. p 0.057). On
+IR-drop no network is lower than `mean_map` or `ridge_raw` (unscaled) in
+more than 5 of 9 families, and none beats a constant or the mean map at any
+variant. The report text was changed to say this ("not shown to differ;
+limited power") and now includes the sign of the median change.
+
+**IR-drop rank agreement (post-hoc, not pre-registered).** Median Spearman
+rises with V1 (unet32 0.206 to 0.309; fno 0.155 to 0.288), but the paired
+per-design tests show no reliable change: unet32 V1 is up on 13 designs and
+down on 17 (median change -0.008, p 0.78), and fno V1 is up on 21/30 (raw p
+0.035) but in only 4/9 families, which fails the family rule and would not
+survive correction. The jump in medians comes from comparing two separate
+medians, not from consistent per-design improvement. Do not report it as an
+improvement.
+
+**N4 (seed noise).** Thermal `unet32` median seed sd falls from 0.0119 (V0)
+to 0.0046 (V1) and 0.0037 (V2), 2.6 to 3.2 times lower. This is entirely
+explained by the lower error level: the median per-design coefficient of
+variation is flat (unet32 0.287 / 0.298 / 0.270; fno 0.130 / 0.130 /
+0.153), so relative seed noise is unchanged and the U-Net's remains about
+twice the FNO's.
+
+**Not pre-registered / bookkeeping.** The HTML originally dropped the
+median change from the N2 sentences and lacked N4; the rank analysis, the
+family-drop check and the coefficient-of-variation check are post hoc; the
+eight timing-probe runs (ibex, seed 0) are included in the merged results;
+networks are final-epoch models; designs are not independent (9 families);
+5 seeds only.
+
+**What this changes.**
+- The U-Net's weakness on thermal was largely unnormalised inputs; with
+  per-design rescaled inputs it is about as good as the FNO and the best
+  network overall (V2 unscaled 0.0146), and steadier in absolute terms.
+  "FNO beats the U-Net" and "the U-Net adds nothing over blur" are both
+  superseded.
+- A linear model on per-design-normalised multi-scale features is still at
+  least as good as the best normalised network on thermal (0.0127 vs
+  0.0147), so there is no demonstrated advantage from the networks' extra
+  capacity at this data size (30 designs).
+- IR-drop is unaffected by input scaling and the networks are still not
+  shown to beat a constant; the limit there is likely the label or features
+  (power and PDN information), not scaling.
+- If the thermal model is revisited for production, the candidate to test
+  is a U-Net with per-design input normalisation, not the FNO; production
+  inference would need the same transform.
+
+### 2026-11-03 (latest) — Input-normalisation experiment, pre-registration (written before results)
+
+**Why.** The symmetric re-evaluation found that a per-pixel linear ridge on
+per-design min-max-scaled multi-scale blur features (`ridge_mm`, thermal
+median MSE 0.0127 after rescaling) beats both networks, but the networks were
+fed UNNORMALISED inputs: thermal cell density has a per-design maximum from
+0.83 to 268.8 (17 of 30 designs above 1.5), macro density also reaches 268.8,
+and the IR-drop stripe and via channels reach about 130 and 265. So the gap
+could be model class or input scaling. This experiment gives the networks
+per-design-normalised inputs (and ridge-like multi-scale blur channels) and
+retrains them.
+
+**What exists before this entry.** The harness (`training/input_norm_eval.py`)
+and its unit tests (`tests/test_input_norm_eval.py`). No V1/V2 training run
+has been made and no comparison number has been looked at. After this entry
+is written I run the G-V0 parity gate (V0 only) and a 1-fold timing probe of
+V1/V2 (fold `ibex`, seed 0, both archs, both tracks), from which I look only
+at wall time.
+
+**Input variants** (network input only; targets untouched):
+- `V0` identity (raw inputs, as in all previous runs). Must reproduce the
+  stored results bit-for-bit (gate G-V0).
+- `V1` per-design, per-channel min-max of every input channel to [0, 1],
+  computed from that design's own input only. A constant channel maps to all
+  zeros (unit-tested). Same channel count as V0 (thermal 5, IR-drop 6).
+- `V2` V1's channels plus Gaussian blurs (scipy `gaussian_filter`, reflect
+  boundaries, sigma 1, 2, 4, 8) of the RAW density channels (thermal channels
+  0-3, IR-drop 0-5; the thermal channel-4 blur is not blurred again), each
+  blurred map min-max scaled per design: thermal 5+16 = 21 channels, IR-drop
+  6+24 = 30. The model `in_channels` is set through this tool's own path
+  (a temporary copy of `symmetric_eval`'s `TRACKS` binding); `ARCHS` and
+  `TRACKS` are not modified.
+
+**Implementation.** A wrapper dataset around the non-augmenting base datasets
+precomputes the transformed input per design, then applies the same
+`torch.rand` flip sequence to the transformed input and the target together.
+That is transform-before-flip; per-channel min-max and reflect-boundary blurs
+commute with flips up to float rounding (unit-tested to 1e-6). Evaluation uses
+the same transform of the held-out design's own input; no target statistic is
+ever used. Training recipe is `symmetric_eval.train_and_predict` unchanged
+(epochs 200 thermal / 120 IR-drop, batch 4, lr 1e-3, AdamW, cosine, final-epoch
+model, not best-val).
+
+**Runs.** Archs `unet32`, `fno`; variants V0 (stored), V1, V2; seeds 0-4; both
+tracks; the 9 leave-one-family-out folds; 30 designs per track. New training:
+2 variants x 2 archs x 2 tracks x 9 folds x 5 seeds = 360 runs. V0 comes from
+`symmetric_eval.json` seeds 0-4 only (its 10-seed results are not used beyond
+seed 4). Scoring is `symmetric_eval`'s, under P0 (as produced) and P1
+(per-design min-max of the prediction). Free baselines are the stored ones.
+Stop rule: if the 1-fold probe projects the 360 runs above 100 minutes, I stop
+and report instead of running. Runs are resumable (merged by
+(track, arch, variant, fold, seed)).
+
+**Gates.** G-V0: V0 through this wrapper and the `in_channels` plumbing for
+folds ibex and gcd x seeds 0,1 x both archs x both tracks must give
+`repr`-identical P0 `heldout_mse` to the stored bake-off values; a failure
+stops the study. G-flip: unit test that V1 and V2 commute with horizontal and
+vertical flips within 1e-6 and that nothing in them reads the target.
+
+**Comparison machinery.** Per-design value = mean over the 5 seeds of
+`heldout_mse` (P0 uses the torch float32 value, as in the symmetric study).
+Verdicts use `arch_sweep._verdict` (seven conditions including rank) with
+`arch_sweep._holm`; families from `family_of`. When a comparator has no rank
+correlation (a constant map) the rank condition is undefined and the test
+cannot return Better or Worse, so `const_mean` is NOT used as a Holm
+comparator; `mean_map` (which has a rank) is, and `const_mean` is reported
+descriptively only.
+- N1 (does normalisation help the network?): per track, each of {unet32, fno}
+  x {V1, V2} versus the same arch's V0, P0, Holm m=4 per track. "helps" if
+  Better, "hurts" if Worse, else "no demonstrated effect".
+- N2 (do normalised networks reach the free baselines?): thermal at P1, each
+  of {unet32, fno} x {V1, V2} versus `ridge_mm|P1` and `blur_sel|P1`, Holm
+  m=8. IR-drop at P0 (P1 is a poor post-process there), each network variant
+  versus `ridge_raw|P0` and `mean_map|P0`, Holm m=8. "matches or beats" a
+  baseline only if the verdict is Better or Indistinguishable (not Worse);
+  "still behind" if Worse.
+- N3 (does the FNO-vs-U-Net gap depend on normalisation?): thermal, `fno`
+  versus `unet32` within V0, V1, V2, at P0 and P1, Holm m=6; report whether
+  the P0 verdict (Better in V0) survives in V1 and V2.
+- N4 (noise): seed sd of per-design MSE per arch x variant, and its median
+  across designs.
+
+**Caveats stated in advance.** The 30 designs are not independent (9
+families), which is why the family-count condition is part of the verdict. 5
+seeds are used. V2 gives the networks information the ridge baseline also
+has (multi-scale blurs of the raw densities), so a V2 result is "same inputs,
+different model class", not "free information". Networks are final-epoch, not
+best-validation, models. A negative or null result (normalisation does not
+help, networks still behind) is an acceptable outcome and will be reported as
+such.
+
 ### 2026-11-03 — Symmetric re-evaluation, result: FNO's MSE win over the U-Net mostly disappears under equal rescaling; the networks are not shown to beat a free baseline
 
 Run with `training/symmetric_eval.py` (10 seeds, both tracks, 9 family
