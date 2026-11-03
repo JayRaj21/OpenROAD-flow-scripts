@@ -89,6 +89,234 @@ flow/ml/
 
 ## Changelog
 
+### 2026-11-03 — Symmetric re-evaluation, result: FNO's MSE win over the U-Net mostly disappears under equal rescaling; the networks are not shown to beat a free baseline
+
+Run with `training/symmetric_eval.py` (10 seeds, both tracks, 9 family
+folds, thermal also at 75% of training designs). Parity gates all passed:
+neural unscaled (P0) `heldout_mse` for seeds 0-4 reproduced the stored
+bake-off records bit-for-bit (300/300 per track), the stored `blur` arm
+30/30 per track, and the diagnostics values (the blur_sel gate covers 18 of
+30 designs, because folds that picked sigma 12 fall outside the
+diagnostics' sigma grid). An independent reviewer recomputed every number
+below from `experiments/symmetric_eval.json` and found no arithmetic
+errors; the wording below includes their corrections. The producing agent
+died on a network error after the runs and analysis finished, so the
+analysis was reviewed and this entry written afterwards. The script's
+default logging was also made quieter (one line per 20 runs; `--verbose`
+for per-run lines).
+
+**S1, thermal: `fno` vs `unet32`.**
+
+| | median change | wins/losses | adj. p (Holm m=2) | families | verdict |
+|---|---|---|---|---|---|
+| unscaled (P0) | -0.0153 | 22/8 | 0.003 | 8/1 | Better |
+| per-design rescaled (P1) | -0.0038 | 18/12 | 0.318 | 6/3 | Indistinguishable |
+
+Medians: unscaled fno 0.0245 vs unet32 0.0418; rescaled fno 0.0224 vs
+unet32 0.0306. Rescaling removes about 75% of the paired median gap and
+86% of the mean gap, and fno is still nominally ahead on 18/30 designs.
+The pre-registered label is "fno's win over unet32 is mostly output
+calibration"; that is fair for error only. Spearman is unchanged by
+rescaling, and fno's rank-agreement lead (+0.074 median, higher on 21/30
+designs) is untouched. Seed noise also differs: median per-design seed sd
+0.0142 for unet32 vs 0.0033 for fno, so the U-Net is about 4 times noisier
+across seeds. Medians over 5 vs 10 seeds are stable (unet32 0.0422 vs
+0.0418; fno 0.0236 vs 0.0245).
+
+**S2, learned models vs free scaled baselines.**
+- Thermal (rescaled, no extra fitting): `unet32` is Worse than `blur_sel`
+  (9/21 wins/losses, adj. p 0.023); `fno` is Indistinguishable (10/20). The
+  per-design-normalised linear model `ridge_mm` beats both (`unet32` 4/26,
+  `fno` 8/22, both Worse; median 0.0127 vs 0.0306 and 0.0224). Against
+  `blur_sel` with its two extra fitted parameters (flagged as favouring the
+  baseline) both networks are Indistinguishable.
+- **Caveat on `ridge_mm`.** The networks are not given scale-free inputs.
+  Thermal cell density has a per-design maximum anywhere from 0.83 to 268.8
+  (17 of 30 designs exceed 1.5; asap7_riscv32i 268.8), macro density also
+  reaches 268.8, and IR-drop stripe/via channels reach about 130 and 265.
+  `ridge_mm` min-max scales every feature per design; the same ridge
+  without that (`ridge_raw`) scores 0.0524 unscaled, worse than both
+  networks. So the comparison mixes model class with input normalisation.
+  The fair claim is that a linear model on per-design-normalised multi-scale
+  features beats networks trained on unnormalised inputs, not that the
+  networks add nothing. It points to per-design input normalisation as a
+  cheap thing to try for the networks. (This refines the earlier
+  "nonlinearity is not doing real work" reading, which should not be
+  quoted either way.) The comment in `thermal_dataset.py` that cell density
+  is "already [0,1]" is not true for most designs; not changed here.
+- IR-drop: judged from the unscaled (P0) numbers, because P1 is a poor
+  post-process there (the networks' outputs are compressed, so stretching
+  them overshoots: unet32 0.0317 -> 0.1325, fno 0.0501 -> 0.0765).
+  Unscaled medians: unet32 0.0317, ridge_raw 0.0326, ridge_mm 0.0336, fno
+  0.0501, const_mean 0.0432. The pre-registered "no demonstrated advantage
+  over a free scaled baseline" label rests on P1 comparisons that carry
+  little meaning here, and no unscaled learned-vs-free comparison was run
+  (unet32 vs ridge_raw is untested). Treat the IR-drop S2 label as weak.
+
+**S3, IR-drop learned models vs a constant.** Unscaled: neither network is
+distinguishable from `const_mean` (unet32 14/16 wins/losses, adj. p 1.0;
+fno 14/16, adj. p 0.95). The pre-registered label ("not shown to beat a
+constant on MSE") holds, but the test is vacuous by construction: a
+constant has no rank correlation, so `_verdict`'s rank condition is
+undefined and neither Better nor Worse is reachable, whatever the data say.
+The substantive evidence is the P0 result above. The rescaled comparisons
+(unet32 5/25, fno 6/24 against `const_mean`) read Worse only if the
+undefined rank check is waived; that waiver was added in the code and is not
+part of the pre-registration, so they are reported as exploratory.
+
+**Stage B, thermal, 75% vs 100% of training designs.** All four cells are
+noise: unet32 P0 +6.2% (p=0.95, 100% better on 14/30, unresolved), unet32
+P1 -3.2% (p=0.24, 16/30, "saturated" by the rule), fno P0 +7.6% (unresolved),
+fno P1 +11.6% (p=0.82, 15/30, unresolved). The percentage compares medians of
+two distributions and disagrees in sign with the paired data in two cells.
+Do not quote a trend; "more of the same designs does or does not help" is
+still unresolved.
+
+**Deviations from the pre-registration, stated plainly.** The code adds the
+"rank criterion waived" verdict line and some HTML context sentences that
+the entry does not mention; the entry and report both said "six-criterion
+rule" while `_verdict` applies seven conditions including rank. The HTML
+originally printed the wrong family count for every Worse comparison and
+claimed rescaling raises the error of every IR-drop predictor (it lowers
+blur's); both were fixed and the report regenerated without retraining.
+
+**What this changes.**
+- FNO is better than the U-Net as trained mainly because its output is
+  better scaled; with equal rescaling its error advantage is not
+  distinguishable, though its rank agreement and seed stability are better.
+  The earlier "FNO beats the U-Net" claim should be read as "FNO is better
+  out of the box", not "FNO makes better predictions".
+- Neither network is shown to beat a properly scaled free baseline on
+  thermal, and the IR-drop networks are not shown to beat a constant.
+- The most promising cheap next experiment is per-design input
+  normalisation (and a physically better power-proxy feature), then
+  retraining both networks, since raw inputs with maxima up to 268 are a
+  plausible cause of the gap to `ridge_mm`.
+
+### 2026-11-02 (latest) — Symmetric re-evaluation, pre-registration (written before results)
+
+**Why.** The previous entry found the bake-off's `blur` baseline was
+mis-scaled and that a per-design min-max rescale of a predictor's own output
+(it uses no target information) lifts `unet32` but not `fno`, while a ridge on
+per-design-scaled features reaches 0.0165. So three questions are open:
+(a) does `fno`'s win over `unet32` survive equal post-processing, (b) does any
+learned model beat a properly scaled free baseline on either track, (c) do the
+IR-drop learned models beat even a constant. This study treats every predictor
+the same way and uses 10 seeds instead of 5.
+
+**What exists before this entry.** Only the non-neural baselines (seconds, no
+training) and a 1-fold timing probe (fold `gcd`, seed 0, `unet32` + `fno`, both
+tracks). From the probe I looked only at parity and wall time: the P0
+held-out MSE of all 20 probe records is `repr`-identical to the stored bake-off
+records, and a run takes about 5-11 s, projecting to about 50 min for Stage A
+(360 runs) and about 27 min for Stage B. No comparison number below has been
+looked at.
+
+**Harness.** New `training/symmetric_eval.py` (stages `train`, `baselines`,
+`analyze`) and `tests/test_symmetric_eval.py`. Read-only imports from
+`arch_sweep.py`, `diagnose_thermal.py`, `laplacian_sweep.py`, the datasets and
+`models/`; nothing existing is modified and no stored sweep, diagnostics file
+or checkpoint is written. Outputs: `experiments/symmetric_eval.json`,
+`experiments/symmetric_eval_summary.md`, `experiments/symmetric_eval_report.html`.
+Folds: the 9 leave-one-design-family-out folds of
+`arch_sweep._make_family_folds`, both tracks, 30 designs each. Neural recipe:
+exactly the bake-off's. The stored records use 200 epochs (thermal) and 120
+epochs (IR-drop); batch size 4, lr 1e-3, AdamW wd 1e-4, cosine to 1e-6, grad
+clip 1.0, seeds 0-9, final-epoch model (not best-val). The training loop is a
+copy of `arch_sweep._run_torch` that returns the held-out prediction maps.
+
+**Post-processing, applied to a predicted 64x64 map using only that map.**
+- `P0`: none.
+- `P1`: per-design min-max, (m - min)/(max - min). A constant map becomes all
+  zeros (the same convention as `diagnose_thermal._minmax_normalise`, needed so
+  the diagnostics can be reproduced); unit-tested. Consequence: `const_mean`
+  under P1 is a zero map, which is degenerate; it is reported but never used as
+  a comparator.
+- `A` (free/fitted non-network predictors only, reported separately as
+  favouring the baseline because it costs two fitted parameters): a global
+  affine a*m+b fitted by least squares on the training designs' pixels, clipped
+  to [0,1]. `P1+A` fits it on the P1 maps; `A` fits it on the P0 maps. Never
+  applied to neural models.
+- P0 and P1 are reported for every predictor.
+
+**Predictors per track.** `const_mean`; `mean_map`; `blur3` (Gaussian blur of
+cell density, channel 0, sigma 3, divided by max; thermal uses channel 4,
+IR-drop uses `arch_sweep._blur_cell_density`); `blur_sel` (sigma chosen on the
+training designs among {1,2,3,4,6,8,12}, applied unchanged). For `blur_sel`
+the sigma is chosen separately for each post-processing variant, by the lowest
+mean per-design MSE of that variant on the training designs (ties to the
+smaller sigma), so each variant gets its own best sigma; for P1+A this is the
+diagnostics' rule. `ridge_raw` and `ridge_mm`: per-pixel ridge, alpha 1,
+standardised on training, unpenalised intercept, clipped to [0,1], on blurs
+sigma {0,1,2,4,8} of the input channels (thermal channels 0-3 = 20 features;
+IR-drop channels 0-5 = 30). `ridge_mm` min-max scales each blurred feature
+map per design before the features are built (uses no target); both ridge
+variants under P0 and P1. Neural: `unet32` and `fno`, seeds 0-9, P0 and P1.
+
+**Scoring.** Per design per seed `arch_sweep._score` (numpy float64) for P1 and
+for every non-neural predictor. Neural P0 MSE is the torch-float32 value the
+bake-off stored (this is what the parity gate compares and what the P0
+comparisons use); its numpy value is kept alongside. MSE, MAE, Spearman and
+`top10_abs_err` are recorded.
+
+**Parity gates (stop and report if any fail).** G-P0: for seeds 0-4, all 9
+folds, both archs, both tracks, the neural P0 `heldout_mse` is `repr`-identical
+to the stored records (all 300 per track checked). G-blur: `blur3` P0
+reproduces the stored `blur` arm exactly, 30/30 per track. G-diag: thermal
+`blur_sel` P1+A and `ridge_raw` (alpha 1), plus `const_mean`/`mean_map`,
+reproduce `thermal_diagnostics.json` D1/D3 (reported as max absolute
+difference; any difference is reported). `ridge_mm` is new so it is not gated.
+
+**Comparison machinery.** For each comparison the per-design value is the
+mean over seeds of held-out MSE (non-neural predictors have one value).
+`arch_sweep._verdict` (the six-criterion Better/Worse/Indistinguishable rule;
+T from per-design seed sds, with sd 0 for non-neural comparators and the
+neural side's seed count), the raw p-value from a Wilcoxon signed-rank test on
+the 30 paired differences (p = 1 if every difference is exactly zero), and
+`arch_sweep._holm` within each rule below. `designs_by_family` comes from
+`family_of(design)`, as in `arch_sweep`. All comparisons are paired over 30
+designs that are not independent (9 families); the verdict machinery already
+accounts for that through its families-agreeing criterion (at least 7 of 9
+families on the same side), but the Wilcoxon p-value itself treats the 30
+designs as independent and is therefore optimistic.
+
+**Rules.**
+- S1 (thermal, calibration-independent FNO win): `fno` vs `unet32` under P0
+  and under P1, Holm m=2. P0 Better but P1 not Better: "fno's win over unet32
+  is mostly output calibration". P1 Better: "survives equal post-processing".
+  P1 Worse: "reverses". (P1 not Better and P0 not Better: "no fno win under
+  either post-processing".)
+- S2 (learned vs free baseline, each track): `unet32` P1 and `fno` P1 vs
+  `blur_sel` P1 (no affine) and vs `ridge_mm` P1, Holm m=4 per track. If
+  neither learned model is Better than `blur_sel` P1: "no demonstrated
+  advantage over a free scaled baseline on this track". Also reported,
+  flagged as favouring the baseline (two extra fitted parameters), the same
+  two learned models vs `blur_sel` P1+A, as a separate Holm family of m=2.
+- S3 (IR-drop floor): `unet32` and `fno`, each under P0 and P1, vs
+  `const_mean` and `mean_map` in their natural (P0) form, Holm m=8. If
+  neither model is Better than `const_mean` under P1: "IR-drop learned models
+  are not shown to beat a constant on MSE". As supplementary information,
+  outside the Holm family, the P1 learned models are also compared with the
+  P1-processed comparators.
+- S4 (noise): seed-to-seed sd of the per-design values for `unet32`/`fno`
+  (median and mean over designs), and the 5-seed (0-4) vs 10-seed (0-9)
+  median MSE, per track and post-processing, to show what changed relative to
+  the bake-off.
+
+**Stage B (only after Stage A; only if projected total time stays under 150
+min): thermal learning curve at 0.75.** `unet32` and `fno`, seeds 0-9, thermal
+only, trained on a nested random 75% of each fold's training designs using
+`diagnose_thermal.nested_train_keys` and `RestrictedDataset` unchanged
+(fold index = position in the fold list). Compared with the 100% results
+(seeds 0-9 from Stage A) per architecture and per post-processing (P0, P1):
+paired two-sided Wilcoxon over the 30 designs of seed-mean MSE (75% vs 100%),
+and the relative change in median, (median_75 - median_100)/median_75. Label:
+"data-limited" if 100% beats 75% by >= 10% in median AND p < 0.05;
+"saturated" if |change| < 5% AND p >= 0.05; otherwise "unresolved". The four
+(arch, post-processing) cells are labelled separately with no correction (the
+thresholds are fixed); a single overall statement is made only if all four
+agree.
+
 ### 2026-11-02 (later) — Thermal U-Net vs blur diagnostics, result: the bake-off's blur baseline was mis-scaled, and two earlier conclusions are corrected
 
 Run with `training/diagnose_thermal.py` (stages p1 p2 d1-d5 report; parity
